@@ -1127,6 +1127,32 @@ def test_FIBR0466_a_failed_build_still_shows_its_log(tmp_path):
     assert "log tail" in result.stdout, result.stdout
 
 
+@pytest.mark.parametrize("state", ["unresolvable*", "blocked*", "scheduled"])
+def test_FIBR0466_a_row_that_never_built_shows_why_on_a_timeout(tmp_path, state):
+    """osc stars a row that is not current, and always stars a blocked one. A
+    row still waiting when the polls ran out fell through to the build log,
+    which it does not have, instead of showing OBS's reason."""
+    result = _status(
+        tmp_path,
+        f"repo x86_64 finbreak {state}\n",
+        OSC_DETAILS="waiting for 2 compliant workers",
+    )
+
+    assert "timed out" in result.stderr, result.stderr
+    assert "waiting for 2 compliant workers" in result.stdout, result.stdout
+    assert "log tail" not in result.stdout, result.stdout
+
+
+def test_FIBR0466_a_row_with_no_reason_says_so(tmp_path):
+    """osc prints the word None for a row that carries no details, which reads
+    as if None were the reason."""
+    result = _status(tmp_path, "repo x86_64 finbreak broken\n", MAX_POLLS="10")
+
+    assert result.returncode != 0, result.stdout
+    assert "None" not in result.stdout, result.stdout
+    assert "OBS gave no reason" in result.stdout, result.stdout
+
+
 @pytest.mark.parametrize("knob", ["SETTLE_POLLS", "MAX_POLLS", "POLL_SECS"])
 def test_FIBR0464_a_count_that_is_not_a_whole_number_is_refused(tmp_path, knob):
     """`[ "$i" -lt 3s ]` fails inside an `elif` without tripping `set -e`, so a

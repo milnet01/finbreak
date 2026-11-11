@@ -1,7 +1,8 @@
 #!/bin/sh
 # obs-status.sh (FIBR-0155) — poll the OBS build results until every repo reaches
-# a terminal state built from the committed source, then print the tail of any
-# build log that did not succeed.
+# a terminal state built from the committed source, then say why each repo that
+# did not succeed failed: its build-log tail, or OBS's reason for one that never
+# built.
 #
 # Run standalone after obs-submit.sh. Override via env: OBS_API, OBS_PROJECT,
 # OBS_PACKAGE, POLL_SECS (default 45), MAX_POLLS (default 80), SETTLE_POLLS
@@ -105,13 +106,22 @@ while read -r repo arch _pkg status _rest; do
     if [ "$status" != "succeeded" ] && [ "$status" != "disabled" ]; then
         failed=1
         echo "########## $repo ($status) ##########"
-        case "$status" in
-            # These never built, so there is no log; OBS keeps the reason
-            # (a missing BuildRequires, say) in the row's details (FIBR-0466).
-            unresolvable|broken|excluded)
-                osc -A "$API" results --show-excluded -r "$repo" -a "$arch" \
-                    --format '%(details)s' "$PROJ" "$PKG" 2>&1 ||
-                    echo "(could not read the reason from OBS)" ;;
+        # osc stars a row that is not current, and always stars a blocked one.
+        case "${status%\*}" in
+            # These never built from this source, so there is no log of it;
+            # OBS keeps the reason (a missing BuildRequires, say) in the row's
+            # details (FIBR-0466).
+            unresolvable|broken|excluded|blocked|scheduled)
+                if why="$(osc -A "$API" results --show-excluded -r "$repo" -a "$arch" \
+                    --format '%(details)s' "$PROJ" "$PKG" 2>&1)"; then
+                    # osc prints None for a row with no details.
+                    case "$why" in
+                        ""|None) echo "(OBS gave no reason)" ;;
+                        *) echo "$why" ;;
+                    esac
+                else
+                    echo "(could not read the reason from OBS)"
+                fi ;;
             *) osc -A "$API" buildlog "$PROJ" "$PKG" "$repo" "$arch" 2>&1 | tail -40 ;;
         esac
     fi

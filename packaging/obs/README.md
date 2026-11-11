@@ -16,7 +16,7 @@ full design and rationale.
 | `finbreak.dsc` | deb source-control file. Without it OBS marks every Debian/Ubuntu target "excluded" and builds no `.deb` at all |
 | `obs-setup.sh` | create/update the OBS sub-project + package + build targets (one-time, idempotent) |
 | `obs-submit.sh` | vendor → populate the checkout → run services → commit a revision (per-release) |
-| `obs-status.sh` | poll the build results + tail any failing build log; exits non-zero on a failed build or a timeout. An unresolvable, broken or excluded result counts only from poll `SETTLE_POLLS` (default 3), and shows `(settling)` before then, because OBS can still show the previous source's result straight after a commit (FIBR-0464) |
+| `obs-status.sh` | poll the build results, then show each failure's build-log tail, or OBS's reason for a repo that never built; exits non-zero on a failed build or a timeout. An unresolvable, broken or excluded result counts only from poll `SETTLE_POLLS` (default 3), and shows `(settling)` before then, because OBS can still show the previous source's result straight after a commit (FIBR-0464) |
 | `vendor-wheels.sh` | builds `vendor.tar.gz` — the offline wheel closure (run on a glibc ≥ 2.34 host) |
 | `finbreak-rpmlintrc` | filters rpmlint noise inherent to the bundled foreign tree (openSUSE gate) |
 | `io.github.milnet01.finbreak.desktop` | desktop entry (menu + launcher association) |
@@ -55,7 +55,7 @@ obs-service-obs_scm`). Vendoring needs a **glibc ≥ 2.34** x86_64 host.
 ```sh
 packaging/obs/obs-setup.sh     # once: create the sub-project + package + targets
 packaging/obs/obs-submit.sh    # vendor → populate → services → commit a revision
-packaging/obs/obs-status.sh    # poll results; tail any failing build log
+packaging/obs/obs-status.sh    # poll results; say why any build failed
 ```
 
 All three take defaults for `home:milnet:finbreak/finbreak` on
