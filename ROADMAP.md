@@ -5216,6 +5216,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   consequence. Needs a spec (correctness-critical, existing data).
   2026-11-11: started. Spec via write-spec, review-contract capped at 2
   loops (global rule 14).
+  2026-11-11: review-contract ran 2 loops (rule 14 cap) on
+  docs/specs/FIBR-0467-home-loan-sign.md; 3 verified findings
+  fixed, 3 dismissed, none deferred. Calm cap. Spec Status is
+  accepted; implementation is next. Log:
+  docs/reviews/FIBR-0467-home-loan-sign-loop-log.md.
   **Layman:** A loan repayment shows up as money out of your current account and also as a minus on the loan account, so finbreak never offers to link the two as a transfer and counts the payment as spending.
   Kind: fix.
   Source: user-answer-2026-11-11 (FIBR-0121 open question).
