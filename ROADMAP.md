@@ -2268,6 +2268,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Filed at FP05's close rather than becoming FP06, because a fifth
   consecutive fix-pass trips the convergence checkpoint and the checkpoint
   exists for exactly this: to stop patching sites and look at the shape.
+  2026-11-11 audit of every call site in services/vault_migration.py
+  (no code changed). No fold of "cannot tell" is destructive today:
+  - `_reads_end_to_end` in `_replacement_verdict`: False is UNSOUND,
+    which deletes `.migrating`; the live v1 database is untouched and
+    branch 3 restarts the migration. A MemoryError in its
+    integrity_check is the one real "cannot tell", and it lands there.
+  - `_reads_end_to_end` in `_finish_if_readable`: False keeps the copy
+    and the pending flag, and offers the rollback.
+  - `_opens` (branches 1 and 3): False only falls through.
+  - `rollback_copy_is_usable`: False raises VaultStateError, or in
+    `_ensure_rollback_copy` retakes the copy. Both retake sites run
+    while vault.db is still v1 and rebuild the v1 sidecar, so a
+    needless retake loses nothing.
+  - `_row_counts_or_none`: None is already named UNCOMPARABLE.
+  So the change would be design hygiene across about ten call sites in
+  the riskiest module, with no behaviour change. Asked the user whether
+  it is still worth doing.
   **Layman:** The upgrade-recovery code keeps confusing "I could not check this" with "this is broken", and the second answer throws things away.
   Kind: refactor.
   Source: FP02-FP05 pattern, recorded at FP05's close 2026-09-06.
