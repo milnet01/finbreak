@@ -5296,7 +5296,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: peer-report-rolodex-2026-11-11.
 
-- 📋 [FIBR-0470] **A non-Standard-Bank PDF is normalised and opened twice on every pick.**
+- ✅ [FIBR-0470] **A non-Standard-Bank PDF is normalised and opened twice on every pick.**
   ui/import_wizard.py _read_pdf runs StandardBankImporter().parse
   first (pikepdf normalise, pdfplumber open, text extraction), and only
   when that returns None does PdfImporter().candidate_tables normalise
@@ -5308,6 +5308,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   page before a full parse), and FIBR-0050 INV-14 says the SB parse
   re-checks the page cap after its own pdfplumber.open. Check that
   clause before changing it. Batch scan (FIBR-0468) has the same shape.
+  Shipped 2026-11-12 in f8f1035 + a9ade5a (1.1.0). Both PDF readers now open
+  through pdf_importer.open_pdf (normalise, open, page cap); read_pdf hands
+  one opened document to StandardBankImporter.parse_document, then
+  PdfImporter.tables_in. One normalise per read stays (FIBR-0458 ruling).
+  Measured on a synthetic 38-page statement, machine at load ~30: page
+  object parsing 4-6 s, done once instead of twice. read_pdf output over
+  every PDF fixture byte-identical before and after. FIBR-0050 INV-14,
+  FIBR-0009 INV-9/D14 and FIBR-0085's scan ladder amended.
+  review-code --single: one HIGH (a crafted page made close() re-raise a
+  raw TypeError over the friendly error; a regression from f8f1035) fixed
+  in a9ade5a with a red-first test; one LOW (spec drift) fixed; one LOW
+  kept with reason (parse and candidate_tables keep test callers; both
+  open through open_pdf).
   **Layman:** Importing a PDF from a bank other than Standard Bank takes longer than it needs to, because the file is opened and read twice.
   Kind: perf.
   Source: code-review-FIBR-0104-2026-11-11.
