@@ -2188,7 +2188,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Lanes: ui.
   Duplicate-of: FIBR-0153.
 
-- 📋 [FIBR-0121] **Loan-account sign display: show debt-reducing amounts as positive on loan-type accounts.**
+- 🚫 [FIBR-0121] **Loan-account sign display: show debt-reducing amounts as positive on loan-type accounts.**
   Approach APPROVED by user (2026-07-13): DISPLAY-ONLY, display-time inversion for
   loan-type accounts (AccountType.HOME_LOAN / PERSONAL_LOAN). Keep amount_minor
   stored canonical (FIBR-0007: debit negative / credit positive) so the exact-money
@@ -2214,6 +2214,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   2026-07-13 is superseded. FIBR-0467 stores loan repayments as
   positive, which meets this item's goal without a display flip.
   Re-check what, if anything, is left here once FIBR-0467 ships.
+  2026-11-11 re-check after FIBR-0467: nothing left. The amount
+  colour follows the stored sign (ui/_amount.py), and no code treats
+  loan accounts differently, so FIBR-0467's sign fix already shows a
+  repayment positive and a fee negative. A loan CSV or OFX file keeps
+  its own sign; a back-to-front one has not been seen. The
+  interest-as-expense follow-up stays unqueued.
   **Layman:** On home-loan / personal-loan accounts, your payments (which reduce what you owe) will read as positive/green and interest &amp; fees (which increase what you owe) as negative/red — the natural way round, instead of the current back-to-front look.
   Kind: feature.
   Source: user-request-2026-07-12 (approved 2026-07-13).
@@ -2452,6 +2458,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   A wrongly refused statement reaches a real user; the sign-flip gap
   stays as FIBR-0050 INV-11 already records it. Reopen if an overpaid
   Home Loan statement turns up.
+  2026-11-11: FIBR-0467 moved B's arithmetic to the owed frame:
+  B's rows are now the negated delta, so the gate is
+  |opening - Σ| == |closing|. Still magnitude; this stays parked.
   **Layman:** Home Loan statements could get the same stricter arithmetic check as other accounts now that we know how the bank prints them.
   Kind: enhancement.
   Source: in-session-2026-09-25 (follow-up to FIBR-0335's real-statement check).
@@ -5221,6 +5230,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   fixed, 3 dismissed, none deferred. Calm cap. Spec Status is
   accepted; implementation is next. Log:
   docs/reviews/FIBR-0467-home-loan-sign-loop-log.md.
+  2026-11-11: implemented and pushed (8a35859). _parse_family_b
+  stores the negated delta; _verify_checksum puts B in the owed frame,
+  magnitude kept; schema v16 negates the selected rows and drops the
+  confirmed pairs it made same-signed. Every new test seen red first;
+  gate green. FIBR-0050, versioning.md § 2 and CHANGELOG amended in the
+  same commit. Left before it is done (workflow.md § 6): review-code
+  over the change. Ships in 1.1.0.
   **Layman:** A loan repayment shows up as money out of your current account and also as a minus on the loan account, so finbreak never offers to link the two as a transfer and counts the payment as spending.
   Kind: fix.
   Source: user-answer-2026-11-11 (FIBR-0121 open question).
