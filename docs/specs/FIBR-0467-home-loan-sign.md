@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # FIBR-0467 — Store a Home Loan repayment as money in, and correct existing vaults once
 
-**Status:** spec draft (2026-11-11).
+**Status:** accepted (2026-11-11).
 **Kind:** fix.
 **Source:** ROADMAP FIBR-0467 (user-answer-2026-11-11, FIBR-0121's open question).
 
@@ -175,7 +175,7 @@ Each fixture is chosen so that only the rule under test rejects it.
 
 - **INV-3** — No other family and no other importer changes sign. Families A, C,
   D and E, CSV and OFX produce the amounts they do today.
-  *Test:* the existing amount assertions in `tests/features/standard_bank_pdf/`,
+  *Test:* the existing non-Family-B amount assertions in `tests/features/standard_bank_pdf/`,
   `tests/features/import_/` and `tests/features/ofx_import/` pass unchanged.
   *Breaks when:* the negation is applied outside `_parse_family_b`, for example
   in `_draft`, which every family shares.
@@ -260,14 +260,16 @@ Each fixture is chosen so that only the rule under test rejects it.
 |---|---|
 | `test_standard_bank.py::test_INV4_family_b_homeloan_unsigned_balance_signed_closing` (changed expectation) | INV-1 |
 | new B case(s) beside the `_verify_checksum` truncation test in `test_standard_bank.py` | INV-2 |
-| existing amount tests in `standard_bank_pdf/`, `import_/`, `ofx_import/` | INV-3 |
+| existing non-Family-B amount tests in `standard_bank_pdf/`, `import_/`, `ofx_import/` | INV-3 |
 | new `tests/features/loan_sign/test_migration_v16.py` | INV-4, INV-5, INV-6, INV-7 |
 | new case in `tests/features/transfers/` | INV-8 |
 
 The existing test in `test_standard_bank.py` that passes a truncated set through
 `_verify_checksum(Family.B, …)` uses hand-built drafts in the old sign. It is
 rewritten with the new sign and the new arithmetic, and still documents the
-magnitude exemption.
+magnitude exemption. Every other Family B amount assertion in
+`test_standard_bank.py` flips with INV-1, such as the one in
+`test_family_b_page_break_boilerplate_not_folded_into_description`.
 
 Each new or changed test is seen failing against the pre-fix code before the fix
 lands. INV-3's tests are expected to stay green throughout.
@@ -312,7 +314,7 @@ to `_NO_PROSE` in `tests/features/prose_checks/test_prose_checks.py`.
 |------|----------------------|
 | INV-1 | `test_standard_bank.py::test_INV4_family_b_homeloan_unsigned_balance_signed_closing` |
 | INV-2 | the new B `_verify_checksum` cases in `test_standard_bank.py` |
-| INV-3 | existing amount assertions in `standard_bank_pdf/`, `import_/`, `ofx_import/` |
+| INV-3 | existing non-Family-B amount assertions in `standard_bank_pdf/`, `import_/`, `ofx_import/` |
 | INV-4 | `loan_sign/test_migration_v16.py` |
 | INV-5 | `loan_sign/test_migration_v16.py` |
 | INV-6 | `loan_sign/test_migration_v16.py` |
