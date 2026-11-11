@@ -2050,12 +2050,14 @@ class MainWindow(QMainWindow):
         widget = ImportWizardWidget(self._service, amount_prefs=self._amount_prefs)
         widget.done.connect(self._on_import_done)
         self._set_live(widget)
+        self._set_workspace_actions_enabled(False)  # FIBR-0072
         self._status(self.tr("Importing statement…"))
 
     def _on_import_done(self) -> None:
         # Rebuild a fresh workspace and land on Statements so the just-imported
         # statement is visible; refresh the count (D5/INV-11). Home needs no
         # refresh: the rebuilt HomeView read the vault when it was constructed.
+        self._set_workspace_actions_enabled(True)
         workspace = self._build_workspace()
         workspace.setCurrentIndex(_TAB_STATEMENTS)
         if self._home_tab is not None:
@@ -2378,11 +2380,27 @@ class MainWindow(QMainWindow):
         # that left no menu route to exit, and there was no Ctrl+Q either (a grep for
         # setShortcut/QKeySequence across the app returned nothing). Quit needs no
         # vault, so it stays enabled and the menu stays openable.
+        self._set_workspace_actions_enabled(enabled)
+        self._action_settings.setEnabled(enabled)
+        self._action_lock.setEnabled(enabled)
+
+    def _set_workspace_actions_enabled(self, enabled: bool) -> None:
+        # The actions that rebuild the workspace, or need it. While the import
+        # wizard is live they are off: each would destroy the wizard and the
+        # file and column choices in it, unasked (FIBR-0072). Lock and Settings
+        # stay on — a lock is meant to destroy it, and Settings never touches it.
         for action in (
+            self._action_home,
+            self._action_transactions,
+            self._action_statements,
+            self._action_accounts,
+            self._action_categories,
+            self._action_rules,
+            self._action_transfers,
+            self._action_recurring,
+            self._action_forecast,
             self._action_manual_entry,
             self._action_import,
-            self._action_settings,
             self._action_export,
-            self._action_lock,
         ):
             action.setEnabled(enabled)

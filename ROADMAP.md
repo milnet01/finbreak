@@ -2078,8 +2078,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: user-request-2026-07-04.
   Empty-state half delivered by FIBR-0051 (P07.5): the HomeView getting-started page is this bullet's "friendly welcome — import a statement or add a transaction". Remaining scope: the inline Amount/Description field hints on the manual-entry form (not in FIBR-0051). Stays open for those hints.
 
-- 📋 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
+- 🚧 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
   main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
+  Started 2026-11-11 (user asked to work the whole 1.0.x patch stream).
   **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
   Kind: ux.
   Source: indie-review-2026-07-10 (M-shell1).

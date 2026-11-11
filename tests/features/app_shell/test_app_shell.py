@@ -594,6 +594,56 @@ def test_INV9_manual_entry_roundtrip_from_non_home(qtbot, service):
     )
 
 
+def _actions_that_replace_the_import(window: MainWindow) -> list[QAction]:
+    # Every toolbar/View action that would rebuild the workspace over a live
+    # import wizard (or, for Export, do nothing because Home is gone).
+    return [
+        window._action_home,
+        window._action_transactions,
+        window._action_statements,
+        window._action_accounts,
+        window._action_categories,
+        window._action_rules,
+        window._action_transfers,
+        window._action_recurring,
+        window._action_forecast,
+        window._action_manual_entry,
+        window._action_import,
+        window._action_export,
+    ]
+
+
+def test_FIBR0072_navigating_away_cannot_discard_an_open_import(qtbot, service):
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_import.trigger()
+    wizard = window._live
+
+    for action in _actions_that_replace_the_import(window):
+        action.trigger()
+        assert window._live is wizard, (
+            f"{action.objectName()} discarded the import in progress"
+        )
+    assert window._action_lock.isEnabled(), "Lock stays reachable mid-import"
+    assert window._action_settings.isEnabled(), "Settings does not touch the wizard"
+
+    wizard.done.emit()  # what the wizard's Cancel and finish both send
+
+    for action in _actions_that_replace_the_import(window):
+        assert action.isEnabled(), f"{action.objectName()} stayed off after import"
+
+
+def test_FIBR0072_a_lock_mid_import_does_not_leave_navigation_off(qtbot, service):
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_import.trigger()
+
+    window._action_lock.trigger()
+    assert service.unlock(bytearray(_PW))  # what the unlock dialog's worker does
+    window._enter_unlocked()
+
+    for action in _actions_that_replace_the_import(window):
+        assert action.isEnabled(), f"{action.objectName()} stayed off after unlock"
+
+
 def test_INV9_manual_entry_cancel_and_invalid(qtbot, service):
     window = _unlocked_home_shell(qtbot, service)
     txn = TransactionService(service.vault)
