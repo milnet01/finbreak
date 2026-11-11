@@ -19,8 +19,9 @@ Five layout families dispatch inside this single module (D1):
   printed period or closing balance.
 
 Signs are budget-view (money out negative): the balance families (A/B/D/E) take
-the printed magnitude carrying the **running-balance delta** sign (INV-7); the
-credit card flips its printed sign (INV-6). Integrity is all-or-nothing (INV-11):
+the printed magnitude carrying the **running-balance delta** sign (INV-7), negated
+for B, whose balance is the amount owed (FIBR-0467); the credit card flips its
+printed sign (INV-6). Integrity is all-or-nothing (INV-11):
 a per-row ``|delta| == printed`` gate (A/B/D/E) plus a completeness gate — against
 the statement's independently-printed closing figure where one prints, or (E,
 which prints none) against its printed ``Payments`` / ``Deposits`` column totals
@@ -630,8 +631,9 @@ def _verify_checksum(
     # what it is rather than as a phantom "didn't add up" (FIBR-0224).
     opening_m = _storable(opening, exponent)
     closing_m = _storable(closing, exponent)
-    if family is Family.C:
-        # Drafts carry the flipped budget sign; the printed convention is +purchase.
+    if family in (Family.B, Family.C):
+        # The drafts carry the budget sign, and the printed figures are the other
+        # way round: B prints the amount owed (FIBR-0467), C a +purchase balance.
         reconciled = opening_m - total
     else:
         reconciled = opening_m + total
@@ -641,7 +643,8 @@ def _verify_checksum(
     # column prints unsigned magnitudes while its "CLOSING BALANCE" row prints a
     # sign — the same asymmetry that makes `_verify_row` pass `check_sign=False`
     # for B and no other family. Confirmed on real Home Loan statements
-    # (FIBR-0335): the closing prints the running balance negated.
+    # (FIBR-0335): the closing prints the running balance negated. A signed check
+    # for B is parked as FIBR-0357.
     #
     # Applying `abs()` to every family let a truncation through whenever the lost
     # rows flip the reconciled sign, which any overdrawn account reaches: opening
@@ -997,7 +1000,9 @@ def _clean_desc(desc: str) -> str:
 
 def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     """Family B (Home Loan) — ``PostingDate[ EffectiveDate] desc amount balance``,
-    ISO dates, no printed sign (delta is the sole sign source)."""
+    ISO dates, no printed sign (delta is the sole sign source). The balance is the
+    amount OWED, so a row's amount is the NEGATED delta: a repayment lowers it and
+    is money in (FIBR-0467)."""
     groups = _fold(lines)
     prev_balance: Decimal | None = None
     parsed: list[TransactionDraft | RowError] = []
@@ -1025,7 +1030,7 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         _verify_row(delta, amt_tok, fmt, check_sign=False)  # B prints no amount sign
         row += 1
         full_desc = " ".join([_clean_desc(desc)] + cont).strip()
-        parsed.append(_draft(row, posting, delta, full_desc, exponent))
+        parsed.append(_draft(row, posting, -delta, full_desc, exponent))
         prev_balance = balance
     drafts, errors = _split(parsed)
     return ParseResult(drafts, errors, None, None)

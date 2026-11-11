@@ -981,3 +981,41 @@ def test_FIBR0396_the_skip_note_is_composed_by_one_template(
     assert " | " in text, text
     skipped, confirmed = text.split(" | ")
     assert "skipped" in skipped and "Confirmed" in confirmed
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0467 INV-8 — a home-loan repayment pairs with its current-account leg
+# --------------------------------------------------------------------------- #
+def test_FIBR0467_INV8_home_loan_repayment_is_suggested(service):
+    from pathlib import Path
+
+    from finbreak.importers.standard_bank import StandardBankImporter
+    from finbreak.services.import_ import ImportService
+
+    fixture = (
+        Path(__file__).parents[1]
+        / "standard_bank_pdf"
+        / "fixtures"
+        / "family_b_homeloan.pdf"
+    )
+    current = AccountRepository(service.vault.connection).list_all()[0].id
+    loan = AccountService(service.vault).add_account("Home loan", "home_loan").id
+    parsed = StandardBankImporter().parse(fixture.read_bytes(), 2, None)
+    assert parsed is not None and parsed.period_start and parsed.period_end
+    imports = ImportService(service.vault)
+    imports.commit_import(
+        imports.preview_result(parsed, loan),
+        parsed.period_start,
+        parsed.period_end,
+        fixture.name,
+    )
+    # The fixture's 300.00 repayment, dated 2025-03-05.
+    repayment = service.vault.connection.execute(
+        "SELECT id FROM transactions WHERE account_id = ? AND occurred_on = ?",
+        (loan, "2025-03-05"),
+    ).fetchone()[0]
+    debit = _add(service, current, -30_000, "2025-03-05", "home loan payment")
+
+    pairs = TransferRepository(service.vault.connection).candidate_pairs()
+
+    assert (debit, repayment) in pairs

@@ -65,6 +65,10 @@ every transaction they had is ordinary MINOR work — that is what the migration
 machinery is for. The break is the case with no route forward, or a route that
 silently drops data.
 
+**Nor is an announced migration that corrects data an earlier release stored
+wrongly** (user, 2026-11-11, FIBR-0467). It is § 3.2's automatic forward
+migration, so MINOR.
+
 **Anything not on this list is not a compatibility promise.** Internal module
 layout, function signatures, the database's physical table shape beneath a
 migration, log text, and the wording of the UI are all free to change in a

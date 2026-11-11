@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 15
+LATEST_SCHEMA_VERSION = 16
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -489,6 +489,49 @@ def _migrate_to_v15(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 15")
 
 
+# The rows a Standard Bank Home Loan (Family B) import left behind. The vault
+# records no parser per row, so this selects by what only that import leaves: a
+# `home_loan` account (the type the create-account dialog presets for Family B),
+# a PDF statement (not CSV or OFX), and a stored closing (which the generic PDF
+# path never records). FIBR-0467 § 4.3 gives each condition's reason.
+_FAMILY_B_ROWS_SQL = (
+    "SELECT t.id FROM transactions t "
+    "JOIN accounts a ON a.id = t.account_id "
+    "JOIN statement_periods p ON p.id = t.statement_period_id "
+    "WHERE a.type = 'home_loan' "
+    "  AND lower(p.source_filename) LIKE '%.pdf' "
+    "  AND p.closing_balance_minor IS NOT NULL"
+)
+
+
+def _migrate_to_v16(conn: dbapi2.Connection) -> None:
+    """v15 -> v16: store Home Loan rows as money in / money out (FIBR-0467).
+
+    Before 1.1.0 the Family B parser stored each row as the change in the amount
+    OWED, so a repayment was negative and a fee positive. This negates those
+    rows once. It then deletes each confirmed transfer pair the negation left
+    same-signed: transfer detection picks a pair's "From" leg by sign, so such a
+    pair would display wrongly. Both its rows return to the totals and to the
+    suggestions. A rejected pair stays; it only hides one suggestion.
+
+    Data-only, one atomic unit like every sibling step."""
+    # The f-strings splice in only the module constant above; no input reaches them.
+    rows = _FAMILY_B_ROWS_SQL
+    with owned_transaction(conn):
+        conn.execute(
+            f"UPDATE transactions SET amount_minor = -amount_minor WHERE id IN ({rows})"  # nosec B608
+        )
+        conn.execute(
+            "DELETE FROM transfer_pairs WHERE status = 'confirmed' AND id IN ("
+            "  SELECT tp.id FROM transfer_pairs tp "
+            "  JOIN transactions a ON a.id = tp.txn_a_id "
+            "  JOIN transactions b ON b.id = tp.txn_b_id "
+            "  WHERE a.amount_minor <> -b.amount_minor "
+            f"   AND (a.id IN ({rows}) OR b.id IN ({rows})))"  # nosec B608
+        )
+        conn.execute("UPDATE schema_version SET version = 16")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -504,4 +547,5 @@ _MIGRATIONS = {
     13: _migrate_to_v13,
     14: _migrate_to_v14,
     15: _migrate_to_v15,
+    16: _migrate_to_v16,
 }

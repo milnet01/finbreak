@@ -594,8 +594,10 @@ def test_INV3_family_a_rcp_european_with_rollover():
 
 
 def test_INV4_family_b_homeloan_unsigned_balance_signed_closing():
+    # FIBR-0467 INV-1: the printed balance is the amount OWED, so a row's amount
+    # is the NEGATED delta — the fee is money out, the repayment money in.
     r = _parse("family_b_homeloan.pdf")
-    assert [d.amount_minor for d in r.drafts] == [5000, -30000]
+    assert [d.amount_minor for d in r.drafts] == [-5000, 30000]
     assert [d.occurred_on for d in r.drafts] == ["2025-03-02", "2025-03-05"]
 
 
@@ -624,7 +626,7 @@ def test_family_b_page_break_boilerplate_not_folded_into_description():
         "Insurance Premium",
         "Debit Order",
     ]
-    assert [d.amount_minor for d in r.drafts] == [6900, 85514, -10000]
+    assert [d.amount_minor for d in r.drafts] == [-6900, -85514, 10000]
 
 
 def test_INV5_family_d_moneymarket_page2_schedule_excluded():
@@ -1440,9 +1442,27 @@ def test_FIBR0050_INV11_gate_is_signed_for_families_that_print_a_sign():
     ]
     _verify_checksum(Family.A, Decimal("100.00"), whole, Decimal("-50.00"), 2)
 
-    # Family B keeps the magnitude endpoint match, so the truncated set passes
-    # there. That is the documented exemption, not an oversight.
-    _verify_checksum(Family.B, Decimal("100.00"), truncated, Decimal("-50.00"), 2)
+    # Family B keeps the magnitude endpoint match, in the owed frame
+    # (`|opening - Σ| == |closing|`, FIBR-0467). Owed R100 and one +R150
+    # repayment reconcile to -50, which matches a printed -50 on magnitude
+    # alone; a signed check would refuse it. That is the documented exemption
+    # (FIBR-0357, parked), not an oversight.
+    overpaid = [TransactionDraft(1, "2025-03-02", 15000, "Fake Repayment")]
+    _verify_checksum(Family.B, Decimal("100.00"), overpaid, Decimal("-50.00"), 2)
+
+
+def test_FIBR0467_INV2_family_b_checksum_runs_in_the_owed_frame():
+    """Family B's rows are the negated balance delta, so its gate is
+    `|opening - Σ| == |closing|`. These are `family_b_homeloan.pdf`'s figures:
+    owed 1,000.00, fee -50.00, repayment +300.00, closing printed -750.00."""
+    whole = [
+        TransactionDraft(1, "2025-03-02", -5000, "Fake Service Fee"),
+        TransactionDraft(2, "2025-03-05", 30000, "Fake Repayment"),
+    ]
+    _verify_checksum(Family.B, Decimal("1000.00"), whole, Decimal("-750.00"), 2)
+
+    with pytest.raises(ValueError, match="didn't add up"):
+        _verify_checksum(Family.B, Decimal("1000.00"), whole[:1], Decimal("-750.00"), 2)
 
 
 # FIBR-0389 B10: the gate above is exercised through `_verify_checksum` with

@@ -2,13 +2,14 @@
 
 Reconciliation is read-only analytics over FIBR-0171's v11 `closing_balance_minor`
 column + the existing `sum_after` primitive; it registers no migration of its own.
-The schema has since advanced to **v15** — via FIBR-0172 (`alert_dismissals`),
+The schema has since advanced to **v16** — via FIBR-0172 (`alert_dismissals`),
 FIBR-0193 (the `accounts.account_number` / `note` columns), FIBR-0327 (the
-transfer-candidate index) and FIBR-0147 (the `transfer_pairs.txn_b_id` index),
-none of them reconciliation's — so this guard can no
-longer be an absolute "unchanged at 11" pin. It asserts the current latest and
-that no *unregistered next* version exists — the same "reconciliation introduced
-no migration of its own" intent, expressed against a moving latest.
+transfer-candidate index), FIBR-0147 (the `transfer_pairs.txn_b_id` index) and
+FIBR-0467 (the Home Loan sign correction), none of them reconciliation's — so
+this guard can no longer be an absolute "unchanged at 11" pin. It asserts the
+current latest and that no *unregistered next* version exists — the same
+"reconciliation introduced no migration of its own" intent, expressed against a
+moving latest.
 """
 
 import pytest
@@ -18,10 +19,10 @@ from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION
 pytestmark = pytest.mark.features
 
 
-def test_INV8_schema_version_at_current_latest_v15() -> None:
+def test_INV8_schema_version_at_current_latest_v16() -> None:
     # A deliberate tripwire (FIBR-0451): a schema bump must fail here so a human
     # confirms the new step is not reconciliation's before moving the pin.
-    assert LATEST_SCHEMA_VERSION == 15, (
+    assert LATEST_SCHEMA_VERSION == 16, (
         f"schema is now v{LATEST_SCHEMA_VERSION}: confirm reconciliation registered "
         "no migration of its own, then move this pin and spec INV-8 to the new latest"
     )

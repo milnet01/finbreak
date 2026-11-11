@@ -36,6 +36,25 @@ signaling per
   new one. Now the old program stays in place when the swap fails.
   The installed copy runs the swap, so this protects updates made from
   this version onward.
+- **A Standard Bank home-loan repayment now shows as money in**
+  (FIBR-0467). A home-loan PDF statement used to import a repayment as
+  money out and a fee as money in. So finbreak never offered to link a
+  repayment to the payment from your current account, and counted it
+  as spending twice. Repayments now import as money in and fees as
+  money out. Loan rows already in your vault are corrected once, the
+  first time you unlock it after upgrading.
+  - Your totals change: a repayment stops counting as spending on the
+    loan account, and loan fees and interest now count as spending.
+    Once you link a repayment as a transfer, it leaves the totals.
+  - A transfer you already linked to a corrected loan row is unlinked,
+    because its two sides no longer match. finbreak suggests it again.
+  - A repeating loan payment you already decided on shows once more
+    under Suggested.
+  - The correction finds a home-loan statement by its account's type,
+    so it can miss one: for example, one imported into an account not
+    typed "Home loan", or with a version before 0.1.18. If a loan
+    statement's amounts look the wrong way round after upgrading,
+    delete that statement under Statements and import it again.
 
 ## [1.0.4] - 2026-11-08
 
