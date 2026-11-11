@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=469 -->
+<!-- ants-roadmap-id-high-water: FIBR=470 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -2073,7 +2073,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
 
-- 🚧 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
+- ✅ [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
   User idea (multi-threading for performance). Honest framing: Python's GIL means threading helps RESPONSIVENESS + native-code overlap, NOT pure-Python CPU parallelism. The app already threads its two slow blocking ops correctly (Argon2 key derivation via DeriveWorker; network via UpdateCheck/DownloadWorker — both native/GIL-releasing). Best next win: move IMPORT (pdfplumber text extraction, in-memory pikepdf decrypt, CSV/OFX parse, dedup + commit) onto a QThread worker (reuse the ui/_worker.py DeriveWorker pattern) with a progress indicator — today it runs ON THE UI THREAD (security-model / FIBR-0075 note: pdfplumber extract runs on the UI thread), so a large statement freezes the window. These ops are native-heavy (pdfplumber/pikepdf C++, SQLCipher C) so they RELEASE the GIL → genuine overlap with the GUI. CAVEAT: SQLite/SQLCipher connections are NOT shareable across threads — the worker needs its OWN connection to the vault (or marshal results back via signals). Pure-Python CPU hotspots (rule matching) won't benefit (GIL) — indexes (FIBR-0098) + virtualized tables (FIBR-0097) are the levers there. Deps: FIBR-0007/0008/0009 (import), reuses the QThread worker pattern; pairs with FIBR-0065 (non-blocking dialog discipline)."
   MEASURED 2026-11-11 (machine busy, load average about 4.6, so rough):
   PdfImporter().candidate_tables on synthetic Qt-printed statements, no
@@ -2102,6 +2102,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Gate green: 2677 passed, 2 skipped. Remaining for workflow.md § 6:
   run /code-review high on the commit, disposition its findings, then
   flip shipped. The batch route is still inline: FIBR-0468.
+  SHIPPED 2026-11-11. /code-review high on e0ca005 raised ten
+  findings; dispositions (commit 3b227aa): FIXED 1 a result already
+  queued at lock time still reached the wizard (slots now check
+  sender() against the current read); 2 account picker live mid-read
+  (now disabled); 3 VaultLockedError shown as a statement error in the
+  Standard Bank path; 5 a line-number citation in FIBR-0050 INV-14;
+  6 design.md overclaimed (batch still inline, FIBR-0468); 7 "exit
+  waits" was a short grace; 9 a public detach() replaces hand-written
+  registry use; 10 a dead guard in JobWorker.run. 1-3 red first.
+  DISMISSED 4 (BaseException escaping JobWorker.run: only SystemExit /
+  KeyboardInterrupt are not Exception, and neither reaches a worker
+  thread from pdfplumber or pikepdf). QUEUED 8 as FIBR-0470 (generic
+  PDFs opened twice). Gate green: 2680 passed, 2 skipped.
   **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
   Kind: perf.
   Source: user-suggestion-2026-07-11.
@@ -5197,6 +5210,22 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** A failed update on Windows could leave you with no finbreak program at all, neither the old version nor the new one.
   Kind: fix.
   Source: peer-report-rolodex-2026-11-11.
+
+- 📋 [FIBR-0470] **A non-Standard-Bank PDF is normalised and opened twice on every pick.**
+  ui/import_wizard.py _read_pdf runs StandardBankImporter().parse
+  first (pikepdf normalise, pdfplumber open, text extraction), and only
+  when that returns None does PdfImporter().candidate_tables normalise
+  and open the same bytes again. Measured 2026-11-11 on a synthetic
+  1500-row statement, busy machine: about 12 s in the SB parse plus
+  15 s in candidate_tables. Predates FIBR-0104, which only moved the
+  read onto a worker. Not fixed there: the cure changes two importers'
+  interfaces (share one opened document, or detect SB from the first
+  page before a full parse), and FIBR-0050 INV-14 says the SB parse
+  re-checks the page cap after its own pdfplumber.open. Check that
+  clause before changing it. Batch scan (FIBR-0468) has the same shape.
+  **Layman:** Importing a PDF from a bank other than Standard Bank takes longer than it needs to, because the file is opened and read twice.
+  Kind: perf.
+  Source: code-review-FIBR-0104-2026-11-11.
 
 ## v1.1.0 — Localisation
 
