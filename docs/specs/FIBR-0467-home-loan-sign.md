@@ -128,6 +128,8 @@ Why each condition:
   selected unless the user typed it a home loan (§ 6).
 - `.pdf`: excludes CSV and OFX periods, whose rows took the file's sign.
   `commit_import` stores the basename (`services/import_.py::ImportService.commit_import`).
+  A period keeps its first import's filename: a later import of the same span
+  reuses that period, and only fills a missing closing (§ 6).
 - `closing_balance_minor IS NOT NULL`: excludes another bank's PDF read by the
   generic table path, which records no closing. Family B always records one;
   `_verify_checksum` refuses a B statement that has none.
@@ -195,8 +197,7 @@ Each fixture is chosen so that only the rule under test rejects it.
   *Test:* in `test_migration_v16.py`, a failure injected after the `UPDATE`
   leaves version 15 and the original amounts. `run_migrations` on a v16 vault
   leaves the amounts as they are.
-  *Breaks when:* the `UPDATE` runs outside `owned_transaction`, or the version
-  bump comes before the data change.
+  *Breaks when:* the `UPDATE` runs outside `owned_transaction`.
 
 - **INV-6** — After the v16 step, every confirmed transfer pair's two amounts are
   exact opposites.
@@ -232,8 +233,11 @@ Each fixture is chosen so that only the rule under test rejects it.
   and re-import it. The CHANGELOG entry says so.
 - **A Family A Revolving-Credit statement in an account the user typed
   `home_loan`.** Its rows were already correct, and the upgrade negates them.
-  Same remedy. This is the selector's one wrong-positive case, and it needs the
-  user to have chosen an unexpected type.
+  Same remedy.
+- **Two files imported over one span.** A CSV or OFX file whose span equals a
+  Family B statement's joins that statement's period, so the upgrade negates its
+  correct rows. A Family B statement over a span a CSV or OFX file created joins
+  that file's period, so the upgrade misses it. Same remedy.
 - **Home-loan rows imported before schema v11** (2026-07-24, FIBR-0171), whose
   period has no stored closing. The upgrade misses them. Same remedy.
 - **Recurring decisions.** `services/recurring.py::detect_recurring` keys a
@@ -268,8 +272,9 @@ magnitude exemption.
 Each new or changed test is seen failing against the pre-fix code before the fix
 lands. INV-3's tests are expected to stay green throughout.
 
-`tests/features/loan_sign/` reads no tracked doc, so the `prose_checks` guard
-files it under the non-prose ledger.
+`tests/features/loan_sign/` reads no tracked doc, so the implementation adds it
+to `_NO_PROSE` in `tests/features/prose_checks/test_prose_checks.py`.
+`test_INV2_every_suite_directory_is_classified` fails until it does.
 
 ## 8. Alternatives considered (and rejected)
 
