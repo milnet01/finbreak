@@ -4572,6 +4572,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Windows users to install 1.0.1 by hand, in the old .exe's folder.
   Ships in 1.0.1. The live proof, an update FROM 1.0.1 on wintest
   (FIBR-0131 D6), needs a later release: filed as FIBR-0446.
+  2026-11-11: confirmed live in FIBR-0446: Update now in 1.0.1,
+  launched from Explorer, swapped in 1.0.4 and reopened.
   **Layman:** On Windows, updating from inside the app downloads the new version, then just closes; it doesn't install it or come back.
   Kind: fix.
   Source: in-session-2026-10-08 (real 0.1.23 -> 1.0.0 update on ssh wintest).
@@ -4591,11 +4593,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   review-contract converged at loop 12 (rows 10-12, 6 findings fixed).
   remove_stale_staged_updates + app.run wiring (6908229); 7 tests,
   mutation probe 11/11 killed after closing two gaps. Ships in 1.0.1.
+  2026-11-11: confirmed live on Windows in FIBR-0446: a staged-name
+  file three hours old beside 1.0.1 was deleted at its start-up.
   **Layman:** Every failed Windows update in 0.1.10 to 1.0.0 left a spare download file next to the app; 1.0.1 tidies them away when it starts.
   Kind: fix.
   Source: user-decision-2026-10-10 (FIBR-0444 open question).
 
-- 📋 [FIBR-0446] **Live-prove the Windows in-app update from 1.0.1 to the next release on wintest, opened from Explorer.**
+- ✅ [FIBR-0446] **Live-prove the Windows in-app update from 1.0.1 to the next release on wintest, opened from Explorer.**
   FIBR-0131 D6: the old version performs each update, so the first
   update that runs the fixed helper is one started FROM 1.0.1. Needs a
   release after 1.0.1. Steps: put 1.0.1 on wintest, launch it from
@@ -4613,6 +4617,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   ants-projects-hub-website so it can say updates are proven on Windows.
   Decision (user, 2026-10-10): no release just for this proof. Cut
   1.0.2 once a few fixes are worth shipping, then run this item on it.
+  2026-11-11: proven on wintest, 1.0.1 to 1.0.4, driven by script
+  with nobody at the PC. 1.0.1 (hash matched SHA256SUMS) was started
+  from the Explorer process holding its folder window (Shell.Application
+  ShellExecute of that window, as a double-click does), on the signed-in
+  desktop through a schtasks /IT task. Throwaway vault created; the
+  2026-10-08 test vault was renamed aside and restored after; the user's
+  0.1.9 vault was not touched; no recovery code was read or saved.
+  Settings: ticked the update check, Save. Help, Check for updates:
+  offered 1.0.4. Update now: both 1.0.1 processes exited and the app
+  reopened at the unlock screen about 100 s later. The exe's hash then
+  matched 1.0.4's published SHA256SUMS; update-relaunch.log holds only
+  the staged-and-waiting line, no error; no finbreak-update-* file left
+  in the folder or %TEMP%. Unlocked the vault; Check for updates said
+  "You're on the latest version (1.0.4)". FIBR-0445 confirmed: a
+  finbreak-update-stale445.exe dated 3 h back was gone after 1.0.1's
+  start-up, before the update ran. Driven through UI Automation
+  (know_how windows-test-machine has the method).
   **Layman:** Check on a real Windows PC that "Update now" in 1.0.1 installs the next version and reopens the app.
   Kind: test.
   Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
