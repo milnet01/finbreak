@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=468 -->
+<!-- ants-roadmap-id-high-water: FIBR=469 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5180,6 +5180,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Importing many statements at once still freezes the window for a few seconds per large PDF; the single-file import no longer does.
   Kind: perf.
   Source: FIBR-0104-follow-up-2026-11-11.
+
+- 📋 [FIBR-0469] **Windows update swap can delete the old exe and then the new one, leaving no program.**
+  _windows_relaunch_command (services/update_installer.py) installs
+  the update with `Move-Item -Force` over the running exe's path. The
+  rolodex session measured on wintest 2026-11-11 (PowerShell 5.1):
+  with the source file held open, `Move-Item -Force` deleted the
+  destination first, then failed with IOException. In finbreak's
+  script, five failed retries then run rm_temp, which deletes the
+  staged new file, so neither version is left. Not yet reproduced
+  against finbreak's exact script. First step: a red test on wintest
+  that holds the staged file open during the swap. Likely fix: two
+  plain renames (old exe aside, new in, old restored on failure),
+  which is what rolodex's ROLO-0042 draft does. Check FIBR-0131 D3 /
+  INV-3 before changing behaviour.
+  **Layman:** A failed update on Windows could leave you with no finbreak program at all, neither the old version nor the new one.
+  Kind: fix.
+  Source: peer-report-rolodex-2026-11-11.
 
 ## v1.1.0 — Localisation
 
