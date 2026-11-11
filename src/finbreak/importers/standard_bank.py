@@ -33,26 +33,24 @@ schema change.
 
 from __future__ import annotations
 
-import io
 import re
 from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
-from finbreak.importers.pdf_importer import (
-    _MAX_PDF_PAGES,
-    _MAX_PDF_ROWS,
-    PdfRefusal,
-    _normalise_to_plaintext,
-)
+from finbreak.importers.pdf_importer import _MAX_PDF_ROWS, open_pdf, read_untrusted
 from finbreak.models import TransactionDraft
 from finbreak.services.transactions import (
     parse_transaction,
     to_minor,
     to_minor_storable,
 )
+
+if TYPE_CHECKING:
+    from pdfplumber.pdf import PDF
 
 Fmt = str  # Literal["us", "eu"] — kept loose to avoid a typing import churn.
 
@@ -1217,30 +1215,16 @@ class StandardBankImporter:
         Raises ``pikepdf.PasswordError`` on a bad/absent user password (reused
         signal), and the all-or-nothing friendly ``ValueError`` on a
         checksum/completeness failure, a mixed number format, or an over-large input
-        (INV-11/INV-14)."""
-        import pdfplumber
+        (INV-11/INV-14). The page cap is ``open_pdf``'s."""
+        with open_pdf(pdf_bytes, password) as pdf:
+            return self.parse_document(pdf, exponent)
 
-        plaintext = _normalise_to_plaintext(pdf_bytes, password)
-        pages: list[list[str]] = []
-        # pdfplumber/pdfminer raise a broad, non-ValueError exception tree on a
-        # PDF it can't parse (past the pikepdf decrypt, which is upstream and
-        # unaffected). Mirror the OFX D7 boundary catch so an untrusted PDF fails
-        # as a friendly ValueError, never an unhandled Qt-slot crash. (H-D)
-        try:
-            with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
-                if len(pdf.pages) > _MAX_PDF_PAGES:
-                    raise PdfRefusal(
-                        "this PDF has too many pages to import — "
-                        "try your bank's CSV or OFX export"
-                    )
-                for page in pdf.pages:
-                    pages.append((page.extract_text() or "").splitlines())
-        except PdfRefusal:
-            raise  # our own friendly guards (e.g. the page cap) pass through
-        except Exception as exc:  # untrusted-PDF boundary (mirrors OFX D7)
-            raise ValueError(
-                "couldn't read this PDF — try your bank's CSV or OFX export"
-            ) from exc
+    def parse_document(self, pdf: PDF, exponent: int) -> ParseResult | None:
+        """``parse`` on an already-opened PDF, so a caller that falls back to the
+        generic reader on ``None`` hands it the same document (FIBR-0470)."""
+        pages = read_untrusted(
+            lambda: [(page.extract_text() or "").splitlines() for page in pdf.pages]
+        )
         full_text = "\n".join("\n".join(p) for p in pages)
 
         family = detect_standard_bank(full_text)

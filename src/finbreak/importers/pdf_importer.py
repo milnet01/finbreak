@@ -27,8 +27,14 @@ import base64
 import csv
 import io
 import zlib
+from collections.abc import Callable
+from contextlib import ExitStack
+from typing import TYPE_CHECKING
 
 import pikepdf
+
+if TYPE_CHECKING:
+    from pdfplumber.pdf import PDF
 
 # Re-exported so callers gate the password prompt on the module's own signal
 # rather than importing pikepdf themselves (INV-3). ``PdfError`` is the base qpdf
@@ -167,41 +173,28 @@ class PdfImporter:
         """The candidate transaction tables in ``pdf_bytes`` (named to avoid
         colliding with ``pdfplumber``'s own ``page.extract_tables()`` it wraps).
 
-        Normalise in memory through ``pikepdf`` (strips owner-only + user
-        encryption, D2/D3), open the plaintext bytes with ``pdfplumber``, collect
-        every page's ``extract_tables()``, group them (D8) + uniquify the headers
-        (D13), drop header-only (0-data-row) tables, and apply the page + row caps
-        (INV-9). Raises ``pikepdf.PasswordError`` on a bad/absent **user** password
-        (INV-3), and a friendly ``ValueError`` on no usable table (INV-5) or an
-        over-large page/row count (INV-9).
+        Opens the PDF through ``open_pdf`` (normalise, decrypt, page cap), then
+        reads it with ``tables_in``. Raises ``pikepdf.PasswordError`` on a
+        bad/absent **user** password (INV-3), and a friendly ``ValueError`` on no
+        usable table (INV-5) or an over-large page/row count (INV-9).
         """
-        import pdfplumber
+        with open_pdf(pdf_bytes, password) as pdf:
+            return self.tables_in(pdf)
 
-        plaintext = _normalise_to_plaintext(pdf_bytes, password)
-        # pdfplumber/pdfminer raise a broad, non-ValueError exception tree
-        # (PdfminerException et al.) on a content stream / font table / encoding
-        # they can't handle — a PDF that pikepdf could open + re-save but
-        # pdfminer chokes on. Mirror the OFX D7 boundary catch so an untrusted
-        # PDF fails as a friendly ValueError, never an unhandled Qt-slot crash;
-        # the pikepdf password signal is raised earlier (in _normalise_to_plaintext,
-        # outside this block) and is unaffected. (indie-review H-D)
-        try:
-            with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
-                if len(pdf.pages) > _MAX_PDF_PAGES:
-                    raise PdfRefusal(
-                        "this PDF has too many pages to import — "
-                        "try your bank's CSV or OFX export"
-                    )
-                raw_tables: list[_Table] = []
-                for page in pdf.pages:  # iterate, never index .pages[0] (INV-5)
-                    raw_tables.extend(page.extract_tables())
-        except PdfRefusal:
-            raise  # our own friendly guards (e.g. the page cap) pass through
-        except Exception as exc:  # untrusted-PDF boundary (mirrors OFX D7)
-            raise ValueError(
-                "couldn't read this PDF — try your bank's CSV or OFX export"
-            ) from exc
+    def tables_in(self, pdf: PDF) -> list[_Table]:
+        """The candidate tables in an already-opened PDF: every page's
+        ``extract_tables()``, grouped (D8) with uniquified headers (D13),
+        header-only (0-data-row) tables dropped, and the row cap applied (INV-9).
+        Takes the document so a caller that already read it another way does
+        not open it again (FIBR-0470)."""
 
+        def extract() -> list[_Table]:
+            raw: list[_Table] = []
+            for page in pdf.pages:  # iterate, never index .pages[0] (INV-5)
+                raw.extend(page.extract_tables())
+            return raw
+
+        raw_tables = read_untrusted(extract)
         candidates = [c for c in group_tables_by_header(raw_tables) if len(c) > 1]
         for candidate in candidates:
             if len(candidate) - 1 > _MAX_PDF_ROWS:
@@ -224,6 +217,43 @@ class PdfImporter:
         the plaintext to both the Standard Bank reader and the generic extractor
         (whose own normalise is then a cheap idempotent re-save)."""
         return _normalise_to_plaintext(data, password)
+
+
+def open_pdf(pdf_bytes: bytes, password: str | None = None) -> PDF:
+    """``pdf_bytes`` normalised (decrypted, decoded size checked) and opened with
+    ``pdfplumber``, refused past ``_MAX_PDF_PAGES`` (INV-9). Both PDF readers
+    open through here, so neither can skip a check. The caller closes it: use
+    ``with``. ``pikepdf.PasswordError`` passes through for the prompt (INV-3)."""
+    import pdfplumber
+
+    plaintext = _normalise_to_plaintext(pdf_bytes, password)
+    pdf = read_untrusted(lambda: pdfplumber.open(io.BytesIO(plaintext)))
+    with ExitStack() as close_on_refusal:
+        close_on_refusal.enter_context(pdf)
+        if read_untrusted(lambda: len(pdf.pages)) > _MAX_PDF_PAGES:
+            raise PdfRefusal(
+                "this PDF has too many pages to import — "
+                "try your bank's CSV or OFX export"
+            )
+        close_on_refusal.pop_all()
+    return pdf
+
+
+def read_untrusted[T](read: Callable[[], T]) -> T:
+    """``read()``, with any error the PDF library raises replaced by a friendly
+    ``ValueError`` (the untrusted-PDF boundary; mirrors OFX D7, indie-review
+    H-D). pdfplumber/pdfminer raise a broad, non-ValueError exception tree on a
+    content stream, font table or encoding they cannot handle, and their own
+    ``ValueError`` text is internal (FIBR-0405). Our ``PdfRefusal`` passes as it
+    is."""
+    try:
+        return read()
+    except PdfRefusal:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            "couldn't read this PDF — try your bank's CSV or OFX export"
+        ) from exc
 
 
 def _normalise_to_plaintext(raw: bytes, password: str | None) -> bytes:

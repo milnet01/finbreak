@@ -42,6 +42,7 @@ from finbreak.importers.pdf_importer import (
     PdfError,
     PdfImporter,
     default_table_index,
+    open_pdf,
     table_to_text,
 )
 from finbreak.importers.sniff import looks_like_ofx, looks_like_pdf
@@ -131,11 +132,14 @@ def read_pdf(plaintext: bytes, exponent: int) -> ParseResult | PdfTables:
     """The slow half of reading a PDF: a Standard Bank statement's parse,
     else the generic candidate tables. It reads only the bytes it is given,
     never the vault, so it can run on a worker thread (FIBR-0104, FIBR-0468).
-    The single-file wizard and the batch both call it."""
-    sb_result = StandardBankImporter().parse(plaintext, exponent)
-    if sb_result is not None:
-        return sb_result
-    return PdfImporter().candidate_tables(plaintext)
+    The single-file wizard and the batch both call it. Both readers share one
+    opened document, so another bank's PDF is parsed once, not twice
+    (FIBR-0470)."""
+    with open_pdf(plaintext) as pdf:
+        sb_result = StandardBankImporter().parse_document(pdf, exponent)
+        if sb_result is not None:
+            return sb_result
+        return PdfImporter().tables_in(pdf)
 
 
 @dataclass

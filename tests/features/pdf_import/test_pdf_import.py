@@ -499,15 +499,15 @@ def _held_reader(monkeypatch) -> tuple[threading.Event, list[threading.Thread]]:
     itself, so it gives up after two seconds and fails loudly instead."""
     gate = threading.Event()
     seen: list[threading.Thread] = []
-    real = PdfImporter.candidate_tables
+    real = PdfImporter.tables_in
 
-    def held(self, plaintext):
+    def held(self, pdf):
         seen.append(threading.current_thread())
         if not gate.wait(2):
             raise AssertionError("the PDF read held the UI thread")
-        return real(self, plaintext)
+        return real(self, pdf)
 
-    monkeypatch.setattr(PdfImporter, "candidate_tables", held)
+    monkeypatch.setattr(PdfImporter, "tables_in", held)
     return gate, seen
 
 

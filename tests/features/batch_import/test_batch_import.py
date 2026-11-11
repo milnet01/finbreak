@@ -356,7 +356,10 @@ def test_INV9_stored_passwords_tried_once_each(service, batch, tmp_path, monkeyp
         "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
         staticmethod(fake_decrypt),
     )
-    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: _StubSb().parse(plaintext, exponent),
+    )
 
     locked = tmp_path / "locked.pdf"
     locked.write_bytes(b"%PDF-1.7 encrypted")
@@ -865,7 +868,10 @@ def test_FIBR0085_4_4_an_answered_password_unlocks_the_rest_of_the_batch(
         "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
         staticmethod(fake_decrypt),
     )
-    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: _StubSb().parse(plaintext, exponent),
+    )
 
     paths = []
     for n in range(3):
@@ -1033,7 +1039,10 @@ def test_FIBR0319_the_password_retry_leaves_already_settled_records_alone(
         "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
         staticmethod(fake_decrypt),
     )
-    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: _StubSb().parse(plaintext, exponent),
+    )
 
     locked = tmp_path / "b-locked.pdf"
     locked.write_bytes(b"%PDF-1.7 encrypted")
@@ -1088,7 +1097,10 @@ def _stub_locked_pdfs(monkeypatch, password: str = "sesame") -> None:
         "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
         staticmethod(fake_decrypt),
     )
-    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: _StubSb().parse(plaintext, exponent),
+    )
 
 
 def test_row21_the_password_retry_honours_the_draft_cap(
@@ -1320,3 +1332,31 @@ def test_INV1_failed_password_write_leaves_the_file_committed(
     batch.review(files)
     _run_all(batch, files)
     assert [r.outcome for r in files] == ["committed", "committed"]
+
+
+def test_FIBR0470_a_pdf_from_another_bank_is_opened_once(monkeypatch):
+    """``read_pdf`` tries the Standard Bank reader first, then the generic table
+    reader. Each opened the PDF itself, so another bank's statement had its pages
+    parsed twice; on a long statement that was most of the wait (FIBR-0470).
+    Both readers now share one opened document."""
+    import pdfplumber
+
+    from finbreak.importers.pdf_importer import PdfImporter
+    from finbreak.services.batch_import import read_pdf
+
+    pdf_path = (
+        Path(__file__).parents[1] / "pdf_import" / "fixtures" / "single_table.pdf"
+    )
+    plaintext = PdfImporter.decrypt_to_plaintext(pdf_path.read_bytes())
+    expected = PdfImporter().candidate_tables(plaintext)
+
+    real_open = pdfplumber.open
+    opens: list[object] = []
+
+    def counted(*args, **kwargs):
+        opens.append(args)
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(pdfplumber, "open", counted)
+    assert read_pdf(plaintext, 2) == expected, "precondition: a generic table read"
+    assert len(opens) == 1, f"the PDF was opened {len(opens)} times, not once"

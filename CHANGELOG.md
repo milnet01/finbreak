@@ -27,6 +27,10 @@ signaling per
   (FIBR-0104, FIBR-0468). The statement is read in the background while
   a "Reading the statement…" bar shows. Importing several files at once
   reads each PDF in the background too.
+- **A PDF statement from a bank other than Standard Bank imports faster**
+  (FIBR-0470). finbreak used to read the file's pages twice: once to check
+  for a Standard Bank statement, and again to find its table. It now reads
+  them once.
 
 ### Fixed
 

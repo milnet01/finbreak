@@ -1148,7 +1148,7 @@ def test_INV14_row_cap_refuses(monkeypatch):
 
 
 def test_INV14_page_cap_refuses(monkeypatch):
-    monkeypatch.setattr("finbreak.importers.standard_bank._MAX_PDF_PAGES", 1)
+    monkeypatch.setattr("finbreak.importers.pdf_importer._MAX_PDF_PAGES", 1)
     with pytest.raises(ValueError, match="too many pages"):
         _parse("family_d_moneymarket.pdf")  # 2 pages > 1
 
@@ -1384,9 +1384,9 @@ def test_parse_maps_pdf_parse_error_to_value_error(monkeypatch):
     import pdfplumber
     from pdfplumber.utils.exceptions import PdfminerException
 
-    import finbreak.importers.standard_bank as sb_mod
+    import finbreak.importers.pdf_importer as pdf_mod
 
-    monkeypatch.setattr(sb_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
+    monkeypatch.setattr(pdf_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
 
     def boom(*args, **kwargs):
         raise PdfminerException("bad content stream")
@@ -1501,7 +1501,7 @@ _OVERDRAWN_D = [
 def _parse_text(monkeypatch, lines: list[str]):
     import pdfplumber
 
-    import finbreak.importers.standard_bank as sb_mod
+    import finbreak.importers.pdf_importer as pdf_mod
 
     page = SimpleNamespace(extract_text=lambda: "\n".join(lines))
 
@@ -1514,7 +1514,7 @@ def _parse_text(monkeypatch, lines: list[str]):
         def __exit__(self, *exc):
             return False
 
-    monkeypatch.setattr(sb_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
+    monkeypatch.setattr(pdf_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
     monkeypatch.setattr(pdfplumber, "open", lambda *a, **k: _Pdf())
     return StandardBankImporter().parse(b"%PDF", 2)
 

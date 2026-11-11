@@ -1210,7 +1210,10 @@ def test_FIBR0407_one_prompt_unlocks_a_same_password_batch(
         "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
         staticmethod(fake_decrypt),
     )
-    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: _StubSb().parse(plaintext, exponent),
+    )
     paths = []
     for name in ("a.pdf", "b.pdf", "c.pdf"):
         (tmp_path / name).write_bytes(b"%PDF-1.7 encrypted")
@@ -1479,7 +1482,7 @@ def _held_sb_reader(monkeypatch) -> tuple[threading.Event, list[threading.Thread
 
     gate = threading.Event()
     seen: list[threading.Thread] = []
-    real = StandardBankImporter.parse
+    real = StandardBankImporter.parse_document
 
     def held(self, *args, **kwargs):
         seen.append(threading.current_thread())
@@ -1487,7 +1490,7 @@ def _held_sb_reader(monkeypatch) -> tuple[threading.Event, list[threading.Thread
             raise AssertionError("the PDF read held the UI thread")
         return real(self, *args, **kwargs)
 
-    monkeypatch.setattr(StandardBankImporter, "parse", held)
+    monkeypatch.setattr(StandardBankImporter, "parse_document", held)
     return gate, seen
 
 
@@ -1567,7 +1570,10 @@ def test_FIBR0468_a_pdf_unlocked_by_a_typed_password_is_read_off_the_ui_thread(
         "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
         staticmethod(fake_decrypt),
     )
-    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: _StubSb().parse(plaintext, exponent),
+    )
     paths = []
     for name in ("a.pdf", "b.pdf"):
         (tmp_path / name).write_bytes(b"%PDF-1.7 encrypted")
