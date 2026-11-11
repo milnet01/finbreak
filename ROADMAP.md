@@ -1603,7 +1603,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
 
-- 🚧 [FIBR-0102] **Tighten mypy toward strict.**
+- ✅ [FIBR-0102] **Tighten mypy toward strict.**
   Verified 2026-07-11: [tool.mypy] sets only python_version + per-module stub-ignores — NOT strict. Enable strict (or stage it: disallow_untyped_defs, warn_return_any, disallow_any_generics, no_implicit_optional) to catch a class of bugs at the type layer — valuable for a money app. Incremental: turn flags on one at a time, fix the fallout, keep the gate green each step. Deps: none (gate/CI config).
   MEASURED (2026-09-21), and it SPLITS the item into one tractable half and one
   much larger one. mypy --strict over src+tests reports 3800 errors across 107
@@ -1632,6 +1632,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   http.client types, because INV-12's network-import guard bans `http`
   under src. The tests half stays a separate decision, as measured
   above. Awaiting review-code with the rest of the batch.
+  Shipped 2026-11-11 (e59065e, b7cdf99) for src; the tests half stays a
+  separate decision. /code-review dispositions: global-only strict flags
+  missing (fixed: warn_redundant_casts, warn_unused_configs); stale
+  docstring (fixed); Any for headers/response (response fixed with a
+  Protocol; redirect headers stay Any, the base class needs
+  http.client.HTTPMessage, which INV-12 bans; UpdateService fetcher: Any
+  kept, a Protocol for the test doubles is its own change); runtime
+  sqlcipher3 imports (fixed, TYPE_CHECKING); scalar-query helper for the
+  seven typed count sites - declined: no behaviour change and count(*)
+  always returns a row.
   **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
   Kind: refactor.
 
@@ -2087,7 +2097,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
 
-- 🚧 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
+- ✅ [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
   The home screen opens on the manual add-transaction form with cryptic fields (Amount, Description) and no guidance, which confused a real non-technical tester. Add empty-state help + inline field hints (Amount = money in/out, negative = out; Description = what it was for).
   **Layman:** A friendly welcome for a brand-new user — 'import a statement, or add a transaction by hand' — instead of a bare form.
   Kind: ux.
@@ -2095,11 +2105,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Empty-state half delivered by FIBR-0051 (P07.5): the HomeView getting-started page is this bullet's "friendly welcome — import a statement or add a transaction". Remaining scope: the inline Amount/Description field hints on the manual-entry form (not in FIBR-0051). Stays open for those hints.
   Started 2026-11-11: the remaining inline Amount/Description hints on
   the manual-entry form.
+  Shipped 2026-11-11 (9aaf6ad, b7cdf99): visible hints under Amount and
+  Description, also the fields' accessible descriptions. /code-review
+  findings: loose test words (fixed), empty label beside each hint
+  (fixed: setWidget in the field column).
 
-- 🚧 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
+- ✅ [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
   main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
   Started 2026-11-11 (user asked to work the whole 1.0.x patch stream).
-  **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
+  Shipped 2026-11-11 (99f8c85, b7cdf99). While the import wizard is live
+  the workspace actions and Settings are off; Lock stays on. FIBR-0051
+  INV-9 amended. /code-review high over d48268c..b7cdf99 dispositions:
+  (1) late done after auto-lock re-enabling chrome - refuted,
+  _clear_decrypted_rows blocks the wizard's signals; pinned by a test.
+  (2) hand-kept action list - test now reads the real toolbar and menus;
+  every rebuild route was checked to start from one of those actions.
+  (3) Settings mid-import - fixed, now disabled.
+  **Layman:** While you are importing a statement, the buttons that would leave the import are greyed out, so the file and column choices you just made cannot be thrown away by accident.
   Kind: ux.
   Source: indie-review-2026-07-10 (M-shell1).
 
