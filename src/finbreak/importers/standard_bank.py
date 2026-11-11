@@ -637,7 +637,8 @@ def _verify_checksum(
         reconciled = opening_m - total
     else:
         reconciled = opening_m + total
-    # SIGNED, which is what INV-11 states: `opening + Σ(signed) == printed closing`.
+    # Every family but B then compares `reconciled` with the printed closing SIGNED,
+    # which is what INV-11 states.
     #
     # Family B alone compares magnitudes, and only because its running-balance
     # column prints unsigned magnitudes while its "CLOSING BALANCE" row prints a
@@ -1094,7 +1095,7 @@ def _parse_family_e(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     suggesting money in. That inversion is the single most confusable thing here.
     Nothing below actually consults which column a figure came from: the stored
     amount is the running-balance **delta** and the printed sign is only the
-    cross-check (INV-7), exactly as A/B/D do it.
+    cross-check (INV-7), exactly as A and D do it (B negates the delta, FIBR-0467).
 
     Takes no ``period``: E prints no "Statement from … to …" line, and needs none —
     every row carries a 2-digit year, so there is nothing to infer (D7)."""
