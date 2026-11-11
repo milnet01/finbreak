@@ -5181,7 +5181,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: review-code-2026-11-08 (FIBR-0464/0465 close-out).
 
-- 📋 [FIBR-0467] **Transfer detection never pairs a loan repayment whose two legs are both negative.**
+- 🚧 [FIBR-0467] **Transfer detection never pairs a loan repayment whose two legs are both negative.**
   Split out of FIBR-0121, which said to do so if its open question
   found a detection gap. The user confirmed on 2026-11-11 that loan
   repayments show negative on the loan account after import. The
@@ -5214,6 +5214,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   negative, per FIBR-0007's rule; loan rows already in a vault are
   corrected once, on upgrade. This reverses FIBR-0050 INV-7's loan
   consequence. Needs a spec (correctness-critical, existing data).
+  2026-11-11: started. Spec via write-spec, review-contract capped at 2
+  loops (global rule 14).
   **Layman:** A loan repayment shows up as money out of your current account and also as a minus on the loan account, so finbreak never offers to link the two as a transfer and counts the payment as spending.
   Kind: fix.
   Source: user-answer-2026-11-11 (FIBR-0121 open question).
