@@ -121,7 +121,7 @@ from finbreak.ui._password_hint import (
 from finbreak.ui._table_state import reset_columns
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
-from finbreak.ui._worker import _DETACHED_WORKERS, _prune_detached
+from finbreak.ui._worker import detach
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.alerts_dialog import AlertsDialog
 from finbreak.ui.backup_export import BackupExportDialog
@@ -2181,8 +2181,6 @@ class MainWindow(QMainWindow):
         after this point would otherwise still reach the window's slot, and that
         slot swaps the binary and hard-exits the process during shutdown.
         """
-        # A detached worker that has since finished is free to go.
-        _prune_detached()
         for attr in (
             "_update_check_worker",
             "_manual_check_worker",
@@ -2203,7 +2201,7 @@ class MainWindow(QMainWindow):
                     # including ones connected elsewhere.
                     worker.blockSignals(True)
                     worker.setParent(None)  # outlive the window rather than abort
-                    _DETACHED_WORKERS.append(worker)  # ... and outlive Python's GC
+                    detach(worker)  # ... and outlive Python's GC
             setattr(self, attr, None)
 
     def _center_window(self) -> None:

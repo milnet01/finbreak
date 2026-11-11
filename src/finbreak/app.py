@@ -212,8 +212,9 @@ def _finish(code: int) -> int:
     own shutdown would then destroy that running QThread, which Qt answers with
     abort() and a core dump (full audit 2026-09-27, row 28). So give it a grace;
     if it is still blocked, end the process before interpreter teardown. The
-    vault was already locked on ``aboutToQuit``, and the worker's signals were
-    blocked when it was detached, so nothing it could still do is lost.
+    vault was already locked on ``aboutToQuit``. A detached update worker's
+    signals were blocked, and a PDF read's result reaches either no receiver or
+    one that drops it, so nothing it could still do is lost.
     """
     if settle_detached_workers(_EXIT_GRACE_MS):
         return code

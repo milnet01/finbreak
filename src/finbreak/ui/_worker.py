@@ -37,6 +37,12 @@ def _prune_detached() -> None:
     ]
 
 
+def detach(worker: QThread) -> None:
+    """Keep *worker* alive until it ends, with no parent to destroy it."""
+    _prune_detached()
+    _DETACHED_WORKERS.append(worker)
+
+
 def settle_detached_workers(timeout_ms: int) -> bool:
     """Give the detached workers up to *timeout_ms*, shared, to finish; True
     when none is still running. The process must not reach interpreter
@@ -89,13 +95,12 @@ class JobWorker(QThread):
 
     def __init__(self, job: Callable[[], object]) -> None:
         super().__init__()  # no parent: see start_job
-        self._job: Callable[[], object] | None = job
+        self._job = job
         self.finished.connect(self.deleteLater)
 
     def run(self) -> None:
-        job, self._job = self._job, None  # hold no input once it has run
-        if job is None:
-            return
+        job = self._job
+        del self._job  # hold no input once it has run
         try:
             self.done.emit(job())
         except Exception as exc:  # the receiver decides what is expected
@@ -112,19 +117,19 @@ def start_job(
 
     The thread has no parent, so the widget that started it can be destroyed
     mid-run -- an idle auto-lock does exactly that -- without destroying a
-    running QThread. It sits in ``_DETACHED_WORKERS`` until it ends, which is
-    also what ``app._finish`` waits on at exit. A receiver that must hear
-    nothing more (the vault locked) calls ``blockSignals(True)`` on it.
+    running QThread. It sits in ``_DETACHED_WORKERS`` until it ends, and
+    ``app._finish`` gives it a short grace at exit. A result can already be
+    queued when the receiver stops wanting it, so a receiver that may have to
+    drop one checks ``sender()`` rather than blocking the worker's signals.
 
     *job* must not touch the vault: its connection belongs to the UI thread.
     *on_done* and *on_failed* must be methods of a QObject on the UI thread:
     that is what makes PySide queue the call there. A lambda or plain function
     would run on the worker thread.
     """
-    _prune_detached()
     worker = JobWorker(job)
     worker.done.connect(on_done)
     worker.failed.connect(on_failed)
-    _DETACHED_WORKERS.append(worker)
+    detach(worker)
     worker.start()
     return worker

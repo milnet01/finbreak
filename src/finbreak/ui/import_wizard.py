@@ -947,10 +947,12 @@ class ImportWizardWidget(QWidget):
     def _continue_after_decrypt(self, plaintext: bytes) -> None:
         """Once plaintext is in hand, read it on a worker thread (FIBR-0104): a
         big statement takes many seconds, which froze the window. The result
-        arrives in ``_on_pdf_read``. Only Cancel stays live meanwhile; a lock
-        cuts the worker off in ``clear_rows``."""
+        arrives in ``_on_pdf_read``. Only Cancel stays live meanwhile: the
+        destination was already taken from the account picker. A lock cuts the
+        worker off in ``clear_rows``."""
         exponent = self._exponent
         self._pick_button.setEnabled(False)
+        self._account_combo.setEnabled(False)
         self._reading.show()
         self._pdf_worker = start_job(
             lambda: _read_pdf(plaintext, exponent),
@@ -962,12 +964,21 @@ class ImportWizardWidget(QWidget):
         self._pdf_worker = None
         self._reading.hide()
         self._pick_button.setEnabled(True)
+        self._account_combo.setEnabled(True)
+
+    def _is_current_read(self) -> bool:
+        """False for a result from a read that ``clear_rows`` cut off. A result
+        the worker queued just before the lock still arrives, so blocking the
+        worker's signals alone is not enough (FIBR-0104)."""
+        return self.sender() is self._pdf_worker
 
     @Slot(object)
     def _on_pdf_read_failed(self, exc: object) -> None:
         """The read raised. Ours and the PDF library's errors get the friendly
         message (FIBR-0064); anything else is a bug, re-raised for the crash
         hook as it was when the read ran inline."""
+        if not self._is_current_read():
+            return
         self._finish_reading()
         if isinstance(exc, (PdfError, ValueError, OSError, FinbreakError)):
             self._show_pdf_read_error(exc)
@@ -979,6 +990,8 @@ class ImportWizardWidget(QWidget):
         """A recognised Standard Bank statement jumps straight to preview
         (skipping the map step, like OFX); any other PDF goes to the generic
         tables + the map step (D7)."""
+        if not self._is_current_read():
+            return
         self._finish_reading()
         try:
             if isinstance(result, ParseResult):
@@ -997,6 +1010,8 @@ class ImportWizardWidget(QWidget):
             self._show_preview(
                 self._imports.preview_result(sb_result, self._target_account_id())
             )
+        except VaultLockedError:
+            raise  # the lock, not a bad statement: the caller stays silent
         except (PdfError, ValueError, FinbreakError) as exc:
             self._show_pdf_read_error(exc)
 
@@ -1645,11 +1660,9 @@ class ImportWizardWidget(QWidget):
         self._date_sample_text = None
         self._ofx_statements = []
         self._pdf_candidates = []
-        if self._pdf_worker is not None:
-            # A read still running delivers nothing to a locked wizard: the
-            # tables it would hand over are decrypted statement rows (FIBR-0104).
-            self._pdf_worker.blockSignals(True)
-            self._pdf_worker = None
+        # A read still running delivers nothing to a locked wizard: the tables
+        # it would hand over are decrypted statement rows (_is_current_read).
+        self._pdf_worker = None
         self._batch_files = []
         self._batch.discard_passwords()
         self._drop_remembered_pw()

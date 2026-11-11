@@ -580,6 +580,60 @@ def test_FIBR0104_the_lock_hook_cuts_off_a_read_still_running(
     assert widget._stack.currentIndex() == 0
 
 
+def test_FIBR0104_a_result_already_queued_at_lock_time_is_dropped(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """A read that finished just before the lock has already queued its
+    result. That result must not fill the locked wizard with statement rows."""
+    gate, seen = _held_reader(monkeypatch)
+    path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
+    widget = _wizard(qtbot, service, _acct(service))
+    widget._select_file(str(path))
+    qtbot.waitUntil(lambda: bool(seen))
+    worker = widget._pdf_worker
+    gate.set()
+    assert worker.wait(10_000)  # emitted and queued; no event loop has run since
+    widget.clear_rows()
+    qtbot.wait(50)  # deliver the queued result
+    assert widget._pdf_candidates == []
+    assert widget._stack.currentIndex() == 0
+
+
+def test_FIBR0104_the_account_cannot_change_mid_read(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The destination is taken from the account picker when the file is
+    picked. Changing the picker mid-read would be silently ignored, so it is
+    disabled until the read ends."""
+    gate, seen = _held_reader(monkeypatch)
+    path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
+    widget = _wizard(qtbot, service, _acct(service))
+    widget._select_file(str(path))
+    qtbot.waitUntil(lambda: bool(seen))
+    assert not widget._account_combo.isEnabled()
+    gate.set()
+    wait_for_pdf_read(qtbot, widget)
+    assert widget._account_combo.isEnabled()
+
+
+def test_FIBR0104_a_lock_inside_the_standard_bank_preview_stays_silent(
+    qtbot, service, monkeypatch
+):
+    """A vault-locked error is the lock, not a bad statement: it must not put
+    an error message on the wizard."""
+    from finbreak.errors import VaultLockedError
+    from finbreak.importers.base import ParseResult
+
+    widget = _wizard(qtbot, service, _acct(service))
+
+    def locked(_result):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget, "_apply_account_match", locked)
+    widget._on_pdf_read(ParseResult([], [], None, None))
+    assert widget._error.text() == ""
+
+
 def test_FIBR0104_a_wizard_destroyed_mid_read_without_a_lock_hears_nothing(
     qtbot, service, tmp_path, monkeypatch
 ):

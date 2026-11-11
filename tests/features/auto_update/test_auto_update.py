@@ -3124,7 +3124,7 @@ def test_FIBR0327_a_detached_worker_survives_gc_and_reaches_no_slot(
     from PySide6.QtCore import QThread, Signal
 
     from finbreak.ui import main_window
-    from finbreak.ui.main_window import _DETACHED_WORKERS
+    from finbreak.ui._worker import _DETACHED_WORKERS
 
     # closeEvent reads the drain budget at call time; a short one keeps this
     # test from idling through the production 1.5 s (full audit 2026-09-27, row 4).
@@ -3186,7 +3186,7 @@ from PySide6.QtWidgets import QApplication
 
 app = QApplication([])
 from finbreak import app as app_mod
-from finbreak.ui import main_window
+from finbreak.ui import _worker
 
 class _SlowCheck(QThread):
     # An update check blocked on the network: the real socket timeout is 30 s.
@@ -3197,7 +3197,7 @@ worker = _SlowCheck()
 worker.start()
 # What _drain_update_workers does with a worker still running after its wait.
 worker.blockSignals(True)
-main_window._DETACHED_WORKERS.append(worker)
+_worker._DETACHED_WORKERS.append(worker)
 del worker
 
 finish = getattr(app_mod, "_finish", lambda code: code)
