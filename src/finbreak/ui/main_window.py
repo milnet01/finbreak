@@ -25,7 +25,6 @@ import errno
 import logging
 import os
 import tempfile
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -39,7 +38,6 @@ from PySide6.QtCore import (
     QSettings,
     QSize,
     Qt,
-    QThread,
     QTimer,
     QUrl,
 )
@@ -123,6 +121,7 @@ from finbreak.ui._password_hint import (
 from finbreak.ui._table_state import reset_columns
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
+from finbreak.ui._worker import _DETACHED_WORKERS, _prune_detached
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.alerts_dialog import AlertsDialog
 from finbreak.ui.backup_export import BackupExportDialog
@@ -172,25 +171,6 @@ _STATUS_TIMEOUT_MS = 4000
 # enough that closing the window still feels immediate; a worker that outlasts it
 # is unparented rather than destroyed, so it cannot abort the process (FIBR-0204).
 _WORKER_DRAIN_MS = 1500
-
-# Update workers detached at shutdown because they outlasted the drain. The list
-# is the PYTHON reference that keeps them alive: setParent(None) hands ownership
-# back to Python, so without it the running QThread is garbage-collectable --
-# the same destruction the detach exists to avoid (FIBR-0327). Entries are pruned
-# on the next drain, so the list holds only threads still running.
-_DETACHED_WORKERS: list[QThread] = []
-
-
-def settle_detached_workers(timeout_ms: int) -> bool:
-    """Give the workers detached at close up to *timeout_ms*, shared, to finish;
-    True when none is still running. The process must not reach interpreter
-    teardown with one running (see ``app._finish``)."""
-    deadline = time.monotonic() + timeout_ms / 1000
-    for worker in _DETACHED_WORKERS:
-        if shiboken6.isValid(worker) and worker.isRunning():
-            left_ms = max(0, int((deadline - time.monotonic()) * 1000))
-            worker.wait(left_ms)
-    return not any(shiboken6.isValid(w) and w.isRunning() for w in _DETACHED_WORKERS)
 
 
 # The workspace tab order (FIBR-0052 INV-1; Transactions inserted 2nd by FIBR-0012).
@@ -2202,9 +2182,7 @@ class MainWindow(QMainWindow):
         slot swaps the binary and hard-exits the process during shutdown.
         """
         # A detached worker that has since finished is free to go.
-        _DETACHED_WORKERS[:] = [
-            w for w in _DETACHED_WORKERS if shiboken6.isValid(w) and w.isRunning()
-        ]
+        _prune_detached()
         for attr in (
             "_update_check_worker",
             "_manual_check_worker",

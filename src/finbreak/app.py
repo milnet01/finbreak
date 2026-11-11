@@ -28,8 +28,9 @@ from finbreak.log_file import install_log_file
 from finbreak.services.auth import AuthService
 from finbreak.services.update import remove_stale_staged_updates
 from finbreak.services.update_installer import detect_installer
+from finbreak.ui._worker import settle_detached_workers
 from finbreak.ui.icons import app_icon
-from finbreak.ui.main_window import MainWindow, settle_detached_workers
+from finbreak.ui.main_window import MainWindow
 from finbreak.ui.theme import ThemeController, load_theme_pref
 
 # Translation outside a QObject (this module is not one) calls

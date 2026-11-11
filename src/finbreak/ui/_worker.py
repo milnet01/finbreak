@@ -1,17 +1,52 @@
-"""Off-GUI-thread Argon2id derivation (design.md "Concurrency").
+"""Off-GUI-thread work (design.md "Concurrency").
 
-The worker only *computes* the raw key from the password + KDF params and hands
-the 32 bytes back via a signal; the main thread copies them into its own
-zeroable buffer (FIBR-0004 thread model), so the UI never freezes on the ~tens
-of ms derivation and every wipe stays on the owning thread.
+``DeriveWorker`` runs Argon2id derivation: it only *computes* the raw key from
+the password + KDF params and hands the 32 bytes back via a signal; the main
+thread copies them into its own zeroable buffer (FIBR-0004 thread model), so
+the UI never freezes on the derivation and every wipe stays on the owning
+thread.
+
+``start_job`` runs any other slow call that needs no vault access, such as
+reading a PDF statement (FIBR-0104), and ``_DETACHED_WORKERS`` is what keeps
+such a thread alive until it ends.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+
+import shiboken6
 from PySide6.QtCore import QObject, QThread, Signal
 
 from finbreak.models import KdfParams
 from finbreak.services.auth import derive_raw
+
+# Threads that run without a parent: update workers detached at shutdown because
+# they outlasted the drain, and every `start_job` thread. The list is the PYTHON
+# reference that keeps them alive: an unparented QThread is owned by Python, so
+# without it a running one is garbage-collectable -- and destroying a running
+# QThread aborts the process (FIBR-0327). Entries are pruned as new ones arrive,
+# so the list holds only threads still running.
+_DETACHED_WORKERS: list[QThread] = []
+
+
+def _prune_detached() -> None:
+    _DETACHED_WORKERS[:] = [
+        w for w in _DETACHED_WORKERS if shiboken6.isValid(w) and w.isRunning()
+    ]
+
+
+def settle_detached_workers(timeout_ms: int) -> bool:
+    """Give the detached workers up to *timeout_ms*, shared, to finish; True
+    when none is still running. The process must not reach interpreter
+    teardown with one running (see ``app._finish``)."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    for worker in _DETACHED_WORKERS:
+        if shiboken6.isValid(worker) and worker.isRunning():
+            left_ms = max(0, int((deadline - time.monotonic()) * 1000))
+            worker.wait(left_ms)
+    return not any(shiboken6.isValid(w) and w.isRunning() for w in _DETACHED_WORKERS)
 
 
 class DeriveWorker(QThread):
@@ -43,3 +78,53 @@ def settle(worker: DeriveWorker | None) -> None:
     """
     if worker is not None:
         worker.wait()
+
+
+class JobWorker(QThread):
+    """Run one callable and report its result (``done``) or exception
+    (``failed``). Built by ``start_job``, never directly."""
+
+    done = Signal(object)
+    failed = Signal(object)
+
+    def __init__(self, job: Callable[[], object]) -> None:
+        super().__init__()  # no parent: see start_job
+        self._job: Callable[[], object] | None = job
+        self.finished.connect(self.deleteLater)
+
+    def run(self) -> None:
+        job, self._job = self._job, None  # hold no input once it has run
+        if job is None:
+            return
+        try:
+            self.done.emit(job())
+        except Exception as exc:  # the receiver decides what is expected
+            self.failed.emit(exc)
+
+
+def start_job(
+    job: Callable[[], object],
+    on_done: Callable[[object], None],
+    on_failed: Callable[[object], None],
+) -> JobWorker:
+    """Run *job* on its own thread; its result reaches *on_done* or its
+    exception *on_failed*, on the UI thread.
+
+    The thread has no parent, so the widget that started it can be destroyed
+    mid-run -- an idle auto-lock does exactly that -- without destroying a
+    running QThread. It sits in ``_DETACHED_WORKERS`` until it ends, which is
+    also what ``app._finish`` waits on at exit. A receiver that must hear
+    nothing more (the vault locked) calls ``blockSignals(True)`` on it.
+
+    *job* must not touch the vault: its connection belongs to the UI thread.
+    *on_done* and *on_failed* must be methods of a QObject on the UI thread:
+    that is what makes PySide queue the call there. A lambda or plain function
+    would run on the worker thread.
+    """
+    _prune_detached()
+    worker = JobWorker(job)
+    worker.done.connect(on_done)
+    worker.failed.connect(on_failed)
+    _DETACHED_WORKERS.append(worker)
+    worker.start()
+    return worker

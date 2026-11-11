@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QStackedLayout,
     QTableWidget,
@@ -79,6 +80,7 @@ from finbreak.services.transactions import (
 )
 from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import remember_columns
+from finbreak.ui._worker import JobWorker, start_job
 from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.import_batch import BatchReviewWidget
 from finbreak.ui.modal import show_modal
@@ -109,6 +111,20 @@ class _NeedPassword:
 
 
 _NEED_PASSWORD = _NeedPassword()
+
+
+_PdfTables = list[list[list[str | None]]]
+
+
+def _read_pdf(plaintext: bytes, exponent: int) -> ParseResult | _PdfTables:
+    """The slow half of a PDF pick, run on a worker thread (FIBR-0104): a
+    Standard Bank statement's parse, else the generic candidate tables. It
+    reads only the bytes it is given, never the vault, whose connection
+    belongs to the UI thread."""
+    sb_result = StandardBankImporter().parse(plaintext, exponent)
+    if sb_result is not None:
+        return sb_result
+    return PdfImporter().candidate_tables(plaintext)
 
 
 class ImportWizardWidget(QWidget):
@@ -157,6 +173,8 @@ class ImportWizardWidget(QWidget):
         # so the table chooser can re-serialise a selected one. Empty off the PDF
         # path (reset on every pick).
         self._pdf_candidates: list[list[list[str | None]]] = []
+        # The thread reading the picked PDF, while it runs (FIBR-0104).
+        self._pdf_worker: JobWorker | None = None
         # FIBR-0146: True when auto-detect found two formats equally consistent
         # with the sampled dates (e.g. every day-number <= 12, so day-first and
         # month-first both parse) — drives the live-preview day/month nudge (D5/D6).
@@ -212,8 +230,21 @@ class ImportWizardWidget(QWidget):
         self._stack.addWidget(self._build_preview_step())
         self._stack.addWidget(self._build_batch_step())
 
+        # Shown while a PDF is read off the UI thread (FIBR-0104). A big
+        # statement takes many seconds, and pdfplumber reports no progress, so
+        # the bar only says the app is working.
+        self._reading = QWidget()
+        reading_bar = QProgressBar()
+        reading_bar.setRange(0, 0)  # busy, with no percentage
+        reading_layout = QVBoxLayout(self._reading)
+        reading_layout.setContentsMargins(0, 0, 0, 0)
+        reading_layout.addWidget(QLabel(self.tr("Reading the statement…")))
+        reading_layout.addWidget(reading_bar)
+        self._reading.hide()
+
         outer = QVBoxLayout(self)
         outer.addLayout(self._stack)
+        outer.addWidget(self._reading)
         outer.addWidget(self._error)
 
         self._goto_step(_STEP_PICK)
@@ -914,33 +945,68 @@ class ImportWizardWidget(QWidget):
         self._continue_after_decrypt(plaintext)
 
     def _continue_after_decrypt(self, plaintext: bytes) -> None:
-        """Once plaintext is in hand: a recognised Standard Bank statement is parsed
-        by the SB reader and jumps straight to preview (skipping the map step, like
-        OFX); any other PDF falls through to the generic table extractor + the map
-        step (D7)."""
+        """Once plaintext is in hand, read it on a worker thread (FIBR-0104): a
+        big statement takes many seconds, which froze the window. The result
+        arrives in ``_on_pdf_read``. Only Cancel stays live meanwhile; a lock
+        cuts the worker off in ``clear_rows``."""
+        exponent = self._exponent
+        self._pick_button.setEnabled(False)
+        self._reading.show()
+        self._pdf_worker = start_job(
+            lambda: _read_pdf(plaintext, exponent),
+            self._on_pdf_read,
+            self._on_pdf_read_failed,
+        )
+
+    def _finish_reading(self) -> None:
+        self._pdf_worker = None
+        self._reading.hide()
+        self._pick_button.setEnabled(True)
+
+    @Slot(object)
+    def _on_pdf_read_failed(self, exc: object) -> None:
+        """The read raised. Ours and the PDF library's errors get the friendly
+        message (FIBR-0064); anything else is a bug, re-raised for the crash
+        hook as it was when the read ran inline."""
+        self._finish_reading()
+        if isinstance(exc, (PdfError, ValueError, OSError, FinbreakError)):
+            self._show_pdf_read_error(exc)
+            return
+        raise cast(BaseException, exc)
+
+    @Slot(object)
+    def _on_pdf_read(self, result: object) -> None:
+        """A recognised Standard Bank statement jumps straight to preview
+        (skipping the map step, like OFX); any other PDF goes to the generic
+        tables + the map step (D7)."""
+        self._finish_reading()
+        try:
+            if isinstance(result, ParseResult):
+                self._show_sb_statement(result)
+            else:
+                self._show_pdf_tables(cast(_PdfTables, result))
+        except VaultLockedError:
+            return  # auto-lock fired — silent, like the other handlers
+
+    def _show_sb_statement(self, sb_result: ParseResult) -> None:
         # FIBR-0050: a recognised SB statement skips mapping (self-describing, like
         # OFX). The checksum/format ValueError shows the friendly message, not crash.
         try:
-            sb_result = StandardBankImporter().parse(plaintext, self._exponent)
-            if sb_result is not None:
-                # Before preview_result — see _apply_account_match's docstring.
-                self._apply_account_match(sb_result)
-                self._show_preview(
-                    self._imports.preview_result(sb_result, self._target_account_id())
-                )
-                return
+            # Before preview_result — see _apply_account_match's docstring.
+            self._apply_account_match(sb_result)
+            self._show_preview(
+                self._imports.preview_result(sb_result, self._target_account_id())
+            )
         except (PdfError, ValueError, FinbreakError) as exc:
             self._show_pdf_read_error(exc)
-            return
-        # Past the SB reader is the generic-PDF route: extracted to a CSV-text
-        # table and mapped like a CSV, so the D7 banner's mapping remedy applies
-        # here exactly as it does to a CSV (FIBR-0253). Set before the extract so
-        # both endings below carry it — the map step, and the matched-profile
-        # jump to preview, which leaves a mapping the user can still go back to.
+
+    def _show_pdf_tables(self, candidates: _PdfTables) -> None:
+        # The generic-PDF route: extracted to a CSV-text table and mapped like a
+        # CSV, so the D7 banner's mapping remedy applies here exactly as it does
+        # to a CSV (FIBR-0253). Both endings below carry it — the map step, and
+        # the matched-profile jump to preview, which leaves a mapping the user
+        # can still go back to.
         self._has_mapping_step = True
-        candidates = self._extract_pdf_tables(plaintext)
-        if candidates is None:
-            return  # a friendly error was already surfaced
         self._pdf_candidates = candidates
         default = default_table_index(candidates)
         combo = self._pdf_table_combo
@@ -974,22 +1040,6 @@ class ImportWizardWidget(QWidget):
             # FIBR-0146 D5(b): a generic (non-SB) PDF gets a date-format guess.
             self._refresh_date_ui(detect=True)
         self._goto_step(_STEP_MAP)
-
-    def _extract_pdf_tables(
-        self, plaintext: bytes
-    ) -> list[list[list[str | None]]] | None:
-        """Extract the generic candidate tables from already-plaintext PDF bytes
-        (FIBR-0050 D6 — the password loop lives in the ``_try_decrypt`` state
-        machine, FIBR-0065). Returns the candidates, or ``None`` if a friendly "no
-        usable table" error was surfaced."""
-        try:
-            return PdfImporter().candidate_tables(plaintext)
-        except (PdfError, ValueError, OSError, FinbreakError) as exc:
-            # candidate_tables re-runs the idempotent pikepdf normalise, which can
-            # raise PdfError — catch it here too, matching the sibling ``_try_decrypt``
-            # net, so it never crashes the slot. (indie-review L1)
-            self._show_pdf_read_error(exc)
-            return None
 
     def _apply_pdf_table(self, index: int) -> ImportProfile | None:
         """Serialise candidate ``index`` to CSV text, re-fill the mapping combos
@@ -1595,6 +1645,11 @@ class ImportWizardWidget(QWidget):
         self._date_sample_text = None
         self._ofx_statements = []
         self._pdf_candidates = []
+        if self._pdf_worker is not None:
+            # A read still running delivers nothing to a locked wizard: the
+            # tables it would hand over are decrypted statement rows (FIBR-0104).
+            self._pdf_worker.blockSignals(True)
+            self._pdf_worker = None
         self._batch_files = []
         self._batch.discard_passwords()
         self._drop_remembered_pw()

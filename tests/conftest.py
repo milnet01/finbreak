@@ -84,6 +84,12 @@ def _acct(service) -> int:
     return AccountService(service.vault).list_accounts()[0].id
 
 
+def wait_for_pdf_read(qtbot, wizard) -> None:
+    """Wait out the import wizard's PDF read, which runs on a worker thread
+    (FIBR-0104). Returns at once when no read was started."""
+    qtbot.waitUntil(lambda: wizard._pdf_worker is None, timeout=30_000)
+
+
 def _pump_deferred_delete() -> None:
     """Flush a same-level ``deleteLater()``: a bare ``processEvents()`` does not
     reliably do it, but ``sendPostedEvents`` with ``DeferredDelete`` does (INV-4a).

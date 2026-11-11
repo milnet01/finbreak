@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=467 -->
+<!-- ants-roadmap-id-high-water: FIBR=468 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -2073,7 +2073,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
 
-- 📋 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
+- 🚧 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
   User idea (multi-threading for performance). Honest framing: Python's GIL means threading helps RESPONSIVENESS + native-code overlap, NOT pure-Python CPU parallelism. The app already threads its two slow blocking ops correctly (Argon2 key derivation via DeriveWorker; network via UpdateCheck/DownloadWorker — both native/GIL-releasing). Best next win: move IMPORT (pdfplumber text extraction, in-memory pikepdf decrypt, CSV/OFX parse, dedup + commit) onto a QThread worker (reuse the ui/_worker.py DeriveWorker pattern) with a progress indicator — today it runs ON THE UI THREAD (security-model / FIBR-0075 note: pdfplumber extract runs on the UI thread), so a large statement freezes the window. These ops are native-heavy (pdfplumber/pikepdf C++, SQLCipher C) so they RELEASE the GIL → genuine overlap with the GUI. CAVEAT: SQLite/SQLCipher connections are NOT shareable across threads — the worker needs its OWN connection to the vault (or marshal results back via signals). Pure-Python CPU hotspots (rule matching) won't benefit (GIL) — indexes (FIBR-0098) + virtualized tables (FIBR-0097) are the levers there. Deps: FIBR-0007/0008/0009 (import), reuses the QThread worker pattern; pairs with FIBR-0065 (non-blocking dialog discipline)."
   MEASURED 2026-11-11 (machine busy, load average about 4.6, so rough):
   PdfImporter().candidate_tables on synthetic Qt-printed statements, no
@@ -2091,6 +2091,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   auto-lock destroying the wizard while the worker runs (the existing
   DeriveWorker pattern and the FIBR-0204 worker drain in closeEvent), and
   the password ladder in _begin_decrypt, which calls decrypt repeatedly.
+  BUILT 2026-11-11, not yet reviewed. The single-file wizard's PDF read
+  (Standard Bank parse, else candidate_tables) runs on a worker via the
+  new ui/_worker.py start_job; decrypt and every vault call stay on the
+  UI thread. The detached-worker registry moved from main_window.py to
+  ui/_worker.py so an unparented read thread survives a lock and app
+  exit waits for it. clear_rows blocks the worker's signals (proved by
+  mutation: removing it turns the lock-hook test red). Specs amended:
+  FIBR-0009 D14 + new INV-12, FIBR-0050 INV-14, design.md Concurrency.
+  Gate green: 2677 passed, 2 skipped. Remaining for workflow.md § 6:
+  run /code-review high on the commit, disposition its findings, then
+  flip shipped. The batch route is still inline: FIBR-0468.
   **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
   Kind: perf.
   Source: user-suggestion-2026-07-11.
@@ -5155,6 +5166,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: user-answer-2026-11-11 (FIBR-0121 open question).
   Lanes: transfers, import.
   Splits-from: FIBR-0121.
+
+- 📋 [FIBR-0468] **Batch import still reads each PDF on the UI thread.**
+  FIBR-0104 moved only the single-file wizard's PDF read off the UI
+  thread. BatchImportService.scan_step (services/batch_import.py) still
+  runs StandardBankImporter.parse and PdfImporter.candidate_tables
+  inline, one file per event-loop turn, so a large PDF in a batch
+  freezes the window for its whole read (measured for the single-file
+  route 2026-11-11: about 27 s on a synthetic 1500-row statement, busy
+  machine). scan_step also reads the vault (profiles, account match),
+  so only its read half can move: split it as FIBR-0104 split
+  _continue_after_decrypt, reusing ui/_worker.py start_job.
+  **Layman:** Importing many statements at once still freezes the window for a few seconds per large PDF; the single-file import no longer does.
+  Kind: perf.
+  Source: FIBR-0104-follow-up-2026-11-11.
 
 ## v1.1.0 — Localisation
 

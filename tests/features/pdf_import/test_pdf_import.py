@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from conftest import (
     build_v4_vault,
     build_v5_vault,
     keyed_connection,
+    wait_for_pdf_read,
 )
 from finbreak.crypto import SALT_LEN
 from finbreak.importers.pdf_importer import (
@@ -413,6 +415,7 @@ def test_INV7a_pdf_pick_lands_on_map_step(qtbot, service, tmp_path):
     path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
     widget = _wizard(qtbot, service, _acct(service))
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 1, (
         "PDF -> map step (unlike OFX, not skipped)"
     )
@@ -422,6 +425,7 @@ def test_INV7a_content_sniff_routes_misnamed_pdf(qtbot, service, tmp_path):
     path = _write(tmp_path, "statement.bin", _fixture("single_table.pdf"))
     widget = _wizard(qtbot, service, _acct(service))
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 1, "sniffed %PDF- -> map step"
 
 
@@ -433,6 +437,7 @@ def test_INV7b_encrypted_prompts_and_wrong_password_reprompts(
     shown = _patch_dialog(monkeypatch, [{"password": "wrong"}, {"password": "secret"}])
     widget = _wizard(qtbot, service, _acct(service))
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert len(shown) == 2, "a wrong password re-prompted (INV-3)"
     assert widget._stack.currentIndex() == 1, "the correct password then proceeded"
     # FIBR-0408: the re-prompt says the last password failed; the first does not.
@@ -485,12 +490,130 @@ def test_INV2_lock_during_pdf_password_prompt_destroys_wizard_no_crash(
     assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
 
 
+# --------------------------------------------------------------------------- #
+# FIBR-0104 — reading a PDF happens off the UI thread
+# --------------------------------------------------------------------------- #
+def _held_reader(monkeypatch) -> tuple[threading.Event, list[threading.Thread]]:
+    """Hold the generic table extractor until the returned event is set, and
+    record which thread ran it. On the UI thread the hold would freeze the test
+    itself, so it gives up after two seconds and fails loudly instead."""
+    gate = threading.Event()
+    seen: list[threading.Thread] = []
+    real = PdfImporter.candidate_tables
+
+    def held(self, plaintext):
+        seen.append(threading.current_thread())
+        if not gate.wait(2):
+            raise AssertionError("the PDF read held the UI thread")
+        return real(self, plaintext)
+
+    monkeypatch.setattr(PdfImporter, "candidate_tables", held)
+    return gate, seen
+
+
+def test_FIBR0104_reading_a_pdf_leaves_the_window_live(
+    qtbot, service, tmp_path, monkeypatch
+):
+    gate, seen = _held_reader(monkeypatch)
+    path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
+    widget = _wizard(qtbot, service, _acct(service))
+    widget._select_file(str(path))  # returns while the read is still held
+    qtbot.waitUntil(lambda: bool(seen))
+    assert seen[0] is not threading.main_thread()
+    assert not widget._reading.isHidden(), "the user is told the file is being read"
+    assert not widget._pick_button.isEnabled(), "no second file mid-read"
+    gate.set()
+    qtbot.waitUntil(lambda: widget._stack.currentIndex() == 1)
+    assert widget._reading.isHidden()
+    assert widget._pick_button.isEnabled()
+
+
+def test_FIBR0104_a_lock_mid_read_drops_the_result_without_a_crash(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """An idle auto-lock destroys the wizard while its read is running. The
+    thread must outlive the wizard (destroying a running QThread aborts the
+    process), stay where the exit path waits for it, and deliver nothing."""
+    from finbreak.ui._worker import _DETACHED_WORKERS
+
+    gate, seen = _held_reader(monkeypatch)
+    path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
+    window = _shell(qtbot, service)
+    window._action_import.trigger()
+    wizard = window._live
+    wizard._account_combo.setCurrentIndex(
+        wizard._account_combo.findData(_acct(service))
+    )
+    wizard._select_file(str(path))
+    qtbot.waitUntil(lambda: bool(seen))
+    worker = wizard._pdf_worker
+    try:
+        service._on_idle_timeout()
+        _pump_deferred_delete()
+        assert not shiboken6.isValid(wizard), "the wizard is destroyed on lock"
+        assert worker.isRunning(), "the read outlived the wizard"
+        assert worker in _DETACHED_WORKERS, "app exit waits for it"
+    finally:
+        gate.set()
+        assert worker.wait(10_000)
+    qtbot.wait(50)  # deliver anything the worker queued
+    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+
+
+def test_FIBR0104_the_lock_hook_cuts_off_a_read_still_running(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """A lock's ``deleteLater`` can be held back while a nested modal loop runs
+    (FIBR-0216), so the wizard can outlive the lock. ``clear_rows`` runs at lock
+    time, and after it the read must hand over no statement rows."""
+    gate, seen = _held_reader(monkeypatch)
+    path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
+    widget = _wizard(qtbot, service, _acct(service))
+    widget._select_file(str(path))
+    qtbot.waitUntil(lambda: bool(seen))
+    worker = widget._pdf_worker
+    widget.clear_rows()
+    gate.set()
+    assert worker.wait(10_000)
+    qtbot.wait(50)  # deliver anything the worker queued
+    assert widget._pdf_candidates == []
+    assert widget._stack.currentIndex() == 0
+
+
+def test_FIBR0104_a_wizard_destroyed_mid_read_without_a_lock_hears_nothing(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Not every teardown goes through ``clear_rows`` (closing the main window
+    destroys its children directly). The result must still reach no slot of
+    the dead wizard; pytest-qt fails the test on an exception raised in one."""
+    from PySide6.QtWidgets import QWidget
+
+    gate, seen = _held_reader(monkeypatch)
+    path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
+    holder = QWidget()
+    qtbot.addWidget(holder)
+    wizard = _wizard(qtbot, service, _acct(service))
+    wizard.setParent(holder)
+    wizard._select_file(str(path))
+    qtbot.waitUntil(lambda: bool(seen))
+    worker = wizard._pdf_worker
+    try:
+        wizard.deleteLater()
+        _pump_deferred_delete()
+        assert not shiboken6.isValid(wizard)
+    finally:
+        gate.set()
+        assert worker.wait(10_000)
+    qtbot.wait(50)  # deliver anything the worker queued
+
+
 def test_INV7c_multi_table_chooser_default_largest_and_switch_repopulates(
     qtbot, service, tmp_path
 ):
     path = _write(tmp_path, "two.pdf", _fixture("two_table.pdf"))
     widget = _wizard(qtbot, service, _acct(service))
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert not widget._pdf_table_combo.isHidden(), "chooser shown for >1 table"
     assert widget._pdf_table_combo.count() == 2
     # candidates preserve first-occurrence order: 0=summary, 1=transactions.
@@ -510,6 +633,7 @@ def test_INV7d_single_table_profile_match_jumps_to_preview(qtbot, service, tmp_p
     path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
     widget = _wizard(qtbot, service, _acct(service))
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 2, "single candidate + profile -> preview"
     assert widget._preview_table.rowCount() == 3
 
@@ -519,6 +643,7 @@ def test_INV7d_multi_table_profile_match_stays_on_map(qtbot, service, tmp_path):
     path = _write(tmp_path, "two.pdf", _fixture("two_table.pdf"))
     widget = _wizard(qtbot, service, _acct(service))
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 1, ">1 candidate always shows the map step"
     assert not widget._pdf_table_combo.isHidden()
     # the profile pre-filled the combos for the default (transactions) table
@@ -532,6 +657,7 @@ def test_INV7e_import_inserts_rows_and_reimport_adds_zero(qtbot, service, tmp_pa
     path = _write(tmp_path, "stmt.pdf", _fixture("single_table.pdf"))
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._import_button.isEnabled()
     widget._import_button.click()
     assert TransactionRepository(conn).count_for_account(acct) == 3
@@ -539,6 +665,7 @@ def test_INV7e_import_inserts_rows_and_reimport_adds_zero(qtbot, service, tmp_pa
 
     widget2 = _wizard(qtbot, service, acct)
     widget2._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget2)
     assert widget2._preview.new_count == 0, "same statement -> all duplicate"
     widget2._import_button.click()
     assert TransactionRepository(conn).count_for_account(acct) == 3, "no new rows"
@@ -554,6 +681,7 @@ def test_INV7f_remembered_password_auto_applies_no_prompt(
     _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
     first = _wizard(qtbot, service, acct)
     first._select_file(str(path))
+    wait_for_pdf_read(qtbot, first)
     first._import_button.click()  # saved when the import completes (FIBR-0465)
     assert AccountService(service.vault).get_pdf_password(acct) == "secret", "stored"
 
@@ -567,6 +695,7 @@ def test_INV7f_remembered_password_auto_applies_no_prompt(
     monkeypatch.setattr(import_wizard, "PasswordDialog", _NoDialog)
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 2, "reached the preview with no prompt"
 
 
@@ -580,6 +709,7 @@ def test_INV7f_stored_password_that_fails_falls_back_to_prompt(
     shown = _patch_dialog(monkeypatch, [{"password": "secret"}])
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert len(shown) == 1, "a stale stored password falls back to the prompt (INV-3)"
     assert widget._stack.currentIndex() == 1
 
@@ -602,6 +732,7 @@ def test_INV4_unencrypted_pdf_never_consults_stored_password(
     monkeypatch.setattr(import_wizard, "PasswordDialog", _NoDialog)
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 1, "unencrypted -> map step, no prompt"
     assert (
         AccountService(service.vault).get_pdf_password(acct) == "unrelated-stored-pw"
@@ -626,6 +757,7 @@ def test_FIBR0057_remembered_pdf_password_follows_a_retarget(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 2, "profile + single table -> preview"
     assert accounts.get_pdf_password(current) is None, "nothing saved before commit"
 
@@ -657,6 +789,7 @@ def test_FIBR0249_retarget_MOVES_the_password_off_the_provisional_account(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert accounts.get_pdf_password(current) is None, (
         "nothing is saved before commit, because the destination is not known "
         "until then (FIBR-0465)"
@@ -698,6 +831,7 @@ def test_FIBR0249_a_password_the_provisional_account_already_had_is_restored(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     widget._confirm_account_combo.setCurrentIndex(
         widget._confirm_account_combo.findData(credit)
     )
@@ -727,6 +861,7 @@ def test_FIBR0274_a_remembered_password_replaces_the_destinations_failed_one(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     widget._confirm_account_combo.setCurrentIndex(
         widget._confirm_account_combo.findData(credit)
     )
@@ -752,6 +887,7 @@ def test_FIBR0274_a_password_remembered_on_another_account_opens_the_pdf(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
 
     assert shown == [], "prompted although a stored password opens the file"
     assert widget._stack.currentIndex() == 1
@@ -785,6 +921,7 @@ def test_FIBR0274_each_stored_password_is_tried_once_pick_step_first(
 
     widget = _wizard(qtbot, service, picked)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
 
     assert tried == [None, "wrong-0", "wrong-1", "secret"], tried
     assert len(shown) == 1 and retried == [False]
@@ -1005,6 +1142,7 @@ def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert accounts.get_pdf_password(current) == own, (
         "nothing is saved before commit (FIBR-0465)"
     )
@@ -1072,6 +1210,7 @@ def test_FIBR0321_a_completed_import_still_carries_and_does_not_double_settle(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     widget._confirm_account_combo.setCurrentIndex(
         widget._confirm_account_combo.findData(credit)
     )
@@ -1107,6 +1246,7 @@ def test_FIBR0321_remembering_without_retargeting_keeps_the_password(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     widget._import_button.click()  # same account throughout — no re-target
 
     assert accounts.get_pdf_password(current) == "secret", (
@@ -1136,6 +1276,7 @@ def test_FIBR0465_an_auto_lock_before_commit_leaves_the_account_untouched(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 2, "precondition: on the preview step"
 
     widget.clear_rows()  # what the shell does at lock time (FIBR-0322)

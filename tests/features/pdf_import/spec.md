@@ -41,3 +41,4 @@ The three data rows are preserved, so the cap tests still monkeypatch
 | INV-9 | PDF is resource-bounded: over-`_MAX_PDF_PAGES` (500) and over-`_MAX_PDF_ROWS` (100 000) each refused with a `ValueError`; a formula-looking cell round-trips as inert `str` |
 | INV-10 | PDF feeds the **same** write pipeline as CSV/OFX: import then re-import the same statement adds zero rows |
 | INV-11 | No secret logged: a sentinel password appears in **no** log record and **no** exception message; `ImportWizardWidget` defines no `self._*password*` attribute |
+| INV-12 | The PDF read runs off the UI thread: the window stays live with a busy indicator; a lock's `clear_rows` cuts the read off; a wizard destroyed mid-read gets nothing and nothing aborts (FIBR-0104) |

@@ -425,7 +425,7 @@ def test_FIBR0273_year_bearing_formats_still_accepted_INV4(good_format):
 from collections.abc import Iterator  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-from conftest import _PW, _acct  # noqa: E402
+from conftest import _PW, _acct, wait_for_pdf_read  # noqa: E402
 from finbreak.models import ColumnMapping  # noqa: E402
 from finbreak.services.auth import AuthService  # noqa: E402
 
@@ -701,6 +701,7 @@ def test_FIBR0253_banner_remedy_follows_the_map_step(qtbot, service, tmp_path):
 
     def banner_for(path: str) -> str:
         widget._select_file(path)
+        wait_for_pdf_read(qtbot, widget)
         widget._apply_preview_counts(all_error)
         assert not widget._preview_banner.isHidden(), "the D7 trigger is unchanged"
         return widget._preview_banner.text()
@@ -722,8 +723,12 @@ def test_FIBR0253_banner_remedy_follows_the_map_step(qtbot, service, tmp_path):
     # The leg the first cut of this fix got wrong: a PDF the SB reader does not
     # recognise falls through to the table extractor and the map step, so it
     # keeps the mapping remedy. Same extension as the row above, opposite answer
-    # — which is why the flag cannot be a filename or sniff test.
-    generic_text = banner_for(str(sb / "non_sb.pdf"))
+    # — which is why the flag cannot be a filename or sniff test. The PDF must
+    # yield a table: `non_sb.pdf` has none, so its pick is refused on the pick
+    # step and never reaches a map step or a preview (FIBR-0104).
+    generic = Path(__file__).parent.parent / "pdf_import" / "fixtures"
+    generic_text = banner_for(str(generic / "single_table.pdf"))
+    assert widget._stack.currentIndex() == 1, "precondition: it reached the map step"
     assert widget._has_mapping_step is True, (
         "precondition: a generic PDF IS mapped (extracted to a CSV-text table)"
     )

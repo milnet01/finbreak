@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import _PW
+from conftest import _PW, wait_for_pdf_read
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
@@ -351,6 +351,7 @@ def test_standard_bank_pdf_matches_before_it_previews(qtbot, service):
         / "family_a_current.pdf"
     ).read_bytes()
     widget._continue_after_decrypt(pdf)
+    wait_for_pdf_read(qtbot, widget)
 
     assert calls == ["match", "preview"], (
         "the match must be seeded into the combo BEFORE the preview is built "

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import _PW, _acct
+from conftest import _PW, _acct, wait_for_pdf_read
 from finbreak.models import ColumnMapping
 from finbreak.services.auth import AuthService
 from finbreak.ui.import_wizard import _STEP_MAP, _STEP_PREVIEW, ImportWizardWidget
@@ -141,6 +141,7 @@ def test_INV3_a_self_describing_source_offers_no_back(qtbot, service):
         / "family_a_zero_fee.pdf"
     )
     widget._select_file(str(fixture))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._has_mapping_step is False, (
         "precondition: a RECOGNISED SB statement skips the map step"
     )

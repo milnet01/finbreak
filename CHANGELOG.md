@@ -21,6 +21,13 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **Importing a large PDF statement no longer freezes the window** (FIBR-0104)
+  The statement is read in the background while a "Reading the
+  statement…" bar shows. Importing several files at once still reads
+  each PDF in the foreground (FIBR-0468).
+
 ## [1.0.4] - 2026-11-08
 
 **Theme:** Remembered statement passwords follow the right account, and are saved more safely.

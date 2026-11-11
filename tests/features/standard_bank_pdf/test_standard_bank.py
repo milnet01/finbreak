@@ -17,7 +17,7 @@ import pikepdf
 import pytest
 from PySide6.QtWidgets import QDialog
 
-from conftest import _PW, _acct
+from conftest import _PW, _acct, wait_for_pdf_read
 from finbreak.importers import standard_bank
 from finbreak.importers.standard_bank import (
     _E_ROW,
@@ -1258,6 +1258,7 @@ def test_INV13_wizard_sb_pick_skips_mapping_lands_on_preview(qtbot, service, tmp
     path = _write(tmp_path, "current.pdf", _fx("family_a_current.pdf"))
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == _STEP_PREVIEW, "SB skips the map step"
     assert widget._import_button.isEnabled()
     widget._import_button.click()
@@ -1273,10 +1274,12 @@ def test_INV13_wizard_reimport_adds_zero(qtbot, service, tmp_path):
     path = _write(tmp_path, "current.pdf", _fx("family_a_current.pdf"))
     w = _wizard(qtbot, service, acct)
     w._select_file(str(path))
+    wait_for_pdf_read(qtbot, w)
     w._import_button.click()  # first import
     assert TransactionRepository(conn).count_for_account(acct) == 3
     w2 = _wizard(qtbot, service, acct)
     w2._select_file(str(path))
+    wait_for_pdf_read(qtbot, w2)
     assert w2._preview.new_count == 0
     w2._import_button.click()
     assert TransactionRepository(conn).count_for_account(acct) == 3, "no new rows"
@@ -1297,6 +1300,7 @@ def test_INV13_wizard_encrypted_sb_prompts_then_previews(
     shown = _patch_dialog(monkeypatch, [{"password": "sentinel-pw-42"}])
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert len(shown) == 1, "the locked SB statement prompted once"
     assert widget._stack.currentIndex() == _STEP_PREVIEW, "decrypted SB -> preview"
     assert widget._preview.new_count == 3
@@ -1314,6 +1318,7 @@ def test_INV13_wizard_sb_checksum_failure_shows_friendly_message(
     path = _write(tmp_path, "bad.pdf", _fx("checksum_fail_a.pdf"))
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == _STEP_PICK, "checksum fail stays on pick"
     assert "didn't add up" in widget._error.text()
 
@@ -1337,6 +1342,7 @@ def test_FIBR0252_preview_shows_the_error_row(qtbot, service, tmp_path):
     path = _write(tmp_path, "zero-fee.pdf", _fx("family_a_zero_fee.pdf"))
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    wait_for_pdf_read(qtbot, widget)
 
     table = widget._preview_table
     assert table.rowCount() == 3, "two drafts plus the errored row, interleaved"
