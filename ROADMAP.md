@@ -5174,6 +5174,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   leg as money in) or in detection (also pair same-sign legs when one
   account is a loan). Settle it before choosing. Correctness-critical:
   it changes which rows count as spending in the dashboard totals.
+  2026-11-11: settled, it is the importer, by design. The Standard
+  Bank Home Loan parser (`_parse_family_b`, importers/standard_bank.py)
+  takes each sign from the change in the printed balance, which is the
+  amount owed, unsigned. So a repayment imports negative and a fee
+  positive: FIBR-0050 INV-7, with a "loan-sign toggle" deferred to
+  "once the user has seen real loan data". CSV and OFX copy the file's
+  or profile's sign; no importer reads AccountType. Under FIBR-0007's
+  rule (money in positive) a repayment into a loan is money in, so
+  storing it canonically would make the pair, the dashboard totals and
+  FIBR-0121's display goal right at once. That reverses INV-7 and
+  FIBR-0121's approved display-only approach (2026-07-13), and it needs
+  a plan for loan rows already in vaults. Asked the user 2026-11-11.
   **Layman:** A loan repayment shows up as money out of your current account and also as a minus on the loan account, so finbreak never offers to link the two as a transfer and counts the payment as spending.
   Kind: fix.
   Source: user-answer-2026-11-11 (FIBR-0121 open question).
