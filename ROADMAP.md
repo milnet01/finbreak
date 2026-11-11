@@ -2210,6 +2210,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   labels). The transfer-detection gap is real and is split out as
   FIBR-0467; settle it before this display change, since flipping the
   display sign of a row that is also mis-paired would hide the defect.
+  User decision 2026-11-11: the display-only approach approved
+  2026-07-13 is superseded. FIBR-0467 stores loan repayments as
+  positive, which meets this item's goal without a display flip.
+  Re-check what, if anything, is left here once FIBR-0467 ships.
   **Layman:** On home-loan / personal-loan accounts, your payments (which reduce what you owe) will read as positive/green and interest &amp; fees (which increase what you owe) as negative/red — the natural way round, instead of the current back-to-front look.
   Kind: feature.
   Source: user-request-2026-07-12 (approved 2026-07-13).
@@ -2238,7 +2242,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
   Lanes: security.
 
-- 📋 [FIBR-0339] **Make "cannot verify" a first-class state in the resume ladder.**
+- ✅ [FIBR-0339] **Make "cannot verify" a first-class state in the resume ladder.**
   Four consecutive fix-passes each found the same shape, and FP05 found
   four instances of it in one pass:
 
@@ -2285,6 +2289,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   So the change would be design hygiene across about ten call sites in
   the riskiest module, with no behaviour change. Asked the user whether
   it is still worth doing.
+  User decision 2026-11-11: closed as checked. The audit above is
+  the record; no code change.
   **Layman:** The upgrade-recovery code keeps confusing "I could not check this" with "this is broken", and the second answer throws things away.
   Kind: refactor.
   Source: FP02-FP05 pattern, recorded at FP05's close 2026-09-06.
@@ -5203,6 +5209,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   FIBR-0121's display goal right at once. That reverses INV-7 and
   FIBR-0121's approved display-only approach (2026-07-13), and it needs
   a plan for loan rows already in vaults. Asked the user 2026-11-11.
+  User decision 2026-11-11: fix it in the importer. A loan
+  repayment is stored as money in to the loan (positive) and a fee as
+  negative, per FIBR-0007's rule; loan rows already in a vault are
+  corrected once, on upgrade. This reverses FIBR-0050 INV-7's loan
+  consequence. Needs a spec (correctness-critical, existing data).
   **Layman:** A loan repayment shows up as money out of your current account and also as a minus on the loan account, so finbreak never offers to link the two as a transfer and counts the payment as spending.
   Kind: fix.
   Source: user-answer-2026-11-11 (FIBR-0121 open question).
