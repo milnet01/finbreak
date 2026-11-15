@@ -8040,8 +8040,12 @@ work, and none of it is a release decision.
   Kind: chore.
   Source: in-session-2026-09-28.
 
-- 📋 [FIBR-0372] **pip-audit fails the gate when PyPI's lookup of finbreak itself returns 503.**
+- ✅ [FIBR-0372] **pip-audit fails the gate when PyPI's lookup of finbreak itself returns 503.**
   On 2026-09-28 the pypi-backed pip-audit stage failed three times in about 20 minutes (CI run 36409341907 and its re-run, plus a local pre-push) with "503 Backend is unhealthy" on https://pypi.org/pypi/finbreak/<version>/json. finbreak is not published on PyPI, so that lookup can only ever answer 404 (skipped) or fail; it adds no coverage. Minutes later the same URL answered 404 again. Consider auditing the dependency set without the project itself (e.g. an exported requirements list, or pip-audit's option to skip the local package) so an outage on a lookup that cannot find anything stops blocking pushes. Check that the OSV run still covers the same dependency set.
+  Shipped 2026-09-28 in d122897; the record was never flipped (found
+  2026-11-15). scripts/ci-local.sh audits `pip freeze --all --exclude
+  finbreak` with --no-deps --disable-pip, and both the pypi and osv
+  stages read that same list, so finbreak is never looked up.
   **Layman:** The security check that looks up our dependencies also asks PyPI about finbreak itself, so a brief PyPI outage blocks every push.
   Kind: chore.
   Source: in-session-2026-09-28.
