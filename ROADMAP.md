@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=471 -->
+<!-- ants-roadmap-id-high-water: FIBR=472 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -4238,6 +4238,22 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   recurrence keep the core dump and get a Python-level stack with
   py-bt (gdb plus python debug symbols), which names the object being
   deleted.
+  Recurred 2026-11-15 in a pre-commit gate run (FIBR-0360's tree, a
+  change to scripts/ and docs only): worker gw5 segfaulted in
+  test_INV8_cancelling_a_prompt_skips_that_file_immediately, the test
+  whose stub rejects inside show(). 2697 passed. Core kept, per the
+  note above: /mnt/Emulators/.claude/Scratchpad/finbreak/
+  fibr0426-2026-11-15/core (python3.13, PID 365169). C stack: a posted
+  event in sendPostedEvents -> QObject::event -> a call through a
+  garbage vtable (jump to 0x22e1), inside pytest-qt's _process_events
+  after the test body. That fits a DeferredDelete reaching an object
+  whose memory was already freed. py-bt is not available: gdb has no
+  Python extension here. Next: install the python313 debuginfo package
+  (needs the user's password), then run gdb -batch -ex py-bt on the kept
+  core, which names the Python frame. Test left unchanged: making its
+  stub reject on a later turn might hide a crash users can also hit.
+  Waiting-on: user (approve the debuginfo install for py-bt;
+  recommendation yes, it is read-only tooling; 2026-11-15)
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
@@ -5337,6 +5353,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** If something unexpected goes wrong while a batch import is reading files, the batch can stop with only Cancel left to press.
   Kind: review-fix.
   Source: review-code-FIBR-0468-2026-11-11.
+
+- 📋 [FIBR-0472] **The crash dialog says the app cannot continue, and shows the error's own text, when a batch stop carries on.**
+  app.py's excepthook shows "finbreak hit an unexpected error and cannot
+  continue:" plus `{exc_type.__name__}: {exc}`. The batch SCAN/ASK and
+  RUN stops (FIBR-0471, FIBR-0407) re-raise to reach that hook after
+  ending the batch with its report, so the app does continue. And the
+  exception's message can carry the statement's own text, which the batch
+  service keeps out of its log for that reason (security-model INV-9,
+  `_fail` logs the type only); the hook shows it on screen and the chained
+  default hook prints it to stderr. Predates FIBR-0471. Not fixed there:
+  it is the app-wide crash path, outside the batch subject. Decide the
+  wording for a recoverable error and whether the message is shown.
+  **Layman:** When something unexpected goes wrong during a batch import, the error box says finbreak cannot continue, even though the import report is still there and the app works.
+  Kind: review-fix.
+  Source: review-code-FIBR-0471-2026-11-15.
 
 ## v1.1.0 — Localisation
 
@@ -7954,7 +7985,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: peer-2026-09-25 (pressless-e4 test-review tip).
 
-- 📋 [FIBR-0360] **Bring scripts/*.py under the ruff and mypy gate stages, including the release-signing scripts.**
+- ✅ [FIBR-0360] **Bring scripts/*.py under the ruff and mypy gate stages, including the release-signing scripts.**
   ruff and mypy scope to src and tests, so scripts/*.py is in no gate
   stage. That includes sign-release.py and gen-signing-key.py, which are
   on the release-signing path. The shellcheck stage closed the same gap
@@ -7972,6 +8003,12 @@ work, and none of it is a release decision.
   import-untyped noise from running it outside the project config. DTZ011
   fires twice (capture_screenshots, seed_demo_vault), and both are
   legitimate for a demo seeded at today's date.
+  Shipped 2026-11-15 (eb39f94): ruff check, ruff format --check and
+  mypy now cover scripts/. The six mypy errors in capture_screenshots.py
+  are fixed; the two DTZ011 hits carry a noqa naming the demo's local
+  day. FIBR-0001 INV-1 amended to match. It got no review-contract,
+  against the note above: rule 14 (settled 2026-10-31) gives an
+  amendment none.
   **Layman:** The small helper programs that build and sign releases are not checked by the automatic code checks yet; add them.
   Kind: chore.
   Source: check-code-2026-09-21, split from FIBR-0344.
