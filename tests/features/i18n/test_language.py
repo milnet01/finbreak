@@ -447,8 +447,12 @@ def test_INV8_picker_offers_system_then_each_language(
     datas = [combo.itemData(i) for i in range(combo.count())]
     assert datas == ["system", *language.available_languages()]
     assert "fr" in datas
-    labels = [combo.itemText(i) for i in range(1, combo.count())]
-    assert labels == [QLocale(d).nativeLanguageName() for d in datas[1:]]
+    texts = [combo.itemText(i) for i in range(1, combo.count())]
+    labels = dict(zip(datas[1:], texts, strict=True))
+    # Each under its own name; English as plain "English", not "American English"
+    # (QLocale("en")'s native name), which misnames it for every other region.
+    assert labels["en"] == "English"
+    assert labels["fr"] == "français"
     assert combo.currentData() == "system"
 
 

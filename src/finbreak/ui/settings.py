@@ -222,12 +222,12 @@ class SettingsDialog(QDialog):
             )
             self._language_combo.addItem(
                 self.tr("System default ({detected})").format(
-                    detected=QLocale(detected).nativeLanguageName()
+                    detected=language.language_name(detected)
                 ),
                 language.LANGUAGE_SYSTEM,
             )
             for lang in language.available_languages():
-                self._language_combo.addItem(QLocale(lang).nativeLanguageName(), lang)
+                self._language_combo.addItem(language.language_name(lang), lang)
             select_combo_data(self._language_combo, language.load_language_pref())
 
         form = QFormLayout()

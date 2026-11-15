@@ -56,6 +56,15 @@ def available_languages() -> list[str]:
     return [SOURCE_LANGUAGE, *(lang for lang in found if lang != SOURCE_LANGUAGE)]
 
 
+def language_name(lang: str) -> str:
+    """A language under its own name, for the picker. English is plain
+    "English": ``QLocale("en")``'s native name is "American English", which
+    misnames it for every other region."""
+    if lang == SOURCE_LANGUAGE:
+        return QLocale.languageToString(QLocale.Language.English)
+    return QLocale(lang).nativeLanguageName()
+
+
 def load_language_pref() -> str:
     """The stored choice, only if it is ``"system"`` or an available language;
     anything else, a removed language's token included, is ``"system"``."""

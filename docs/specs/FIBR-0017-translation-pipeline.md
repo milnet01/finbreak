@@ -136,7 +136,9 @@ there is a single place that decides the direction.
 
 The picker is a combo in `SettingsDialog`, built like the theme combo. Its
 first entry is *System default (<detected language>)*, followed by one entry per
-available language, under its own name (`QLocale(lang).nativeLanguageName()`).
+available language, under its own name (`language_name`: English as "English",
+any other as `QLocale(lang).nativeLanguageName()`, which for `en` reads
+"American English").
 
 On save, `MainWindow._on_settings_saved` checks whether the token changed. If
 it did, it calls `save_language_pref` and then `LanguageController.apply`.
