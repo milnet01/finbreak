@@ -5410,6 +5410,15 @@ on the § 2 surface.
   with no stored preference — FIBR-0209 pins that (system locale, full
   `pt_BR` then bare `pt`, else English) and the silent-fallback rule.
   Fold FIBR-0209 in if this is specced first; otherwise ship it after.
+  Waiting-on: user (who writes the five non-English catalogs, and may
+  they ship before a native speaker has read them? Recommendation:
+  build the pipeline now (lupdate -> .ts -> lrelease -> .qm, QTranslator
+  at startup and on switch, FIBR-0129's picker, FIBR-0209's system-
+  language detection) with English only, then add AI-drafted catalogs
+  that are labelled "machine-translated, help us improve it" in the
+  picker, until a native speaker has reviewed each. Reason: a wrong word
+  for debit, credit, duplicate or transfer in a money app misleads, and
+  no one on the project reads Hindi or Arabic; 2026-11-15)
 
 - 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
   Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
