@@ -5583,6 +5583,12 @@ automatic forward migration, which § 2's carve-out says is not a break.
   their first reader. Log:
   docs/reviews/FIBR-0088-already-imported-check-loop-log.md. Next: TDD
   build from the spec.
+  2026-11-15: built test-first (9118dfe tests, 544b0fa code, 14569f2
+  docs), pushed. Gate green: 2747 passed, 4 skipped. Each invariant's
+  test was mutation-checked against its Breaks-when clause, except
+  INV-2's outside-the-transaction case. Still owed before ✅ (workflow.md
+  § 6): check-code and review-code on the FIBR-0088 diff
+  (9ae68a5..14569f2), then dispositions.
   **Layman:** When you import a statement finbreak has already seen, it tells you up front ('looks like you already imported this') instead of silently re-processing it.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
