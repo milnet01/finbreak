@@ -861,6 +861,20 @@ class BatchImportService:
                 )
 
     @staticmethod
+    def stop_on_error(files: Sequence[BatchFile], record: BatchFile | None) -> None:
+        """End a batch an unexpected error stopped before RUN: ``record`` (the
+        file in hand, where known) failed, and every other unsettled record is
+        ``not_attempted`` — the ones waiting on a question too, which will now
+        never be asked. ``already_imported`` keeps its own truer line."""
+        if record is not None:
+            record.outcome = "failed"
+            record.reason = STOPPED_BY_ERROR
+        for other in files:
+            if other.outcome not in _TERMINAL | {"already_imported"}:
+                other.outcome = "not_attempted"
+                other.reason = STOPPED_BY_ERROR
+
+    @staticmethod
     def stop_from(files: Sequence[BatchFile], index: int, reason: str) -> None:
         """Mark every record from ``index`` on as ``not_attempted`` — a cap
         stopping SCAN, or Cancel stopping either pass.

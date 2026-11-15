@@ -1376,6 +1376,93 @@ def test_FIBR0471_an_unexpected_error_in_a_rescan_ends_the_batch(
     assert all(r.outcome == "not_attempted" for r in files)
 
 
+def test_FIBR0471_a_blocked_row_in_a_stopped_batch_says_it_was_not_imported(
+    qtbot, service, monkeypatch
+):
+    """A stopped batch never asks again, so a row still reading "Locked — we'll
+    ask for the password" promises a prompt that will not come."""
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    files[1].outcome = "needs_password"
+    monkeypatch.setattr(widget._batch, "scan_step", _boom)
+    with pytest.raises(RuntimeError):
+        widget._scan_next()
+    _assert_stopped(widget, files)
+
+
+def test_FIBR0471_an_unexpected_error_answering_a_password_ends_the_batch(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    widget._batch_phase = "ask"
+    monkeypatch.setattr(widget._batch, "answer", _boom)
+    with pytest.raises(RuntimeError):
+        widget._on_batch_password(files[0], "pw", False)
+    _assert_stopped(widget, files)
+
+
+def test_FIBR0471_an_unexpected_error_answering_a_mapping_leaves_the_map_step(
+    qtbot, service, monkeypatch
+):
+    """The question is cleared before the answer runs, so a raise left the map
+    step showing with no batch question behind it: the next Next took the
+    single-file branch and offered the batch's file for import on its own."""
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    widget._batch_phase = "ask"
+    widget._batch_asking = files[0]
+    widget._goto_step(wizard_mod._STEP_MAP)
+    monkeypatch.setattr(widget._batch, "answer", _boom)
+    with pytest.raises(RuntimeError):
+        widget._answer_batch_mapping(_MAPPING)
+    _assert_stopped(widget, files)
+    assert widget._stack.currentIndex() == wizard_mod._STEP_BATCH
+
+
+def test_FIBR0471_an_unexpected_error_entering_review_ends_the_batch(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    for record in files:
+        record.outcome = "ready"
+    widget._batch_phase = "ask"
+    monkeypatch.setattr(widget._batch, "review", _boom)
+    with pytest.raises(RuntimeError):
+        widget._begin_ask()
+    assert widget._batch_phase == "report"
+    assert all(r.outcome == "not_attempted" for r in files)
+
+
+def test_FIBR0471_an_unexpected_error_queueing_the_next_turn_ends_the_batch(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    monkeypatch.setattr(widget._batch, "scan_step", lambda _files, i: i + 1)
+    monkeypatch.setattr(widget._batch, "take_pdf_read", _boom)
+    with pytest.raises(RuntimeError):
+        widget._scan_next()
+    _assert_stopped(widget, files)
+
+
+def test_FIBR0471_the_stopped_rows_line_is_one_translated_sentence(
+    qtbot, service, monkeypatch
+):
+    """It read "Couldn't read this file — Not imported — the batch stopped
+    after an unexpected error": a claim the error may not bear out, doubled up,
+    and the second half never translated."""
+    from finbreak.services.batch_import import STOPPED_BY_ERROR
+
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+    monkeypatch.setattr(review, "tr", lambda text: f"[T]{text}")
+    record = BatchFile(path="/tmp/a.pdf")
+    record.outcome, record.reason = "failed", STOPPED_BY_ERROR
+    assert review.report_line(record) == f"[T]{STOPPED_BY_ERROR}"
+
+
 def test_FIBR0407_counts_use_the_locales_digits(qapp):
     """design.md i18n: numbers go through QLocale. The batch table's counts were
     ``str(value)``, Western digits in every locale."""

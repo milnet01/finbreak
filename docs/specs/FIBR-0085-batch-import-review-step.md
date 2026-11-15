@@ -224,6 +224,7 @@ Per-file report lines, shown on the same table after the run. Every row is one
 | `skipped` | *Skipped — we couldn't unlock this file* (or *…no column mapping was set*) |
 | `not_attempted` (cancelled) | *Not imported — the batch was cancelled* |
 | `not_attempted` (cap) | *Not imported — the batch reached its size limit* |
+| `failed` or `not_attempted` (an unexpected error stopped the batch, at SCAN, ASK or RUN) | *Not imported — the batch stopped after an unexpected error* — the file in hand and every unsettled one, rows waiting on a question included |
 | `waiting` | *Waiting…* — before SCAN reaches the row |
 | `ready` | *Ready to import* |
 | `needs_password` | *Locked — we'll ask for the password* |

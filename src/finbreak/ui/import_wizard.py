@@ -1215,8 +1215,7 @@ class ImportWizardWidget(QWidget):
             self.done.emit()
             return
         record, self._batch_asking = self._batch_asking, None
-        self._batch.answer(self._batch_files, record, None)  # -> skipped
-        self._resume_ask()
+        self._answer(record, None)  # -> skipped
 
     def _mapping_from_form(self) -> ColumnMapping:
         style = self._amount_style.currentData()
@@ -1719,28 +1718,30 @@ class ImportWizardWidget(QWidget):
             self._batch_index = self._batch.scan_step(
                 self._batch_files, self._batch_index
             )
-        self._batch_review.refresh()
-        self._read_then(self._scan_next)
+            self._batch_review.refresh()
+            self._read_then(self._scan_next)
 
     @contextmanager
     def _stop_scan_on_error(self, record: BatchFile | None) -> Iterator[None]:
         """End the batch with the report when an error the scan's net does not
-        catch escapes — nothing is imported — then re-raise it for the crash
-        hook. Left to escape, the chain stopped with only Cancel left. RUN's
-        twin is in `_run_next`. No lock handler: the scan's net fails the file
-        on a ``VaultLockedError``, and a lock destroys the wizard between
-        turns (INV-7)."""
+        catch escapes a SCAN or ASK turn — nothing is imported — then re-raise
+        it for the crash hook. Left to escape, the chain stopped with only Cancel
+        left. RUN's twin is in `_run_next`. No lock handler: the scan's net fails
+        the file on a ``VaultLockedError``, and a lock destroys the wizard
+        between turns (INV-7)."""
         try:
             yield
         except Exception:
-            if record is not None:
-                record.outcome = "failed"
-                record.reason = STOPPED_BY_ERROR
-            self._batch.stop_from(self._batch_files, 0, STOPPED_BY_ERROR)
-            self._batch_phase = "report"
-            self._batch_read = None
-            self._batch.discard_passwords()
-            self._batch_review.finish()
+            if self._batch_phase != "report":  # an inner turn already stopped it
+                self._batch.stop_on_error(self._batch_files, record)
+                self._batch_phase = "report"
+                self._batch_asking = None
+                self._batch_read = None
+                self._batch.discard_passwords()
+                self._batch_review.finish()
+                # Off the map step: with no question behind it, its Next would
+                # offer the batch's file for import on its own.
+                self._goto_step(_STEP_BATCH)
             raise
 
     def _read_then(self, then: Callable[[], None]) -> None:
@@ -1768,8 +1769,8 @@ class ImportWizardWidget(QWidget):
             self._batch.settle_pdf_read(
                 record, cast(ParseResult | PdfTables | BaseException, result)
             )
-        self._batch_review.refresh()
-        self._read_then(then)
+            self._batch_review.refresh()
+            self._read_then(then)
 
     @Slot()
     def _begin_ask(self) -> None:
@@ -1783,13 +1784,15 @@ class ImportWizardWidget(QWidget):
         if self._batch_phase not in ("scan", "ask"):
             return
         self._batch_phase = "ask"
+        with self._stop_scan_on_error(None):
+            self._ask_turn()
+
+    def _ask_turn(self) -> None:
         # A reply may have queued other files a new password or profile might
         # unlock. Re-scan them one per turn BEFORE asking anything else, so a
         # same-password batch settles without a second prompt and the window
         # stays live between files (§ 4.4, § 4.7; FIBR-0407).
-        with self._stop_scan_on_error(None):
-            rescanned = self._batch.rescan_step(self._batch_files)
-        if rescanned:
+        if self._batch.rescan_step(self._batch_files):
             self._batch_review.refresh()
             self._read_then(self._begin_ask)
             return
@@ -1807,6 +1810,13 @@ class ImportWizardWidget(QWidget):
         else:
             self._ask_mapping(record)
 
+    def _answer(self, record: BatchFile, answer: str | ColumnMapping | None) -> None:
+        """Hand *answer* to the service — which may scan *record* again — then
+        queue the next question."""
+        with self._stop_scan_on_error(record):
+            self._batch.answer(self._batch_files, record, answer)
+            self._resume_ask()
+
     def _resume_ask(self) -> None:
         """Shared tail of every answered question: repaint, return to the table,
         and queue the next question on its own turn."""
@@ -1817,9 +1827,7 @@ class ImportWizardWidget(QWidget):
     def _ask_password(self, record: BatchFile) -> None:
         raised = self._batch_prompts.get(id(record), 0)
         if raised >= _MAX_PASSWORD_PROMPTS:
-            # -> skipped; the batch carries on
-            self._batch.answer(self._batch_files, record, None)
-            self._resume_ask()
+            self._answer(record, None)  # -> skipped; the batch carries on
             return
         self._batch_prompts[id(record)] = raised + 1
         # The file name, so a batch says WHICH file it is unlocking — but the
@@ -1851,9 +1859,7 @@ class ImportWizardWidget(QWidget):
         self, record: BatchFile, password: str | None, remember: bool
     ) -> None:
         record.remember_password = remember
-        # `None` declines -> skipped
-        self._batch.answer(self._batch_files, record, password)
-        self._resume_ask()
+        self._answer(record, password)  # `None` declines -> skipped
 
     def _ask_mapping(self, record: BatchFile) -> None:
         """Re-show the existing map step for one file (§ 4.1).
@@ -1864,8 +1870,7 @@ class ImportWizardWidget(QWidget):
         in a second widget would be the largest duplication in the codebase.
         """
         if record.source_text is None:  # defensive: SCAN sets it before asking
-            self._batch.answer(self._batch_files, record, None)
-            self._resume_ask()
+            self._answer(record, None)
             return
         self._batch_asking = record
         self._error.clear()
@@ -1905,9 +1910,10 @@ class ImportWizardWidget(QWidget):
 
     def _answer_batch_mapping(self, mapping: ColumnMapping) -> None:
         record, self._batch_asking = self._batch_asking, None
-        if record is not None:
-            self._batch.answer(self._batch_files, record, mapping)
-        self._resume_ask()
+        if record is None:
+            self._resume_ask()
+            return
+        self._answer(record, mapping)
 
     @Slot()
     def _on_batch_import(self) -> None:

@@ -358,14 +358,14 @@ class BatchReviewWidget(QWidget):
             return self._with_unreadable_rows(
                 self.tr("Already imported — nothing new in this file"), record
             )
-        if outcome == "failed":
+        if outcome == "failed" and record.reason != batch.STOPPED_BY_ERROR:
             template = (
                 self.tr("Couldn't import this file — {why}")
                 if record.preview is not None
                 else self.tr("Couldn't read this file — {why}")
             )
             return template.format(why=self._translated(record.reason))
-        if outcome in ("skipped", "not_attempted"):
+        if outcome in ("skipped", "not_attempted", "failed"):
             return self._translated(record.reason)
         return {
             "waiting": self.tr("Waiting…"),
@@ -378,7 +378,7 @@ class BatchReviewWidget(QWidget):
     def _translated(self, reason: str) -> str:
         """Translate a reason the SERVICE authored; pass anything else through.
 
-        `services/batch_import.py` is Qt-free by design (§ 4.1), so its six fixed
+        `services/batch_import.py` is Qt-free by design (§ 4.1), so its fixed
         report sentences cannot call `tr()` where they are written. They are
         translated here, at the one place they reach a screen. A reason that is
         NOT one of them is an exception's own message — dynamic text, untranslated
@@ -396,6 +396,9 @@ class BatchReviewWidget(QWidget):
             batch.UNDATED: self.tr("No dated transactions found in this file"),
             batch.SKIPPED_LOCKED: self.tr("Skipped — we couldn't unlock this file"),
             batch.SKIPPED_UNMAPPED: self.tr("Skipped — no column mapping was set"),
+            batch.STOPPED_BY_ERROR: self.tr(
+                "Not imported — the batch stopped after an unexpected error"
+            ),
         }.get(reason, reason)
 
     # -- setting an account ---------------------------------------------------
