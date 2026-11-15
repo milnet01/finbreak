@@ -7153,7 +7153,7 @@ work, and none of it is a release decision.
   3 skipped, mypy clean over 178 files. Do not re-investigate those two
   runs; re-run them once Actions is healthy.
 
-- 📋 [FIBR-0262] **`pytest tests/features/bundling/` alone aborts the interpreter.**
+- ✅ [FIBR-0262] **`pytest tests/features/bundling/` alone aborts the interpreter.**
   Pre-existing (reproduced on baf48b8, before the FIBR-0261 fix), found
   while running that directory on its own. The three `..._selftest_fail_...`
   tests monkeypatch `_check_qt` to a no-op, so no `QApplication` is
@@ -7165,6 +7165,8 @@ work, and none of it is a release decision.
   Fix: patch `_check_icons` alongside `_check_qt` in those tests, or give
   them the shared `qapp` fixture, so they stop depending on global state
   another test happens to leave behind.
+  Duplicate of FIBR-0205; both fixed by FIBR-0325 in 327a06f. Checked
+  2026-11-15: the directory alone passes (26 passed, 1 skipped).
   **Layman:** One folder of tests crashes if you run just that folder; run the whole suite and it passes, which is why nobody noticed.
   Kind: test.
   Source: in-session-2026-08-11.
@@ -7619,7 +7621,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).
 
-- 📋 [FIBR-0205] **tests/features/bundling cannot be run on its own — it SIGABRTs with a coredump.**
+- ✅ [FIBR-0205] **tests/features/bundling cannot be run on its own — it SIGABRTs with a coredump.**
   Found while running a subset of the suite during the v0.1.19 bump.
   `pytest tests/features/bundling` aborts the interpreter — SIGABRT,
   `Fatal Python error: Aborted`, a 12 MB coredump per run. The whole suite
@@ -7663,6 +7665,10 @@ work, and none of it is a release decision.
   renderers are incidental), or take pytest-qt's `qapp` fixture so the
   QApplication is created explicitly rather than inherited. Prefer the
   stub — it makes the test's stated independence true.
+  Fixed by FIBR-0325 in 327a06f (every run_self_test leg takes
+  pytest-qt's qapp), not flipped then. Checked 2026-11-15: `pytest
+  tests/features/bundling/` alone, 26 passed, 1 skipped, exit 0.
+  FIBR-0262 is the same defect.
   **Layman:** One test file crashes hard unless other tests run first, so you can't run it by itself.
   Kind: test.
   Source: in-session-2026-08-02 v0.1.19 release.
