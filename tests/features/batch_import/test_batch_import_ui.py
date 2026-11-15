@@ -1317,6 +1317,65 @@ def test_FIBR0407_an_unexpected_error_mid_run_ends_the_chain(
     assert files[1].outcome == "not_attempted"
 
 
+def _scanning(widget) -> list[BatchFile]:
+    files = [BatchFile(path="/tmp/a.pdf"), BatchFile(path="/tmp/b.pdf")]
+    widget._batch_files = files
+    widget._batch_review.set_files(files)
+    widget._batch_phase = "scan"
+    widget._batch_index = 0
+    return files
+
+
+def _boom(*_args):
+    raise RuntimeError("a bug")
+
+
+def _assert_stopped(widget, files) -> None:
+    assert widget._batch_phase == "report"
+    assert files[0].outcome == "failed"
+    assert files[1].outcome == "not_attempted"
+    assert not widget._batch_review._close_button.isHidden()  # the report's way out
+
+
+def test_FIBR0471_an_unexpected_error_mid_scan_ends_the_batch(
+    qtbot, service, monkeypatch
+):
+    """An error outside the scan's net escaped `_scan_next`: the chain stopped,
+    rows sat at *Waiting…* and only Cancel was left. It now ends with the
+    report, imports nothing, and re-raises for the crash hook."""
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    monkeypatch.setattr(widget._batch, "scan_step", _boom)
+    with pytest.raises(RuntimeError):
+        widget._scan_next()
+    _assert_stopped(widget, files)
+
+
+def test_FIBR0471_an_unexpected_error_settling_a_pdf_read_ends_the_batch(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    widget._batch_reading, widget._batch_then = files[0], widget._scan_next
+    monkeypatch.setattr(widget._batch, "settle_pdf_read", _boom)
+    with pytest.raises(RuntimeError):
+        widget._on_batch_read(object())
+    _assert_stopped(widget, files)
+
+
+def test_FIBR0471_an_unexpected_error_in_a_rescan_ends_the_batch(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    files = _scanning(widget)
+    files[0].outcome = "waiting"  # what rescan_step leaves on the file it scans
+    monkeypatch.setattr(widget._batch, "rescan_step", _boom)
+    with pytest.raises(RuntimeError):
+        widget._begin_ask()
+    assert widget._batch_phase == "report"
+    assert all(r.outcome == "not_attempted" for r in files)
+
+
 def test_FIBR0407_counts_use_the_locales_digits(qapp):
     """design.md i18n: numbers go through QLocale. The batch table's counts were
     ``str(value)``, Western digits in every locale."""

@@ -18,7 +18,8 @@ Next and Cancel are batch-aware rather than wired straight through.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -1714,9 +1715,33 @@ class ImportWizardWidget(QWidget):
         if self._batch_index >= len(self._batch_files):
             self._begin_ask()
             return
-        self._batch_index = self._batch.scan_step(self._batch_files, self._batch_index)
+        with self._stop_scan_on_error(self._batch_files[self._batch_index]):
+            self._batch_index = self._batch.scan_step(
+                self._batch_files, self._batch_index
+            )
         self._batch_review.refresh()
         self._read_then(self._scan_next)
+
+    @contextmanager
+    def _stop_scan_on_error(self, record: BatchFile | None) -> Iterator[None]:
+        """End the batch with the report when an error the scan's net does not
+        catch escapes — nothing is imported — then re-raise it for the crash
+        hook. Left to escape, the chain stopped with only Cancel left. RUN's
+        twin is in `_run_next`. No lock handler: the scan's net fails the file
+        on a ``VaultLockedError``, and a lock destroys the wizard between
+        turns (INV-7)."""
+        try:
+            yield
+        except Exception:
+            if record is not None:
+                record.outcome = "failed"
+                record.reason = STOPPED_BY_ERROR
+            self._batch.stop_from(self._batch_files, 0, STOPPED_BY_ERROR)
+            self._batch_phase = "report"
+            self._batch_read = None
+            self._batch.discard_passwords()
+            self._batch_review.finish()
+            raise
 
     def _read_then(self, then: Callable[[], None]) -> None:
         """Queue *then* as the chain's next turn — once the PDF the last turn
@@ -1739,12 +1764,10 @@ class ImportWizardWidget(QWidget):
         self._batch_read = self._batch_reading = self._batch_then = None
         if record is None or then is None:
             return  # unreachable: `_read_then` sets all three together
-        try:
+        with self._stop_scan_on_error(record):
             self._batch.settle_pdf_read(
                 record, cast(ParseResult | PdfTables | BaseException, result)
             )
-        except VaultLockedError:
-            return  # auto-lock fired between turns — the shell takes over
         self._batch_review.refresh()
         self._read_then(then)
 
@@ -1764,10 +1787,8 @@ class ImportWizardWidget(QWidget):
         # unlock. Re-scan them one per turn BEFORE asking anything else, so a
         # same-password batch settles without a second prompt and the window
         # stays live between files (§ 4.4, § 4.7; FIBR-0407).
-        try:
+        with self._stop_scan_on_error(None):
             rescanned = self._batch.rescan_step(self._batch_files)
-        except VaultLockedError:
-            return  # auto-lock fired between turns — the shell takes over
         if rescanned:
             self._batch_review.refresh()
             self._read_then(self._begin_ask)
