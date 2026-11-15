@@ -1,8 +1,9 @@
 """FIBR-0088 — warn before importing a file that was already imported.
 
-Enforces docs/specs/FIBR-0088-already-imported-check.md INV-1 to INV-8 and
-INV-10; INV-9 is ``test_migration_v17.py`` beside this file, and INV-11 is the
-batch suite's ``test_INV10_already_imported_is_recomputed_both_ways``.
+Enforces docs/specs/FIBR-0088-already-imported-check.md INV-1 to INV-8,
+INV-10 and INV-12 to INV-14; INV-9 is ``test_migration_v17.py`` beside this
+file, and INV-11 is the batch suite's
+``test_INV10_already_imported_is_recomputed_both_ways``.
 
 The wizard legs drive a real ``ImportWizardWidget`` under ``qtbot``; the batch
 legs walk ``BatchImportService`` the way the batch suite's headless drivers do.
@@ -533,3 +534,91 @@ def test_INV10_fingerprint_is_never_logged(qtbot, service, tmp_path, caplog) -> 
     assert caplog.records, "nothing was logged, so nothing was checked"
     for record in caplog.records:
         assert sha not in record.getMessage(), record.name
+
+
+# --------------------------------------------------------------------------- #
+# INV-12 — a partly imported multi-statement OFX says how many were imported
+# --------------------------------------------------------------------------- #
+def test_INV12_partly_imported_ofx_says_how_many(qtbot, service, tmp_path) -> None:
+    acct = _acct(service)
+    path = _write(tmp_path, "two.ofx", _ofx_bytes(_OFX_JAN, _OFX_FEB))
+    _wizard_import(qtbot, service, acct, path)  # the first statement only
+
+    widget = _wizard(qtbot, service, acct)
+    _pick(qtbot, widget, path)
+    box = _question(widget)
+    assert box is not None, "no already-imported question"
+    assert "1 of the 2 statements" in box.text(), box.text()
+
+    # Import the second statement too; the file is then wholly in.
+    _click(box, "Import again")
+    widget._ofx_statement_combo.setCurrentIndex(1)
+    assert widget._stack.currentIndex() == _STEP_PREVIEW, widget._error.text()
+    with qtbot.waitSignal(widget.done, timeout=5_000):
+        widget._import_button.click()
+
+    widget = _wizard(qtbot, service, acct)
+    _pick(qtbot, widget, path)
+    box = _question(widget)
+    assert box is not None, "no already-imported question"
+    assert "You already imported this file on" in box.text(), box.text()
+    assert "of the 2 statements" not in box.text(), box.text()
+
+
+# --------------------------------------------------------------------------- #
+# INV-13 — "latest" is the order of imports, not of clock readings
+# --------------------------------------------------------------------------- #
+def test_INV13_latest_survives_a_clock_set_back(
+    qtbot, service, tmp_path, monkeypatch
+) -> None:
+    accounts = AccountService(service.vault)
+    alpha = accounts.add_account("Alpha cheque", AccountType.CURRENT.value).id
+    bravo = accounts.add_account("Bravo savings", AccountType.SAVINGS.value).id
+    path = _write(tmp_path, "a.csv", _csv_bytes(_ROWS))
+    sha = _sha(path)
+
+    # The clock is set back between the two imports: Bravo's is the later
+    # import but carries the earlier stamp.
+    stamps = iter(
+        [
+            datetime(2026, 3, 1, 9, 0, tzinfo=UTC),
+            datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+        ]
+    )
+
+    class _Clock:
+        @staticmethod
+        def now(tz=None):
+            return next(stamps)
+
+    monkeypatch.setattr("finbreak.repositories.imported_files.datetime", _Clock)
+    _service_import(service, alpha, path, sha)
+    _service_import(service, bravo, path, sha)
+
+    widget = _wizard(qtbot, service, alpha)
+    _pick(qtbot, widget, path)
+    box = _question(widget)
+    assert box is not None, "no already-imported question"
+    assert "Bravo savings" in box.text() and "Alpha cheque" not in box.text(), (
+        box.text()
+    )
+
+
+# --------------------------------------------------------------------------- #
+# INV-14 — the wizard routes a file by the bytes it read, not by the disk
+# --------------------------------------------------------------------------- #
+def test_INV14_format_is_sniffed_from_the_held_bytes(qtbot, service, tmp_path) -> None:
+    acct = _acct(service)
+    # A .txt extension, so only a content sniff can tell it is OFX.
+    path = _write(tmp_path, "statement.txt", _ofx_bytes(_OFX_JAN))
+    _wizard_import(qtbot, service, acct, path)
+
+    widget = _wizard(qtbot, service, acct)
+    _pick(qtbot, widget, path)
+    box = _question(widget)
+    assert box is not None, "no already-imported question"
+    path.unlink()  # gone from disk while the question waits
+    _click(box, "Import again")
+
+    assert widget._ofx_statements, "the held bytes were not routed as OFX"
+    assert widget._stack.currentIndex() == _STEP_PREVIEW, widget._error.text()

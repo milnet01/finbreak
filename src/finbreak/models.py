@@ -251,12 +251,14 @@ class PriorImport:
     """The most recent earlier import of one file (FIBR-0088): the account and
     period it went into, read at query time so a renamed account shows its
     current name. ``period_*`` are ISO dates; ``imported_at`` is the UTC
-    timestamp of this file's latest import."""
+    timestamp of this file's latest import; ``statement_count`` is how many
+    statements the file was imported into."""
 
     account_name: str
     period_start: str
     period_end: str
     imported_at: str
+    statement_count: int
 
 
 @dataclass

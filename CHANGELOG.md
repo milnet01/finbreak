@@ -31,9 +31,10 @@ signaling per
 - **A warning when you pick a statement file you've already imported**
   (FIBR-0088). finbreak says when you imported it, into which account and
   for which period, and asks whether to import it again — before it reads
-  the file or asks for a PDF's password. Importing it again adds nothing you
-  already have. A renamed copy is still recognised; files imported before
-  this version are not.
+  the file or asks for a PDF's password. For an OFX file holding several
+  accounts' statements, it says how many of them you have imported so far.
+  Importing it again adds nothing you already have. A renamed copy is still
+  recognised; files imported before this version are not.
 
 ### Changed
 

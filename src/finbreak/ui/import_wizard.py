@@ -566,7 +566,8 @@ class ImportWizardWidget(QWidget):
         """Read the picked file once and, if those exact bytes were imported
         before, ask whether to import it again — before any parse, mapping step
         or password prompt (FIBR-0088). Otherwise, or on Import again, load it
-        (``_load_source``)."""
+        (``_load_source``). An OFX file with a match is parsed first, once, to
+        count its statements (INV-12); the parse is reused."""
         self._error.clear()
         self._source_path = path
         self._source_sha256 = None
@@ -580,44 +581,71 @@ class ImportWizardWidget(QWidget):
         prior = self._imports.prior_import(source.sha256)
         if prior is None:
             self._load_source(path, source.data)
-        else:
-            self._ask_import_again(prior, path, source.data)
+            return
+        statements = None
+        if looks_like_ofx(path, source.data):
+            try:
+                statements = OfxImporter().parse(source.data, self._exponent)
+            except (ValueError, OSError, FinbreakError):
+                statements = None  # Import again shows the parse error, as today
+        self._ask_import_again(prior, path, source.data, statements)
 
-    def _ask_import_again(self, prior: PriorImport, path: str, data: bytes) -> None:
+    def _ask_import_again(
+        self,
+        prior: PriorImport,
+        path: str,
+        data: bytes,
+        statements: list[tuple[OfxAccountInfo, ParseResult]] | None,
+    ) -> None:
         """Say when and where this file was imported before, and ask whether to
-        import it again. Cancel is the default and the Escape button."""
+        import it again. A multi-statement OFX imported only in part says how
+        many of its statements were imported. Cancel is the default and the
+        Escape button."""
         prefs = self._datetime_prefs
+        fields = {
+            "imported": format_timestamp(
+                prior.imported_at,
+                prefs.timezone,
+                prefs.date_format,
+                prefs.time_format,
+            ),
+            "account": prior.account_name,
+            "start": format_date(prior.period_start, prefs.date_format),
+            "end": format_date(prior.period_end, prefs.date_format),
+        }
+        if statements is not None and len(statements) > prior.statement_count:
+            text = self.tr(
+                "You already imported {count} of the {total} statements in this "
+                "file, most recently on {imported}, into {account}, for {start} – "
+                "{end}. Import from it again? Transactions already in finbreak "
+                "are skipped either way."
+            ).format(count=prior.statement_count, total=len(statements), **fields)
+        else:
+            text = self.tr(
+                "You already imported this file on {imported}, into {account}, for "
+                "{start} – {end}. Import it again? Transactions already in "
+                "finbreak are skipped either way."
+            ).format(**fields)
         box = QMessageBox(self)
         box.setObjectName("already_imported_check")
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle(self.tr("Already imported"))
-        box.setText(
-            self.tr(
-                "You already imported this file on {imported}, into {account}, for "
-                "{start} – {end}. Import it again? Transactions already in "
-                "finbreak are skipped either way."
-            ).format(
-                imported=format_timestamp(
-                    prior.imported_at,
-                    prefs.timezone,
-                    prefs.date_format,
-                    prefs.time_format,
-                ),
-                account=prior.account_name,
-                start=format_date(prior.period_start, prefs.date_format),
-                end=format_date(prior.period_end, prefs.date_format),
-            )
-        )
+        box.setText(text)
         box.addButton(self.tr("Import again"), QMessageBox.ButtonRole.AcceptRole)
         cancel = box.addButton(self.tr("Cancel"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(cancel)
         box.setEscapeButton(cancel)
         box.rejected.connect(self._forget_source)
-        show_modal(box, lambda: self._on_import_again(path, data))
+        show_modal(box, lambda: self._on_import_again(path, data, statements))
 
-    def _on_import_again(self, path: str, data: bytes) -> None:
+    def _on_import_again(
+        self,
+        path: str,
+        data: bytes,
+        statements: list[tuple[OfxAccountInfo, ParseResult]] | None,
+    ) -> None:
         try:
-            self._load_source(path, data)
+            self._load_source(path, data, statements)
         except VaultLockedError:
             return  # auto-lock fired — silent, like the other handlers
 
@@ -627,7 +655,12 @@ class ImportWizardWidget(QWidget):
         self._source_sha256 = None
         self._preview = None
 
-    def _load_source(self, path: str, data: bytes) -> None:
+    def _load_source(
+        self,
+        path: str,
+        data: bytes,
+        statements: list[tuple[OfxAccountInfo, ParseResult]] | None = None,
+    ) -> None:
         """Load the picked file's bytes and route by format. **OFX** (FIBR-0008 D10):
         parse and jump straight to the preview, **skipping** the mapping step
         (self-describing). **PDF** (FIBR-0009): extract candidate tables (locked
@@ -671,10 +704,12 @@ class ImportWizardWidget(QWidget):
             with QSignalBlocker(combo):
                 combo.clear()
             combo.hide()
-        if looks_like_ofx(path):
-            self._select_ofx(data)
+        # Sniffed from the held bytes, never the disk: the file may have changed
+        # while the already-imported question waited (FIBR-0088 INV-14).
+        if looks_like_ofx(path, data):
+            self._select_ofx(data, statements)
             return
-        if looks_like_pdf(path):
+        if looks_like_pdf(path, data):
             self._begin_decrypt(data)
             return
         # Past both sniffs is the CSV path, which always maps.
@@ -719,16 +754,21 @@ class ImportWizardWidget(QWidget):
             self._error.setText(str(exc))
             return
 
-    def _select_ofx(self, data: bytes) -> None:
-        """Parse the OFX file's bytes, populate the statement chooser (shown only
-        for a multi-account file, D8), and preview the first statement. A
-        malformed / statement-less file surfaces its friendly ``ValueError`` as a
-        shown message (INV-4)."""
-        try:
-            statements = OfxImporter().parse(data, self._exponent)
-        except (ValueError, OSError, FinbreakError) as exc:
-            self._error.setText(str(exc))
-            return
+    def _select_ofx(
+        self,
+        data: bytes,
+        statements: list[tuple[OfxAccountInfo, ParseResult]] | None = None,
+    ) -> None:
+        """Parse the OFX file's bytes (unless ``_select_file`` already did),
+        populate the statement chooser (shown only for a multi-account file, D8),
+        and preview the first statement. A malformed / statement-less file
+        surfaces its friendly ``ValueError`` as a shown message (INV-4)."""
+        if statements is None:
+            try:
+                statements = OfxImporter().parse(data, self._exponent)
+            except (ValueError, OSError, FinbreakError) as exc:
+                self._error.setText(str(exc))
+                return
         # Single reassignment displaces any prior file's list (the "reset").
         self._ofx_statements = statements
         combo = self._ofx_statement_combo
