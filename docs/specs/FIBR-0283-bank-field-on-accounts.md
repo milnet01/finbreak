@@ -130,7 +130,7 @@ Sites switched from `account.name` to `account_label(account)`:
 
 | Site | What it labels |
 |---|---|
-| `ui/account_picker.py::AccountPickerDialog.__init__` | the combo items |
+| `ui/account_picker.py::AccountPickerDialog.__init__` | the combo items, in the batch import and in the Statements tab's *Change account* |
 | `ui/import_wizard.py::_fill_account_combo` | the pick step's and preview's combos |
 | `ui/import_wizard.py`, the `addItem` after a Create | the new account's item |
 | `ui/import_batch.py`, the `_account_names` map | the review table's Account cell |
@@ -221,8 +221,9 @@ values. Nothing here adds one, and security-model INV-9 still holds.
 
 - **INV-5** — `update_account` sets and clears the bank, and a call that omits
   `bank` raises `TypeError` rather than leaving or erasing the stored value.
-  *Test:* update to `"Nedbank"`, then to `None`, reading each back; then call
-  without `bank` under `pytest.raises(TypeError)`.
+  *Test:* update to `"Nedbank"`, then to `None`, reading each back. Then call
+  `update_account` without `bank`, and `AccountRepository.update` with five
+  arguments, each under `pytest.raises(TypeError)`.
   *Breaks when:* `bank` is given a default on `update_account` or on
   `AccountRepository.update`.
 
@@ -301,8 +302,8 @@ values. Nothing here adds one, and security-model INV-9 still holds.
 ## 7. Tests
 
 Each INV's test is named in § 5. Write each first and see it fail against the
-unchanged code, except INV-9, which guards behaviour that already holds and is
-run green.
+unchanged code, except INV-9. It guards escaping that already holds, so it is
+written once `account_label` exists and passes on its first run.
 
 - INV-1, INV-2: `tests/features/accounts/test_migration_v18.py`.
 - INV-3, INV-4, INV-5, INV-6, INV-10, INV-11: `tests/features/accounts/test_accounts.py`.
@@ -326,6 +327,9 @@ run green.
   measured).
 - `tests/features/loan_sign/test_migration_v16.py::_back_to_v15`: drop
   `accounts.bank` for the same reason.
+- A test that walks a vault to the latest version and asserts the exact
+  `accounts` column set: its expected set gains `bank`.
+  `grep -rn '_cols(conn, "accounts") ==' tests` finds each one.
 - Every `update_account(` caller gains `bank=`. Counted by `grep -rn
   "update_account(" src tests --include=*.py`: one in `ui/accounts.py`, seven
   in `tests/features/accounts/test_accounts.py`, and one in
@@ -358,8 +362,8 @@ run green.
   FIBR-0284.
 - **Showing the bank on the other surfaces that name an account**: the Home
   account filter, manual entry, the Transactions and Transfers views,
-  Statements, Forecast, the export dialog's account checkboxes and the PDF
-  transaction table's Account cell. Deferred; not yet queued.
+  the Statements table, Forecast, the export dialog's account checkboxes and
+  the PDF transaction table's Account cell. Deferred; not yet queued.
 - **Importers for other banks.** Tracked by FIBR-0074.
 
 ## 10. What checks this
