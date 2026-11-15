@@ -22,6 +22,12 @@ FIBR-0311), whatever the quotes::
 
     f"<h2>{self.tr('text')}</h2>"               -> DROPPED
 
+and so is any argument passed by keyword, literal or not (measured
+2026-11-15, FIBR-0348), so a call short of positional arguments fails::
+
+    self.tr(text="text")                        -> DROPPED
+    QCoreApplication.translate("Ctx", sourceText="text") -> DROPPED
+
 An AST walk rather than a ``pyside6-lupdate`` run: the rule is about the shape
 of the call, the walk needs no tool on PATH, and it names the offending line
 instead of reporting an absence from a catalog.
@@ -73,9 +79,15 @@ def _offences(path: Path) -> list[str]:
         if id(node) in in_fstring:
             found.append(f"{path.name}:{node.lineno}: {name}() inside an f-string")
             continue
+        # lupdate reads POSITIONAL arguments only, so a call passing one by
+        # keyword extracts nothing even with a literal (FIBR-0348).
+        if len(node.args) <= max(wanted):
+            found.append(
+                f"{path.name}:{node.lineno}: {name}() has too few positional "
+                f"arguments for lupdate ({len(node.args)} of {max(wanted) + 1})"
+            )
+            continue
         for index in wanted:
-            if index >= len(node.args):
-                continue
             if not _is_literal_str(node.args[index]):
                 found.append(
                     f"{path.name}:{node.lineno}: "
@@ -113,14 +125,19 @@ def test_the_walk_actually_sees_a_planted_offence(tmp_path: Path) -> None:
         "        self.tr(f'{MSG} interpolated')\n"
         "    def d(self):\n"
         "        return f'<h2>{self.tr(\"literal\")}</h2>'\n"
+        "    def e(self):\n"
+        "        QCoreApplication.translate('Ctx', sourceText=MSG)\n"
+        "        QCoreApplication.translate(context=CTX, sourceText=MSG)\n"
+        "        self.tr(text=MSG)\n"
+        "        self.tr(text='a literal')\n"  # lupdate reads no keyword either
         "    def ok(self):\n"
         "        self.tr('a literal')\n"
         "        QCoreApplication.translate('Ctx', 'a literal')\n",
         encoding="utf-8",
     )
     lines = _offences(planted)
-    assert len(lines) == 4, (
-        "the walk must catch all four dropped shapes and neither of the two "
+    assert len(lines) == 8, (
+        "the walk must catch all eight dropped shapes and neither of the two "
         "good ones, or a green run above proves nothing.\n"
-        f"  expected: 4 offences\n  actual:   {len(lines)} -- {lines}"
+        f"  expected: 8 offences\n  actual:   {len(lines)} -- {lines}"
     )
