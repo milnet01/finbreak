@@ -5396,7 +5396,7 @@ translation pipeline, the bundled locales and the language switcher. Each item
 here is new user-visible capability under versioning.md § 3.2 and breaks nothing
 on the § 2 surface.
 
-- 📋 [FIBR-0017] **P12: multi-language UI (i18n) — 6 bundled locales incl. RTL + language switcher.**
+- 🚧 [FIBR-0017] **P12: multi-language UI (i18n) — 6 bundled locales incl. RTL + language switcher.**
   Qt translation pipeline: every user-facing string is wrapped in `tr()` from the first UI onward (P02), `lupdate` extracts them to `.ts` catalogs, translations are compiled to `.qm` and loaded via `QTranslator` at startup and on live switch. Ships **6 locales**: English (base), Spanish, Simplified Chinese, Hindi, French, and **Arabic** (right-to-left). A language picker in the FIBR-0014 Settings screen switches locale. Numbers, currency, and dates render through `QLocale` (matters for a finance app — ties into the base-currency display), not hardcoded formats. The UI is built **RTL-ready** (layout mirroring) from P02 per design.md "Internationalization (i18n) & localisation", so Arabic is translate-and-ship; further RTL scripts (Hebrew, Urdu) are then a translation-only follow-up. NOTE: this stays cheap only if the string-externalization and RTL-safe-layout conventions are followed from P02 — retrofitting hardcoded English (and left-to-right-only layouts) across the whole feature stack is far more expensive. Dependencies: FIBR-0014 (settings screen hosts the switcher; transitively pulls the feature-complete UI so all strings exist to translate).
   **Layman:** Lets people use finbreak in their own language — ships in 6 languages to start (including Arabic, which reads right-to-left), with more addable later.
   Kind: implement.
@@ -5419,6 +5419,12 @@ on the § 2 surface.
   picker, until a native speaker has reviewed each. Reason: a wrong word
   for debit, credit, duplicate or transfer in a money app misleads, and
   no one on the project reads Hindi or Arabic; 2026-11-15)
+  Spec (2026-11-15): docs/specs/FIBR-0017-translation-pipeline.md,
+  accepted, commit d9d2c88. It covers the pipeline half only, in English,
+  and builds FIBR-0129 and FIBR-0209 against their bullets. A language
+  switch rebuilds the window, replacing coding.md 5.2's per-widget
+  changeEvent rule. The non-English catalogs still wait on the
+  Waiting-on above.
 
 - 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
   Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
@@ -5433,6 +5439,10 @@ on the § 2 surface.
   explicit pick is what overrides detection. Same shape as the timezone
   / date / time combos (`DATETIME_SYSTEM`, `ui/_datetime_prefs.py`),
   which this dialog already hosts.
+  Built by FIBR-0017 (2026-11-15). The key lives in the window INI,
+  beside the theme preference, so the unlock screen can read it before
+  the vault opens. See docs/specs/FIBR-0017-translation-pipeline.md 4.2
+  and 4.4.
 
 - 📋 [FIBR-0209] **Launch in the system language automatically, falling back to English.**
   User request 2026-08-03. On startup, detect the operating system's
@@ -5469,6 +5479,8 @@ on the § 2 surface.
   catalogs must exist before there is anything to detect INTO) and
   FIBR-0129 (owns the `language` settings key this reads). Ship after
   both, or fold into FIBR-0017 if that is specced first.
+  Built by FIBR-0017 (2026-11-15). The resolution order is pinned as
+  INV-1 of docs/specs/FIBR-0017-translation-pipeline.md.
   **Layman:** finbreak should open in whatever language your computer is set to, without you having to pick it. If it does not know your language, or does not have a translation for it yet, it opens in English.
   Kind: feature.
   Source: user-request-2026-08-03.
