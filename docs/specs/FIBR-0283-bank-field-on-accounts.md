@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # FIBR-0283 — Record which bank each account is at
 
-**Status:** spec draft (2026-11-15).
+**Status:** accepted (2026-11-15).
 **Kind:** implement.
 **Source:** ROADMAP FIBR-0283 (user-request-2026-08-19, a real vault of six
 accounts at one bank and one at another).
@@ -272,7 +272,8 @@ values. Nothing here adds one, and security-model INV-9 still holds.
   *Test:* write a five-column `saveState` (column 1 width changed) under
   `columns/accounts_table` in the test INI, build the screen, and assert
   column 1's width and `visualIndex(5) == 5`. On a fresh INI, assert
-  `visualIndex(5) == 1`.
+  `visualIndex(5) == 1`, and again after `reset_columns(screen)`. Both legs
+  assert `horizontalHeaderItem(5).text() == "Bank"`.
   *Breaks when:* Bank is inserted at logical 1, so Type's saved width lands on
   Bank, or `moveSection` runs after `remember_columns`, so Reset layout does
   not return Bank to second place.
