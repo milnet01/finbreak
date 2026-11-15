@@ -72,7 +72,7 @@ CREATE TABLE imported_files(
     statement_period_id INTEGER NOT NULL
         REFERENCES statement_periods(id) ON DELETE CASCADE,
     file_sha256 TEXT NOT NULL,          -- 64 lowercase hex characters
-    imported_at TEXT NOT NULL,          -- UTC ISO-8601, this file's import
+    imported_at TEXT NOT NULL,          -- UTC ISO-8601, latest import here
     UNIQUE(statement_period_id, file_sha256)
 );
 CREATE INDEX idx_imported_files_sha256 ON imported_files(file_sha256);
@@ -91,12 +91,14 @@ class PriorImport:            # models.py
     account_name: str
     period_start: str         # ISO date
     period_end: str           # ISO date
-    imported_at: str          # UTC ISO timestamp of THIS file's import
+    imported_at: str          # UTC ISO timestamp of THIS file's latest import
 
 class ImportedFileRepository:
     def add(self, statement_period_id: int, file_sha256: str) -> None:
-        """INSERT OR IGNORE, stamping imported_at. Commit-free: the
-        caller's import transaction owns the commit."""
+        """INSERT, stamping imported_at; on a (statement_period_id,
+        file_sha256) conflict, UPDATE imported_at instead, so a repeat
+        import is the latest. Commit-free: the caller's import
+        transaction owns the commit."""
     def latest(self, file_sha256: str) -> PriorImport | None:
         """JOIN statement_periods and accounts; ORDER BY
         imported_files.imported_at DESC, imported_files.id DESC; LIMIT 1."""
@@ -138,9 +140,9 @@ def commit_import(self, preview, period_start, period_end, source_filename,
   format. `_select_ofx` and `_select_pdf` take the bytes instead of reading
   again; the CSV branch decodes them with `decode_csv`. The wizard keeps
   `source.sha256` for the commit. **The bytes hashed are the bytes parsed.**
-- Immediately after the read, `prior_import(sha256)`. On a match, a modal
-  question (the wizard's existing `QMessageBox` use) reads, through
-  `self.tr`:
+- Immediately after the read, `prior_import(sha256)`. On a match, a parented
+  `QMessageBox`, shown with `show_modal` (FIBR-0065 D1) as the wizard's PDF
+  password prompt is, reads through `self.tr`:
 
   > You already imported this file on {imported}, into {account}, for
   > {start} – {end}. Import it again? Transactions already in finbreak are
@@ -148,7 +150,8 @@ def commit_import(self, preview, period_start, period_end, source_filename,
 
   Buttons **Import again** and **Cancel**; Cancel is the default and the
   Escape button. Cancel leaves the wizard on the pick step with no file
-  selected and nothing written. Import again continues exactly as today.
+  selected and nothing written. Import again continues exactly as today, from
+  the dialog's `on_accept`.
 - Dates use the user's display settings: `format_timestamp` for
   `{imported}`, `format_date` for the period. The wizard takes
   `datetime_prefs` the way it already takes `amount_prefs`, and
@@ -158,7 +161,8 @@ def commit_import(self, preview, period_start, period_end, source_filename,
 ### 4.5 Batch — `services/batch_import.py`
 
 `BatchFile` gains `source_sha256: str | None`, set at SCAN from
-`read_source` (the CSV branch decodes with `decode_csv`). `_commit` passes it
+`read_source` (the CSV branch decodes with `decode_csv`). Each extra record an
+OFX fan-out creates carries its file's `source_sha256` too. `_commit` passes it
 to `commit_import`. No outcome, reason string or review rule changes.
 
 ## 5. Invariants
@@ -166,8 +170,8 @@ to `commit_import`. No outcome, reason string or review rule changes.
 - **INV-1** — The fingerprint recorded for an import is the SHA-256 of the
   file's bytes on disk, for every format, including a password-locked PDF.
   *Test:* `tests/features/already_imported/test_already_imported.py::test_INV1_fingerprint_is_the_raw_file_bytes`
-  — import a CSV, an OFX and a locked PDF fixture through `ImportService`,
-  then compare each `imported_files.file_sha256` with
+  — import a CSV, an OFX and a locked PDF fixture through the wizard and
+  through `BatchImportService`, then compare each `imported_files.file_sha256` with
   `hashlib.sha256(path.read_bytes()).hexdigest()`.
   *Breaks when:* the hash is taken of the decoded CSV text or of the decrypted
   PDF plaintext — the locked PDF's case fails.
@@ -175,9 +179,9 @@ to `commit_import`. No outcome, reason string or review rule changes.
 - **INV-2** — A `commit_import` given `source_sha256` records it in the same
   transaction as the rows, on a new span and on a reused span with zero new
   rows; a commit that rolls back records nothing.
-  *Test:* `test_INV2_fingerprint_is_recorded_with_the_commit` — import a file
-  twice (the second inserts nothing) under two different filenames that share
-  a span, and assert one row per distinct file; then make `add_batch` raise
+  *Test:* `test_INV2_fingerprint_is_recorded_with_the_commit` — import a file,
+  then a second file with different bytes but the same rows and span (it
+  inserts nothing), and assert two rows on the one period; then make `add_batch` raise
   and assert no `imported_files` row was written.
   *Breaks when:* the fingerprint is written only when `period_recorded` is
   true, or outside `owned_transaction`.
@@ -220,15 +224,17 @@ to `commit_import`. No outcome, reason string or review rule changes.
 - **INV-8** — The question names the most recent prior import's account,
   period and date, formatted with the user's display settings.
   *Test:* `test_INV8_question_names_the_latest_import` — import the same file
-  into two accounts, set a non-default date format, and assert the text
-  names the second account and the formatted dates.
-  *Breaks when:* `latest` orders ascending, or the wizard formats ISO dates
-  itself.
+  into account A, then account B, then A again; set a non-default date
+  format; assert the text names A and the third import's formatted dates.
+  *Breaks when:* `latest` orders ascending, `add` keeps the first stamp on a
+  repeat, or the wizard formats ISO dates itself.
 
 - **INV-9** — Migration v16 → v17 creates the table and index in one atomic
   unit and leaves every existing row unchanged.
   *Test:* `test_migration_v17.py` — the v15-fixture pattern of
-  `tests/features/loan_sign/test_migration_v16.py`: a v16 vault opens at v17
+  `tests/features/loan_sign/test_migration_v16.py`, whose fixture works only
+  because v16 is data-only, so this one also drops `imported_files` and its
+  index before setting the version back to 16: a v16 vault opens at v17
   with its rows intact; a failure injected after the `CREATE TABLE` leaves a
   re-openable v16; a second run at v17 is a no-op.
   *Breaks when:* the steps run outside `owned_transaction`.
