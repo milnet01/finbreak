@@ -178,6 +178,10 @@ files = ["src", "tests", "scripts"]
 # under both, so they need no per-module carve-out.
 warn_redundant_casts = true
 warn_unused_configs = true
+# Check the bodies of unannotated functions everywhere. Without it mypy skips
+# them, and most test functions are unannotated, so the gate did not read the
+# code that decides whether the gate means anything (FIBR-0313 L14, FIBR-0331).
+check_untyped_defs = true
 
 # The three native stacks ship no type stubs (C-extension wheels: SQLCipher,
 # qpdf-behind-pikepdf, Argon2). Ignore only their missing imports — this is the
@@ -195,15 +199,7 @@ module = [
 ]
 ignore_missing_imports = true
 
-# Check the bodies of unannotated functions in the application package.
-# Without it mypy skips them entirely, so a whole class of error is invisible to
-# the gate — found by pyright seeing what mypy structurally could not
-# (FIBR-0313 L14). `src` is already clean under it, so this only stops the gap
-# reopening. It is NOT yet on for `tests`, where most functions are unannotated:
-# measured 2026-09-03, 345 errors across 25 files. That is tracked separately —
-# turning it on here and silencing it there would close the gate gap on paper.
-#
-# The rest is `--strict` as far as mypy allows per module (FIBR-0102): `strict`
+# `--strict` as far as mypy allows per module (FIBR-0102): `strict`
 # itself is a global-only switch, and turning it on globally would reach `tests`.
 # `src` was made clean under it on 2026-11-11; the two global-only strict flags
 # are set above. One strict flag is left off:
@@ -211,7 +207,6 @@ ignore_missing_imports = true
 # monkeypatch a module's own imports (`update_installer.sys`), not `src`.
 [[tool.mypy.overrides]]
 module = ["finbreak.*"]
-check_untyped_defs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
