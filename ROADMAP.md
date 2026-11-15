@@ -5576,6 +5576,13 @@ automatic forward migration, which § 2's carve-out says is not a break.
   need real files). Adds a vault column, so spec-format § 1 requires a
   spec; drafting docs/specs/FIBR-0088-already-imported-check.md via
   write-spec, then review-contract --max-loops 3.
+  2026-11-15: spec accepted after review-contract, 2 loops (rule 14's
+  cap; the 3-loop project setting was ruled out by the main session).
+  Seven findings verified and fixed, none dismissed, none deferred.
+  The last loop's three fixes were read by no lane, so the build is
+  their first reader. Log:
+  docs/reviews/FIBR-0088-already-imported-check-loop-log.md. Next: TDD
+  build from the spec.
   **Layman:** When you import a statement finbreak has already seen, it tells you up front ('looks like you already imported this') instead of silently re-processing it.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
