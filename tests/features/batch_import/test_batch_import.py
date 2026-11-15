@@ -185,10 +185,12 @@ def test_INV1_failure_does_not_abort_batch(service, batch, tmp_path, monkeypatch
     ]
     real_commit = ImportService.commit_import
 
-    def wedged(self, preview, period_start, period_end, source_filename):
+    def wedged(self, preview, period_start, period_end, source_filename, *rest):
         if Path(source_filename).name == "b.csv":
             raise ValueError("this statement could not be committed")
-        return real_commit(self, preview, period_start, period_end, source_filename)
+        return real_commit(
+            self, preview, period_start, period_end, source_filename, *rest
+        )
 
     monkeypatch.setattr(ImportService, "commit_import", wedged)
 
@@ -227,10 +229,12 @@ def test_INV2_per_file_transaction_boundary(service, batch, tmp_path, monkeypatc
     ]
     real_commit = ImportService.commit_import
 
-    def wedged(self, preview, period_start, period_end, source_filename):
+    def wedged(self, preview, period_start, period_end, source_filename, *rest):
         if Path(source_filename).name == "b.csv":
             raise ValueError("this statement could not be committed")
-        return real_commit(self, preview, period_start, period_end, source_filename)
+        return real_commit(
+            self, preview, period_start, period_end, source_filename, *rest
+        )
 
     monkeypatch.setattr(ImportService, "commit_import", wedged)
 
@@ -681,9 +685,11 @@ def test_INV13_undated_file_fails_before_commit(service, batch, tmp_path, monkey
     commits: list[str] = []
     real_commit = ImportService.commit_import
 
-    def counting(self, preview, period_start, period_end, source_filename):
+    def counting(self, preview, period_start, period_end, source_filename, *rest):
         commits.append(source_filename)
-        return real_commit(self, preview, period_start, period_end, source_filename)
+        return real_commit(
+            self, preview, period_start, period_end, source_filename, *rest
+        )
 
     monkeypatch.setattr(ImportService, "commit_import", counting)
 

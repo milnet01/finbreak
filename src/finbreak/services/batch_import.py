@@ -185,6 +185,10 @@ class BatchFile:
     # A decrypted PDF waiting to be read: set by SCAN when the service defers
     # PDF reads, taken by `take_pdf_read` (FIBR-0468).
     plaintext: bytes | None = field(default=None, repr=False)
+    # The SHA-256 of the file's bytes, set at SCAN and recorded at commit so the
+    # single-file wizard recognises the file later (FIBR-0088). Every record an
+    # OFX fan-out creates carries its file's. Out of the repr: never logged.
+    source_sha256: str | None = field(default=None, repr=False)
 
     @property
     def sort_key(self) -> tuple[str, int]:
@@ -418,11 +422,16 @@ class BatchImportService:
         ``parsed.source_account``, which ``OfxImporter`` already sets per
         statement, so every format reaches the identical ``match_account`` call.
         """
-        data = self._imports.read_file_bytes(record.path)
-        statements = OfxImporter().parse(data, self._exponent)
+        source = self._imports.read_source(record.path)
+        record.source_sha256 = source.sha256
+        statements = OfxImporter().parse(source.data, self._exponent)
         extras: list[BatchFile] = []
         for index, (_info, parsed) in enumerate(statements):
-            target = record if index == 0 else BatchFile(path=record.path)
+            target = (
+                record
+                if index == 0
+                else BatchFile(path=record.path, source_sha256=source.sha256)
+            )
             target.statement_index = index
             self._settle_parse(target, parsed)
             if index:
@@ -433,8 +442,9 @@ class BatchImportService:
         """Decrypt (§ 4.4), then the Standard Bank reader, then the generic table
         extractor feeding the CSV ladder — the same order the wizard uses."""
         if record.source_text is None:  # not already extracted by an earlier pass
-            data = self._imports.read_file_bytes(record.path)
-            plaintext = self._decrypt(record, data)
+            source = self._imports.read_source(record.path)
+            record.source_sha256 = source.sha256
+            plaintext = self._decrypt(record, source.data)
             if plaintext is None:
                 return  # needs_password — ASK will come back to this record
             if self._defer_pdf_reads:
@@ -515,7 +525,9 @@ class BatchImportService:
         """Read (size-capped), match a saved profile, parse. Reached directly for
         a CSV and, via a serialised table, for a non-Standard-Bank PDF."""
         if record.source_text is None:
-            record.source_text = self._imports.read_file(record.path)
+            source = self._imports.read_source(record.path)
+            record.source_sha256 = source.sha256
+            record.source_text = self._imports.decode_csv(source.data)
         header = read_header(record.source_text)  # raises on an empty file
         mapping = record.mapping
         if mapping is None:
@@ -822,6 +834,7 @@ class BatchImportService:
                 str(preview.period_start),
                 str(preview.period_end),
                 record.path,  # commit_import stores Path(...).name itself
+                record.source_sha256,
             )
         except (ValueError, FinbreakError) as exc:
             # INV-1: a file that fails does not stop the batch. The caught set is

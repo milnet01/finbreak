@@ -31,6 +31,7 @@ from conftest import (
     _pump_deferred_delete,
     build_v4_vault,
     build_v5_vault,
+    import_again,
     keyed_connection,
     wait_for_pdf_read,
 )
@@ -740,6 +741,7 @@ def test_INV7e_import_inserts_rows_and_reimport_adds_zero(qtbot, service, tmp_pa
 
     widget2 = _wizard(qtbot, service, acct)
     widget2._select_file(str(path))
+    import_again(widget2)  # the same file again: FIBR-0088's question first
     wait_for_pdf_read(qtbot, widget2)
     assert widget2._preview.new_count == 0, "same statement -> all duplicate"
     widget2._import_button.click()
@@ -770,6 +772,7 @@ def test_INV7f_remembered_password_auto_applies_no_prompt(
     monkeypatch.setattr(import_wizard, "PasswordDialog", _NoDialog)
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
+    import_again(widget)  # the same file again: FIBR-0088's question first
     wait_for_pdf_read(qtbot, widget)
     assert widget._stack.currentIndex() == 2, "reached the preview with no prompt"
 

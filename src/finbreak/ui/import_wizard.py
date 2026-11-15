@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.datetime_format import today_qdate
+from finbreak.datetime_format import format_date, format_timestamp, today_qdate
 from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.importers.base import ParseResult, SourceAccountHint
 from finbreak.importers.column_detect import guess_columns
@@ -60,10 +60,21 @@ from finbreak.importers.pdf_importer import (
     table_to_text,
 )
 from finbreak.importers.sniff import looks_like_ofx, looks_like_pdf
-from finbreak.models import ColumnMapping, ImportProfile, NegativeStyle, OfxAccountInfo
+from finbreak.models import (
+    ColumnMapping,
+    ImportProfile,
+    NegativeStyle,
+    OfxAccountInfo,
+    PriorImport,
+)
 from finbreak.services.account_match import match_account
 from finbreak.services.accounts import AccountService
-from finbreak.services.auth import AmountPrefs, AuthService
+from finbreak.services.auth import (
+    DATETIME_SYSTEM,
+    AmountPrefs,
+    AuthService,
+    DateTimePrefs,
+)
 from finbreak.services.batch_import import (
     CANCELLED,
     STOPPED_BY_ERROR,
@@ -124,6 +135,7 @@ class ImportWizardWidget(QWidget):
         parent: QWidget | None = None,
         *,
         amount_prefs: AmountPrefs | None = None,
+        datetime_prefs: DateTimePrefs | None = None,
     ):
         super().__init__(parent)
         self._imports = ImportService(service.vault)
@@ -139,12 +151,20 @@ class ImportWizardWidget(QWidget):
         # none.
         self._symbol = TransactionService(service.vault).base_currency()
         self._amount_prefs = amount_prefs or AmountPrefs(NegativeStyle.MINUS, True)
+        # For the already-imported question's dates (FIBR-0088). Absent -> the
+        # all-"system" default, as the Statements tab does.
+        self._datetime_prefs = datetime_prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
 
         self.setWindowTitle(self.tr("Import transactions"))
 
         self._text: str | None = None
         self._header: list[str] = []
         self._source_path: str = ""
+        # The SHA-256 of the picked file's bytes, recorded at commit so a later
+        # pick of the same file is recognised (FIBR-0088). None until a read.
+        self._source_sha256: str | None = None
         # True while the picked file went through the MAP STEP — the CSV path and
         # a generic (non-SB) PDF, which is extracted to a CSV-text table and
         # mapped exactly like one. Only those two can be told to "go back and
@@ -543,15 +563,78 @@ class ImportWizardWidget(QWidget):
             return  # auto-lock fired — silent, like the other handlers
 
     def _select_file(self, path: str) -> None:
-        """Load the picked file and route by format. **OFX** (FIBR-0008 D10):
+        """Read the picked file once and, if those exact bytes were imported
+        before, ask whether to import it again — before any parse, mapping step
+        or password prompt (FIBR-0088). Otherwise, or on Import again, load it
+        (``_load_source``)."""
+        self._error.clear()
+        self._source_path = path
+        self._source_sha256 = None
+        try:
+            source = self._imports.read_source(path)
+        except (ValueError, OSError, FinbreakError) as exc:
+            self._text = None
+            self._error.setText(str(exc))
+            return
+        self._source_sha256 = source.sha256
+        prior = self._imports.prior_import(source.sha256)
+        if prior is None:
+            self._load_source(path, source.data)
+        else:
+            self._ask_import_again(prior, path, source.data)
+
+    def _ask_import_again(self, prior: PriorImport, path: str, data: bytes) -> None:
+        """Say when and where this file was imported before, and ask whether to
+        import it again. Cancel is the default and the Escape button."""
+        prefs = self._datetime_prefs
+        box = QMessageBox(self)
+        box.setObjectName("already_imported_check")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(self.tr("Already imported"))
+        box.setText(
+            self.tr(
+                "You already imported this file on {imported}, into {account}, for "
+                "{start} – {end}. Import it again? Transactions already in "
+                "finbreak are skipped either way."
+            ).format(
+                imported=format_timestamp(
+                    prior.imported_at,
+                    prefs.timezone,
+                    prefs.date_format,
+                    prefs.time_format,
+                ),
+                account=prior.account_name,
+                start=format_date(prior.period_start, prefs.date_format),
+                end=format_date(prior.period_end, prefs.date_format),
+            )
+        )
+        box.addButton(self.tr("Import again"), QMessageBox.ButtonRole.AcceptRole)
+        cancel = box.addButton(self.tr("Cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        box.rejected.connect(self._forget_source)
+        show_modal(box, lambda: self._on_import_again(path, data))
+
+    def _on_import_again(self, path: str, data: bytes) -> None:
+        try:
+            self._load_source(path, data)
+        except VaultLockedError:
+            return  # auto-lock fired — silent, like the other handlers
+
+    def _forget_source(self) -> None:
+        """Cancel on the already-imported question: no file is selected."""
+        self._source_path = ""
+        self._source_sha256 = None
+        self._preview = None
+
+    def _load_source(self, path: str, data: bytes) -> None:
+        """Load the picked file's bytes and route by format. **OFX** (FIBR-0008 D10):
         parse and jump straight to the preview, **skipping** the mapping step
         (self-describing). **PDF** (FIBR-0009): extract candidate tables (locked
         PDFs decrypted in memory, prompting for a password), then show the map
         step with the table chooser. **CSV** (FIBR-0007): an exact-signature match
         auto-applies its profile and jumps to the preview (INV-10a); no match
         shows the mapping step (INV-10b)."""
-        self._error.clear()
-        self._source_path = path
         # Cleared before the format dispatch below and set again only where the
         # map step is really reached, so an OFX pick after a CSV one cannot
         # inherit the previous file's mapping-step remedy (FIBR-0253).
@@ -589,15 +672,15 @@ class ImportWizardWidget(QWidget):
                 combo.clear()
             combo.hide()
         if looks_like_ofx(path):
-            self._select_ofx(path)
+            self._select_ofx(data)
             return
         if looks_like_pdf(path):
-            self._select_pdf(path)
+            self._begin_decrypt(data)
             return
         # Past both sniffs is the CSV path, which always maps.
         self._has_mapping_step = True
         try:
-            text = self._imports.read_file(path)
+            text = self._imports.decode_csv(data)
             header = read_header(text)  # raises ValueError on an empty file
             matched = self._imports.match_profile(header)  # raises on dup-named header
             self._text = text
@@ -636,13 +719,12 @@ class ImportWizardWidget(QWidget):
             self._error.setText(str(exc))
             return
 
-    def _select_ofx(self, path: str) -> None:
-        """Read (size-capped, D13) + parse the OFX file, populate the statement
-        chooser (shown only for a multi-account file, D8), and preview the first
-        statement. A malformed / statement-less / oversized file surfaces its
-        friendly ``ValueError`` as a shown message (INV-4/INV-10)."""
+    def _select_ofx(self, data: bytes) -> None:
+        """Parse the OFX file's bytes, populate the statement chooser (shown only
+        for a multi-account file, D8), and preview the first statement. A
+        malformed / statement-less file surfaces its friendly ``ValueError`` as a
+        shown message (INV-4)."""
         try:
-            data = self._imports.read_file_bytes(path)  # size-capped read (D13)
             statements = OfxImporter().parse(data, self._exponent)
         except (ValueError, OSError, FinbreakError) as exc:
             self._error.setText(str(exc))
@@ -831,18 +913,6 @@ class ImportWizardWidget(QWidget):
             except VaultLockedError:
                 return  # auto-lock fired — silent, like the other handlers
 
-    def _select_pdf(self, path: str) -> None:
-        """Read (size-capped, D10) + kick off the decrypt state machine (FIBR-0065
-        D5). Locked PDFs prompt for a password **non-blocking**, so an idle
-        auto-lock can never crash a post-prompt read; the flow continues in
-        ``_continue_after_decrypt`` once plaintext is in hand."""
-        try:
-            data = self._imports.read_file_bytes(path)  # size-capped read (D10)
-        except (ValueError, OSError, FinbreakError) as exc:
-            self._error.setText(str(exc))
-            return
-        self._begin_decrypt(data)
-
     def _show_pdf_read_error(self, exc: Exception) -> None:
         """A corrupt/unreadable PDF raises ``PdfError`` whose ``str`` is raw pikepdf
         internals (e.g. "unable to find trailer dictionary while recovering damaged
@@ -877,11 +947,13 @@ class ImportWizardWidget(QWidget):
             return None
 
     def _begin_decrypt(self, data: bytes) -> None:
-        """First decrypt attempt: no password, then each **stored** password once
-        (FIBR-0009 INV-4), then prompt. Trying them only here (entered once per
-        import) structurally guarantees each is attempted at most once per import —
-        never re-tried on a wrong-password re-prompt, which never re-enters this
-        method."""
+        """The PDF branch's entry (FIBR-0065 D5). First decrypt attempt: no
+        password, then each **stored** password once (FIBR-0009 INV-4), then a
+        **non-blocking** prompt, so an idle auto-lock can never crash a
+        post-prompt read; the flow continues in ``_continue_after_decrypt``.
+        Trying them only here (entered once per import) structurally guarantees
+        each is attempted at most once per import — never re-tried on a
+        wrong-password re-prompt, which never re-enters this method."""
         result = self._try_decrypt(data, None)
         if result is not _NEED_PASSWORD:
             if isinstance(result, bytes):
@@ -1593,7 +1665,11 @@ class ImportWizardWidget(QWidget):
         period_end = self._period_end.date().toString(Qt.DateFormat.ISODate)
         try:
             result = self._imports.commit_import(
-                self._preview, period_start, period_end, self._source_path
+                self._preview,
+                period_start,
+                period_end,
+                self._source_path,
+                self._source_sha256,
             )
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))

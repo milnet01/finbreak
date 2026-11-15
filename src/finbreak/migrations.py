@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 16
+LATEST_SCHEMA_VERSION = 17
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -532,6 +532,34 @@ def _migrate_to_v16(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 16")
 
 
+def _migrate_to_v17(conn: dbapi2.Connection) -> None:
+    """v16 -> v17: ``imported_files``, one row per file imported into a
+    statement (FIBR-0088).
+
+    ``file_sha256`` is the SHA-256 of the file's bytes as read from disk, so the
+    import wizard can recognise a file picked again before it parses it. A table
+    rather than a column on ``statement_periods``: ``commit_import`` reuses an
+    existing span's row, so one period can carry several files. The rows cascade
+    with their period, so deleting a statement forgets its files.
+
+    Pure DDL with no backfill -- an older import's file was never kept, so its
+    fingerprint cannot be computed. One atomic unit like every sibling step."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE TABLE imported_files("
+            "id INTEGER PRIMARY KEY, "
+            "statement_period_id INTEGER NOT NULL "
+            "REFERENCES statement_periods(id) ON DELETE CASCADE, "
+            "file_sha256 TEXT NOT NULL, "
+            "imported_at TEXT NOT NULL, "
+            "UNIQUE(statement_period_id, file_sha256))"
+        )
+        conn.execute(
+            "CREATE INDEX idx_imported_files_sha256 ON imported_files(file_sha256)"
+        )
+        conn.execute("UPDATE schema_version SET version = 17")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -548,4 +576,5 @@ _MIGRATIONS = {
     14: _migrate_to_v14,
     15: _migrate_to_v15,
     16: _migrate_to_v16,
+    17: _migrate_to_v17,
 }

@@ -108,10 +108,16 @@ def _ofx_bytes(*statements: str) -> bytes:
 
 
 _OFX_JAN = _ofx_stmt(
-    _ofx_txn("20260105", "-10.00", "shop one", "F1"), "000111222", "20260101", "20260131"
+    _ofx_txn("20260105", "-10.00", "shop one", "F1"),
+    "000111222",
+    "20260101",
+    "20260131",
 )
 _OFX_FEB = _ofx_stmt(
-    _ofx_txn("20260206", "-20.00", "shop two", "F2"), "000333444", "20260201", "20260228"
+    _ofx_txn("20260206", "-20.00", "shop two", "F2"),
+    "000333444",
+    "20260201",
+    "20260228",
 )
 
 
@@ -281,9 +287,9 @@ def test_INV1_fingerprint_is_the_raw_file_bytes(
 
     # The batch reads a locked PDF through the stored-password ladder.
     AccountService(service.vault).set_pdf_password(acct, _PDF_PASSWORD)
-    other = AccountService(service.vault).add_account(
-        "Batch", AccountType.CURRENT.value
-    ).id
+    other = (
+        AccountService(service.vault).add_account("Batch", AccountType.CURRENT.value).id
+    )
     batch_files = [
         _write(
             tmp_path / "batch",
@@ -331,9 +337,7 @@ def test_INV2_fingerprint_is_recorded_with_the_commit(
         raise RuntimeError("injected add_batch failure")
 
     monkeypatch.setattr(TransactionRepository, "add_batch", boom)
-    third = _write(
-        tmp_path, "c.csv", _csv_bytes([("2026-03-04", "New row", "-1.00")])
-    )
+    third = _write(tmp_path, "c.csv", _csv_bytes([("2026-03-04", "New row", "-1.00")]))
     with pytest.raises(RuntimeError, match="injected"):
         _service_import(service, acct, third, _sha(third))
     assert _sha(third) not in _shas(service)

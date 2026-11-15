@@ -246,6 +246,19 @@ class StatementPeriod:
     closing_balance_minor: int | None = None
 
 
+@dataclass(frozen=True)
+class PriorImport:
+    """The most recent earlier import of one file (FIBR-0088): the account and
+    period it went into, read at query time so a renamed account shows its
+    current name. ``period_*`` are ISO dates; ``imported_at`` is the UTC
+    timestamp of this file's latest import."""
+
+    account_name: str
+    period_start: str
+    period_end: str
+    imported_at: str
+
+
 @dataclass
 class StatementRow:
     """One row of the Statements tab (FIBR-0052 INV-7) — a **view** row, distinct

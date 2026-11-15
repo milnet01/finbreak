@@ -2122,7 +2122,11 @@ class MainWindow(QMainWindow):
         # Import wants the full content area — it REPLACES the workspace (via
         # _set_live, destroying it: fewer decrypted rows alive, INV-3) and rebuilds
         # it on done (D5). A lock while importing destroys the wizard (it is live).
-        widget = ImportWizardWidget(self._service, amount_prefs=self._amount_prefs)
+        widget = ImportWizardWidget(
+            self._service,
+            amount_prefs=self._amount_prefs,
+            datetime_prefs=self._prefs,
+        )
         widget.done.connect(self._on_import_done)
         self._set_live(widget)
         self._set_workspace_actions_enabled(False)  # FIBR-0072

@@ -90,6 +90,20 @@ def wait_for_pdf_read(qtbot, wizard) -> None:
     qtbot.waitUntil(lambda: wizard._pdf_worker is None, timeout=30_000)
 
 
+def import_again(wizard) -> None:
+    """Answer "Import again" on the wizard's already-imported question, which a
+    second pick of the same file now shows before anything else (FIBR-0088)."""
+    from PySide6.QtWidgets import QMessageBox
+
+    box = wizard.findChild(QMessageBox, "already_imported_check")
+    assert box is not None and box.isVisible(), "no already-imported question"
+    for button in box.buttons():
+        if box.buttonRole(button) == QMessageBox.ButtonRole.AcceptRole:
+            button.click()
+            return
+    raise AssertionError("the question has no Import again button")
+
+
 def _pump_deferred_delete() -> None:
     """Flush a same-level ``deleteLater()``: a bare ``processEvents()`` does not
     reliably do it, but ``sendPostedEvents`` with ``DeferredDelete`` does (INV-4a).

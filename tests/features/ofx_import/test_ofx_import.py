@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt
 
-from conftest import _PW, _acct
+from conftest import _PW, _acct, import_again
 from finbreak.importers.base import ParseResult
 from finbreak.importers.ofx_importer import (
     _MAX_OFX_TRANSACTIONS,
@@ -448,6 +448,7 @@ def test_INV7d_second_import_is_all_duplicate(qtbot, service, tmp_path):
 
     widget2 = _wizard(qtbot, service, acct)
     widget2._select_file(str(path))
+    import_again(widget2)  # the same file again: FIBR-0088's question first
     assert widget2._preview.new_count == 0
     assert widget2._import_button.isEnabled(), "all-duplicate stays enabled"
     widget2._import_button.click()

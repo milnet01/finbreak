@@ -17,7 +17,7 @@ import pikepdf
 import pytest
 from PySide6.QtWidgets import QDialog
 
-from conftest import _PW, _acct, wait_for_pdf_read
+from conftest import _PW, _acct, import_again, wait_for_pdf_read
 from finbreak.importers import standard_bank
 from finbreak.importers.standard_bank import (
     _E_ROW,
@@ -1281,6 +1281,7 @@ def test_INV13_wizard_reimport_adds_zero(qtbot, service, tmp_path):
     assert TransactionRepository(conn).count_for_account(acct) == 3
     w2 = _wizard(qtbot, service, acct)
     w2._select_file(str(path))
+    import_again(w2)  # the same file again: FIBR-0088's question first
     wait_for_pdf_read(qtbot, w2)
     assert w2._preview.new_count == 0
     w2._import_button.click()

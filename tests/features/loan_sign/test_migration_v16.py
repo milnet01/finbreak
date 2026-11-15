@@ -1,8 +1,9 @@
 """FIBR-0467 — schema v16 corrects the sign of stored Home Loan rows, once.
 
 Enforces docs/specs/FIBR-0467-home-loan-sign.md INV-4 to INV-7. A "v15 vault"
-here is a fresh vault with its version record set back to 15: v16 is data-only,
-so the two schemas are the same shape. Every on-disk vault uses tmp_path, and
+here is a fresh vault with v17's `imported_files` table and index dropped and
+its version record set back to 15: v16 is data-only, so the two schemas are
+then the same shape. Every on-disk vault uses tmp_path, and
 every row is synthetic (testing.md § 6).
 """
 
@@ -80,6 +81,9 @@ def _version(svc: AuthService) -> int:
 
 def _back_to_v15(svc: AuthService) -> None:
     conn = svc.vault.connection
+    # v17 (FIBR-0088) adds a table, so the re-run would fail on its CREATE.
+    conn.execute("DROP INDEX idx_imported_files_sha256")
+    conn.execute("DROP TABLE imported_files")
     conn.execute("UPDATE schema_version SET version = 15")
     conn.commit()
 

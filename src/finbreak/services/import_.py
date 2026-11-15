@@ -15,6 +15,7 @@ ambiguous — ``csv.DictReader`` would silently collapse the columns).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections import Counter
 from dataclasses import dataclass
@@ -25,8 +26,9 @@ from typing import TYPE_CHECKING, cast
 from finbreak.db import owned_transaction
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.importers.csv_importer import CsvImporter, read_header
-from finbreak.models import ColumnMapping, ImportProfile, TransactionDraft
+from finbreak.models import ColumnMapping, ImportProfile, PriorImport, TransactionDraft
 from finbreak.repositories.import_profiles import ImportProfileRepository
+from finbreak.repositories.imported_files import ImportedFileRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.categorization import recategorize_auto_rows
@@ -109,6 +111,16 @@ class ImportPreview:
     duplicate_row_numbers: frozenset[int] = frozenset()
 
 
+@dataclass(frozen=True)
+class ImportSource:
+    """A picked file read once (FIBR-0088): its bytes, and the SHA-256 of
+    exactly those bytes. The caller parses ``data``, so the bytes hashed are the
+    bytes imported."""
+
+    data: bytes
+    sha256: str
+
+
 @dataclass
 class ImportResult:
     """The outcome of a committed import."""
@@ -174,8 +186,27 @@ class ImportService:
         Any OS read error (missing / permission-denied / removed mid-read) is
         mapped to the friendly ``ValueError`` the wizard catches, matching this
         module's ValueError-only boundary (indie-review H-F/H-G)."""
+        return self.decode_csv(self._read_capped(path))
+
+    def read_source(self, path: str) -> ImportSource:
+        """Read a picked file once, with ``read_file_bytes``' cap and refusals,
+        and fingerprint the bytes as read — before any CSV decode or PDF
+        decrypt, so a locked PDF is recognised before its password prompt
+        (FIBR-0088 § 3 decision 1)."""
+        data = self._read_capped(path)
+        return ImportSource(data, hashlib.sha256(data).hexdigest())
+
+    def prior_import(self, sha256: str) -> PriorImport | None:
+        """The latest earlier import of the file with this fingerprint, or
+        ``None`` (FIBR-0088)."""
+        return ImportedFileRepository(self._conn).latest(sha256)
+
+    @staticmethod
+    def decode_csv(data: bytes) -> str:
+        """Decode a CSV file's bytes as ``utf-8-sig`` (D11), refusing non-UTF-8
+        text with a friendly ``ValueError``."""
         try:
-            return self._read_capped(path).decode("utf-8-sig")
+            return data.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             # The codec's own text ("can't decode byte 0xe9 in position 34")
             # reached the wizard as-is (FIBR-0406).
@@ -302,12 +333,17 @@ class ImportService:
         period_start: str,
         period_end: str,
         source_filename: str,
+        source_sha256: str | None = None,
     ) -> ImportResult:
         """Atomically insert the deduped rows and (unless the span already exists)
         the coverage-period record — one ``BEGIN … COMMIT``/``ROLLBACK`` the
         service owns (D7/INV-7). The dedup delta and the span check are read
         **inside** the transaction, before the inserts, so nothing is counted
-        then races an insert (single-connection, single-thread)."""
+        then races an insert (single-connection, single-thread).
+
+        ``source_sha256``, when given, records the file against the period in the
+        same transaction — on a reused span too, and whether or not any row is
+        new, so a file picked again is recognised (FIBR-0088 INV-2)."""
         period_start, period_end = self._validate_span(period_start, period_end)
         conn = self._conn
         tx_repo = TransactionRepository(conn)
@@ -343,6 +379,8 @@ class ImportService:
                     mismatch = period_repo.update_closing_balance(
                         period_id, preview.closing_balance_minor
                     )
+            if source_sha256 is not None:
+                ImportedFileRepository(conn).add(period_id, source_sha256)
             if to_insert:
                 tx_repo.add_batch(
                     [

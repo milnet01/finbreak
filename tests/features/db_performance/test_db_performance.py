@@ -42,6 +42,7 @@ _V10_INDEXES = {
 _EXPECTED_INDEXES = _V10_INDEXES | {
     "idx_transactions_amount_date",
     "idx_transfer_pairs_txn_b_id",
+    "idx_imported_files_sha256",
 }
 
 
