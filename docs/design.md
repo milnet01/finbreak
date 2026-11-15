@@ -322,9 +322,9 @@ whole-codebase rewrite. So, as a standing convention:
 - **Translations load at runtime** via `QTranslator` (compiled `.qm`
   catalogs), switchable at runtime from the language picker FIBR-0017 adds to
   the FIBR-0014 Settings screen — no reinstall; selecting an RTL locale flips
-  the layout direction app-wide. Live switching relies on the per-widget
-  re-translation coding.md § 5.2 requires (it is not automatic); otherwise a
-  change applies on next launch.
+  the layout direction app-wide. A switch rebuilds the main window in the new
+  language, because Qt does not re-translate built widgets
+  ([FIBR-0017](specs/FIBR-0017-translation-pipeline.md) § 4.4).
 - **Non-display** strings — log messages, DB keys, enum values — are *not*
   translated; only what the user reads on screen.
 

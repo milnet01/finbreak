@@ -21,6 +21,14 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **A Language choice in Settings** (FIBR-0017, FIBR-0129, FIBR-0209).
+  finbreak opens in your computer's language when it has a translation for
+  it, and in English otherwise. Choosing a language in Settings changes
+  every screen at once, with no restart. Only English ships for now; other
+  languages appear in the list as their translations are added.
+
 ### Changed
 
 - **Importing a large PDF statement no longer freezes the window**

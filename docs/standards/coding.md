@@ -185,17 +185,20 @@ below cover the two surfaces; there is no C++ in the codebase.
   `tests/features/i18n/` checks both. This holds from the
   first UI (P02) — it makes the FIBR-0017 (P12) i18n pass a translate-and-ship
   step instead of a rewrite.
-- **Live language switching:** widgets re-translate on `QEvent.LanguageChange`
-  (override `changeEvent` to call a `retranslateUi()` that regenerates labels) —
-  Qt does **not** re-translate already-built widgets when the translator
-  changes. Build this in from P02, or a mid-session switch only takes effect on
-  the next launch.
+- **Live language switching:** Qt does **not** re-translate a widget that is
+  already built, so a switch rebuilds instead. `MainWindow` rebuilds its chrome
+  and its live content on `LanguageController.languageChanged`
+  ([FIBR-0017](../specs/FIBR-0017-translation-pipeline.md) § 4.4). A screen
+  therefore builds its strings once, in `__init__`, and needs no
+  `retranslateUi()`. **A window that can stay open through a switch** — a
+  non-modal one, outside the rebuilt tree — must connect to `languageChanged`
+  and rebuild itself.
 - **RTL-safe layout:** build every screen to mirror for right-to-left
   locales (Arabic) with no per-widget rework. Arrange widgets with Qt
   layout managers (`QHBoxLayout`, `QFormLayout`, `QGridLayout`), never
   fixed x/y positions — layouts mirror automatically from the app's
-  `layoutDirection`. Drive direction from the active locale
-  (`QApplication.setLayoutDirection(QLocale().textDirection())`); don't pin
+  `layoutDirection`. Direction follows the active language, and
+  `LanguageController.apply` is the one place that sets it; don't pin
   `setLayoutDirection(Qt.LayoutDirection.LeftToRight)` on individual widgets.
   Leave text at its direction-aware default rather than forcing
   `Qt.AlignmentFlag.AlignLeft` / `Qt.AlignmentFlag.AlignRight`, and mirror

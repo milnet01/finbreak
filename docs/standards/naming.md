@@ -90,7 +90,7 @@ the table are hypothetical too.)
 | **Shell script** | `scripts/<kebab-case>.sh` | `ci-local.sh`, `ci-setup.sh`, `build-smoke.sh` |
 | **CI workflow** | `.github/workflows/<kebab-case>.yml` | `ci.yml`, `build-smoke.yml` |
 | **Image / icon asset** | `kebab-case.<png\|svg>` (screenshots: see [documentation.md § 6](documentation.md)) | *(none yet)* |
-| **Qt translation** | `finbreak_<locale>.ts` / `.qm` (Qt-mandated, §6) | *(added at the i18n packaging step)* |
+| **Qt translation** | `finbreak_<locale>.ts` / `.qm` (Qt-mandated, §6) | `src/finbreak/data/i18n/finbreak_<locale>.ts`, built by `scripts/update-translations.sh` |
 | **Well-known root doc** | conventional UPPERCASE (§6) | `README.md`, `CHANGELOG.md`, `ROADMAP.md` |
 | **Tool-mandated file** | exactly what the tool expects (§6) | `pyproject.toml`, `.gitignore`, `.gitleaks.toml` |
 | **Packaging / build-recipe file** | tool/platform-mandated (§6): reverse-DNS app-ID, or app-named `.spec` | `packaging/obs/io.github.milnet01.finbreak.desktop`, `packaging/obs/finbreak.spec` (FIBR-0155) |
