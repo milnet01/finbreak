@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from datetime import datetime
 
 import pytest
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 from sqlcipher3.dbapi2 import IntegrityError
 
 from conftest import _PW, build_v2_vault, keyed_connection, raising_conn
@@ -46,6 +47,20 @@ def _roots(conn) -> dict[str, Category]:
     return {r.kind: r for r in roots if r.kind is not None}
 
 
+def _stored(repo: CategoryRepository, category_id: int) -> Category:
+    """The stored row, failing if it is missing."""
+    row = repo.get(category_id)
+    assert row is not None, f"no category {category_id}"
+    return row
+
+
+def _top(tree: QTreeWidget, index: int) -> QTreeWidgetItem:
+    """One top-level tree item, failing if it is missing."""
+    item = tree.topLevelItem(index)
+    assert item is not None, f"no top-level item {index}"
+    return item
+
+
 # --------------------------------------------------------------------------- #
 # INV-1 — category model & CRUD round-trip
 # --------------------------------------------------------------------------- #
@@ -77,7 +92,7 @@ def test_INV1_crud_roundtrip_and_order(service):
     assert [c.name for c in lead] == ["Expenditure", "Income"], "roots by name, ci"
 
     svc.update_category(bonus.id, "Year-end bonus", income.id)
-    assert repo.get(bonus.id).name == "Year-end bonus"
+    assert _stored(repo, bonus.id).name == "Year-end bonus"
 
     svc.delete_category(bonus.id)
     assert repo.get(bonus.id) is None
@@ -291,7 +306,7 @@ def test_INV5_reparent_under_self_is_rejected(service):
         svc.update_category(cat.id, "Sundry", cat.id)
     # Nothing moved: it still hangs under Income.
     repo = CategoryRepository(service.vault.connection)
-    assert repo.get(cat.id).parent_id == income.id
+    assert _stored(repo, cat.id).parent_id == income.id
 
 
 def test_INV5_reparent_under_own_descendant_is_rejected(service):
@@ -311,7 +326,7 @@ def test_INV5_reparent_under_own_descendant_is_rejected(service):
     with pytest.raises(ValueError, match="itself or one of its sub-categories"):
         svc.update_category(a.id, "A", c.id)
     # A is untouched — still under Income.
-    assert repo.get(a.id).parent_id == income.id
+    assert _stored(repo, a.id).parent_id == income.id
 
 
 def test_INV5_legitimate_reparent_across_the_tree_still_works(service):
@@ -326,10 +341,10 @@ def test_INV5_legitimate_reparent_across_the_tree_still_works(service):
 
     # Move the child B up under Expenditure (B is not its own descendant).
     svc.update_category(b.id, "Child", expenditure.id)
-    assert repo.get(b.id).parent_id == expenditure.id
+    assert _stored(repo, b.id).parent_id == expenditure.id
     # And the parent A can move under B's new sibling namespace too (Expenditure).
     svc.update_category(a.id, "Movable", expenditure.id)
-    assert repo.get(a.id).parent_id == expenditure.id
+    assert _stored(repo, a.id).parent_id == expenditure.id
 
 
 # --------------------------------------------------------------------------- #
@@ -379,13 +394,13 @@ def test_INV7a_tree_shows_two_types_with_seeded_children(qtbot, service):
     qtbot.addWidget(widget)
     tree = widget._tree
     assert tree.topLevelItemCount() == 2, "the two Type roots"
-    labels = {tree.topLevelItem(i).text(0) for i in range(2)}
+    labels = {_top(tree, i).text(0) for i in range(2)}
     assert labels == {widget.tr("Income"), widget.tr("Expenditure")}
     # Each Type node maps back to its stored kind token.
-    kinds = {widget._kind_of_item(tree.topLevelItem(i)) for i in range(2)}
+    kinds = {widget._kind_of_item(_top(tree, i)) for i in range(2)}
     assert kinds == {"income", "expenditure"}
     # Seeded defaults appear as children under a Type.
-    total_children = sum(tree.topLevelItem(i).childCount() for i in range(2))
+    total_children = sum(_top(tree, i).childCount() for i in range(2))
     assert total_children == len(DEFAULT_CATEGORIES["income"]) + len(
         DEFAULT_CATEGORIES["expenditure"]
     )
@@ -407,7 +422,7 @@ def test_FIBR0123_manager_sources_type_labels_from_shared_helper(
     widget = categories_mod.CategoriesWidget(service)
     qtbot.addWidget(widget)
     tree = widget._tree
-    labels = {tree.topLevelItem(i).text(0) for i in range(2)}
+    labels = {_top(tree, i).text(0) for i in range(2)}
     assert labels == {"INC!", "EXP!"}, "root labels follow the shared helper"
 
 
@@ -439,7 +454,7 @@ def _item_by_id(tree, category_id):
         return None
 
     for i in range(tree.topLevelItemCount()):
-        found = walk(tree.topLevelItem(i))
+        found = walk(_top(tree, i))
         if found is not None:
             return found
     return None
@@ -623,7 +638,7 @@ def test_INV7a_rename_level3_keeps_parent(qtbot, service):
     widget._name.setText("Pick n Pay")
     widget._update_button.click()
     assert widget._error.text() == ""
-    edited = CategoryRepository(service.vault.connection).get(spar.id)
+    edited = _stored(CategoryRepository(service.vault.connection), spar.id)
     assert edited.name == "Pick n Pay"
     assert edited.parent_id == groceries.id, "a rename leaves the parent unchanged"
 
@@ -670,7 +685,7 @@ def test_INV7a_rename_of_deep_data_keeps_parent(qtbot, service, subject):
     widget._name.setText("Renamed")
     widget._update_button.click()
     assert widget._error.text() == ""
-    edited = CategoryRepository(service.vault.connection).get(target.id)
+    edited = _stored(CategoryRepository(service.vault.connection), target.id)
     assert edited.name == "Renamed"
     assert edited.parent_id == parent_id, "a rename leaves the parent unchanged"
 
@@ -696,7 +711,7 @@ def test_INV7b_pure_reparent_via_move_under_keeps_name(qtbot, service):
     select_combo_data(widget._move_under, income.id)
     widget._update_button.click()
     assert widget._error.text() == ""
-    edited = CategoryRepository(service.vault.connection).get(fuel.id)
+    edited = _stored(CategoryRepository(service.vault.connection), fuel.id)
     assert edited.parent_id == income.id, "the re-parent executed"
     assert edited.name == "Fuel", "an empty name field keeps the current name"
 

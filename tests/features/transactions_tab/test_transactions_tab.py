@@ -699,7 +699,7 @@ def _old_text_rank(texts):
     for row, text in enumerate(values):
         table.setItem(row, 0, QTableWidgetItem(text))
     table.sortItems(0, Qt.SortOrder.AscendingOrder)
-    rank = {table.item(row, 0).text(): row for row in range(len(values))}
+    rank = {cell_text(table, row, 0): row for row in range(len(values))}
     return {description: rank[text] for description, text in texts.items()}
 
 

@@ -64,6 +64,19 @@ def _combo(dialog: SettingsDialog) -> QComboBox:
     return combo
 
 
+def _settings_dialog(window) -> SettingsDialog:
+    """The shell's open Settings dialog, failing if none is open."""
+    dialog = window._dialog
+    assert isinstance(dialog, SettingsDialog)
+    return dialog
+
+
+def _home_amount_prefs(window):
+    """The Home tab's amount prefs, failing if the shell has no Home tab."""
+    assert window._home_tab is not None
+    return window._home_tab._amount_prefs
+
+
 def _click_save(dialog: SettingsDialog) -> None:
     box = dialog.findChild(QDialogButtonBox)
     assert box is not None
@@ -243,7 +256,7 @@ def test_INV6_settings_action_vault_dependent(qtbot, service):
 def test_INV7_autolock_tears_down_settings(qtbot, service):
     window = _shell(qtbot, service)
     window._action_settings.trigger()
-    dialog = window._dialog
+    dialog = _settings_dialog(window)
     assert isinstance(dialog, SettingsDialog)
     service._on_idle_timeout()  # the real auto-lock path (invokes on_auto_lock=_lock)
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -260,7 +273,7 @@ def test_INV8_preselect_and_readonly_currency(qtbot, service):
     service.set_auto_lock_minutes(15)
     window = _shell(qtbot, service)
     window._action_settings.trigger()
-    dialog = window._dialog
+    dialog = _settings_dialog(window)
 
     combo = _combo(dialog)
     assert combo.currentData() == 15
@@ -273,6 +286,7 @@ def test_INV8_preselect_and_readonly_currency(qtbot, service):
     # Currency stays a read-only QLabel; the only edit field in the dialog is the
     # FIBR-0083 editable timezone combo's internal search box (type-to-search).
     timezone = dialog.findChild(QComboBox, "settings_timezone")
+    assert timezone is not None
     assert dialog.findChildren(QLineEdit) == [timezone.lineEdit()], (
         "currency is read-only, no edit field of its own"
     )
@@ -282,7 +296,7 @@ def test_INV8_out_of_set_preselects_default(qtbot, service):
     SettingsRepository(service.vault.connection).set("auto_lock_minutes", "7")
     window = _shell(qtbot, service)
     window._action_settings.trigger()
-    assert _combo(window._dialog).currentData() == 10
+    assert _combo(_settings_dialog(window)).currentData() == 10
 
 
 # --------------------------------------------------------------------------- #
@@ -291,7 +305,7 @@ def test_INV8_out_of_set_preselects_default(qtbot, service):
 def test_INV9_save_persists_and_closes(qtbot, service):
     window = _shell(qtbot, service)
     window._action_settings.trigger()
-    dialog = window._dialog
+    dialog = _settings_dialog(window)
     combo = _combo(dialog)
     combo.setCurrentIndex(combo.findData(30))
     with qtbot.waitSignal(dialog.saved):
@@ -304,7 +318,7 @@ def test_INV9_cancel_changes_nothing(qtbot, service):
     service.set_auto_lock_minutes(5)
     window = _shell(qtbot, service)
     window._action_settings.trigger()
-    dialog = window._dialog
+    dialog = _settings_dialog(window)
     fired = []
     dialog.saved.connect(lambda: fired.append(1))
     combo = _combo(dialog)
@@ -320,7 +334,8 @@ def test_INV9_shell_passes_real_currency(qtbot, service):
     assert TransactionService(service.vault).base_currency() == "ZAR"
     window = _shell(qtbot, service)
     window._action_settings.trigger()
-    currency = window._dialog.findChild(QLabel, "settings_currency")
+    currency = _settings_dialog(window).findChild(QLabel, "settings_currency")
+    assert currency is not None
     assert "ZAR" in currency.text()
 
 
@@ -498,17 +513,17 @@ def test_shell_passes_stored_amount_prefs_to_home(qtbot, service):
     # to the Home tab (beside the FIBR-0083 datetime read).
     service.set_amount_prefs(AmountPrefs("brackets", False))
     window = _shell(qtbot, service)
-    assert window._home_tab._amount_prefs == AmountPrefs("brackets", False)
+    assert _home_amount_prefs(window) == AmountPrefs("brackets", False)
 
 
 def test_shell_repushes_amount_prefs_to_home_on_save(qtbot, service):
     # Live push: changing the pref + Save updates the open Home tab without a
     # relaunch (mirrors the datetime live push).
     window = _shell(qtbot, service)
-    assert window._home_tab._amount_prefs == AmountPrefs("minus", True)  # default
+    assert _home_amount_prefs(window) == AmountPrefs("minus", True)  # default
     service.set_amount_prefs(AmountPrefs("brackets", False))
     window._on_settings_saved()
-    assert window._home_tab._amount_prefs == AmountPrefs("brackets", False)
+    assert _home_amount_prefs(window) == AmountPrefs("brackets", False)
 
 
 # --------------------------------------------------------------------------- #

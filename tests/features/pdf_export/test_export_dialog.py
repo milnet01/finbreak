@@ -7,7 +7,7 @@ is handed the account list + the pre-fill prefs), so no vault fixture is needed.
 
 import pytest
 from PySide6.QtCore import QLocale
-from PySide6.QtWidgets import QFormLayout, QGroupBox, QLineEdit, QRadioButton
+from PySide6.QtWidgets import QFormLayout, QGroupBox, QLabel, QLineEdit, QRadioButton
 
 from finbreak.models import Account
 from finbreak.services.pdf_export import ExportOptions
@@ -77,7 +77,7 @@ def test_FIBR0393_a_hidden_picker_takes_its_label_with_it(
     assert isinstance(form, QFormLayout)
     for picker, shown in ((d._month_picker, month_shown), (d._year_picker, year_shown)):
         label = form.labelForField(picker)
-        assert label is not None
+        assert isinstance(label, QLabel)
         assert picker.isHidden() is not shown
         assert label.isHidden() is not shown, label.text()
 

@@ -31,6 +31,7 @@ def test_INV1_records_reach_an_owner_only_rotating_file(
     tmp_path, clean_finbreak_logger
 ):
     path = log_file.install_log_file(tmp_path)
+    assert path is not None
 
     logging.getLogger("finbreak.somewhere").warning("hello from a test")
 
@@ -46,6 +47,7 @@ def test_INV1_records_reach_an_owner_only_rotating_file(
 
 def test_INV1_a_rotated_file_is_owner_only_too(tmp_path, clean_finbreak_logger):
     path = log_file.install_log_file(tmp_path)
+    assert path is not None
     handler = next(
         h for h in clean_finbreak_logger.handlers if isinstance(h, RotatingFileHandler)
     )

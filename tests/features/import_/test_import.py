@@ -15,6 +15,7 @@ from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from PySide6.QtCore import QSignalBlocker, Qt
@@ -24,6 +25,7 @@ from conftest import (
     StandInVault,
     _acct,
     build_v3_vault,
+    cell_text,
     keyed_connection,
     raising_conn,
 )
@@ -37,9 +39,10 @@ from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
-from finbreak.services.import_ import ImportService, signature_for
+from finbreak.services.import_ import ImportPreview, ImportService, signature_for
 from finbreak.services.transactions import TransactionService
 from finbreak.ui._amount import _format_amount
+from finbreak.vault import Vault
 
 pytestmark = pytest.mark.features
 
@@ -57,6 +60,12 @@ def service(paths) -> Iterator[AuthService]:
     svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to latest
     yield svc
     svc.lock()
+
+
+def _loaded_preview(widget) -> ImportPreview:
+    """The wizard's current preview, failing if none is loaded."""
+    assert widget._preview is not None, "the wizard holds no preview"
+    return widget._preview
 
 
 def _csv(header: list[str], rows: list[list[str]]) -> str:
@@ -138,7 +147,9 @@ def test_INV1_profile_repo_crud_and_signature_lookup(service):
     assert got.created_at, "created_at is a well-formed timestamp"
 
     assert [p.id for p in repo.list_all()] == [pid]
-    assert repo.get_by_signature(sig).id == pid
+    by_signature = repo.get_by_signature(sig)
+    assert by_signature is not None
+    assert by_signature.id == pid
     assert repo.get_by_signature("no-such-signature") is None
 
     # column_mapping() round-trips the mapping recipe back out of the record.
@@ -561,15 +572,19 @@ def test_INV7_atomic_write_rolls_back_both_tables(service):
     preview = imp.preview(text, SINGLE, acct)
 
     wedge = ImportService(
-        StandInVault(
-            raising_conn(
-                conn,
-                "INSERT INTO transactions",
-                "injected failure at the transactions batch INSERT",
-                on="executemany",
-            )
+        cast(
+            Vault,  # the stand-in carries only the .connection the service reads
+            StandInVault(
+                raising_conn(
+                    conn,
+                    "INSERT INTO transactions",
+                    "injected failure at the transactions batch INSERT",
+                    on="executemany",
+                )
+            ),
         )
     )
+    assert preview.period_start is not None and preview.period_end is not None
     with pytest.raises(RuntimeError):
         wedge.commit_import(preview, preview.period_start, preview.period_end, "s.csv")
 
@@ -736,9 +751,9 @@ def test_INV10b_no_match_shows_mapping_and_saves_profile(qtbot, service, tmp_pat
     assert widget._error.text() == ""
     assert widget._stack.currentIndex() == 2
     assert widget._preview_table.rowCount() == 1
-    assert ImportService(service.vault).match_profile(HEADER).name == "MyBank", (
-        "profile persisted"
-    )
+    matched = ImportService(service.vault).match_profile(HEADER)
+    assert matched is not None
+    assert matched.name == "MyBank", "profile persisted"
 
 
 def test_INV10c_preview_shows_rows_summary_and_period(qtbot, service, tmp_path):
@@ -762,8 +777,9 @@ def test_INV10c_preview_shows_rows_summary_and_period(qtbot, service, tmp_path):
     assert widget._preview_table.rowCount() == 3, (
         "every data row in file order (incl. the error row)"
     )
-    assert widget._preview.new_count == 2 and widget._preview.duplicate_count == 0
-    assert len(widget._preview.errors) == 1
+    preview = _loaded_preview(widget)
+    assert preview.new_count == 2 and preview.duplicate_count == 0
+    assert len(preview.errors) == 1
     assert widget._summary_label.text() != ""
     # The Amount column shows the decimal amount, not raw minor units: rows
     # interleave by row_number, so row 0 is Coffee (-10.00) and row 2 is Salary.
@@ -771,10 +787,10 @@ def test_INV10c_preview_shows_rows_summary_and_period(qtbot, service, tmp_path):
     # the last screen before an irreversible commit, so it must read the way
     # every other money surface does. The first leg keeps the original
     # decimal-not-minor-units intent independently of that formatter.
-    coffee = widget._preview_table.item(0, 2).text()
+    coffee = cell_text(widget._preview_table, 0, 2)
     assert "10" in coffee and "1000" not in coffee, coffee
     assert coffee == _format_amount(Decimal("-10.00"), "ZAR", NegativeStyle.MINUS)
-    assert widget._preview_table.item(2, 2).text() == _format_amount(
+    assert cell_text(widget._preview_table, 2, 2) == _format_amount(
         Decimal("1000.00"), "ZAR", NegativeStyle.MINUS
     )
     assert widget._period_start.date().toString(Qt.DateFormat.ISODate) == "2026-01-05"
@@ -817,7 +833,7 @@ def test_INV10e_second_import_is_all_duplicate(qtbot, service, tmp_path):
     qtbot.addWidget(widget)
     widget._account_combo.setCurrentIndex(widget._account_combo.findData(acct))
     widget._select_file(str(path))
-    assert widget._preview.new_count == 0
+    assert _loaded_preview(widget).new_count == 0
     assert widget._import_button.isEnabled(), (
         "all-duplicate stays enabled (to record the period)"
     )
@@ -893,7 +909,7 @@ def test_FIBR0057_preview_step_exposes_destination_account(qtbot, service, tmp_p
     # The preview step carries the destination account, seeded from step 0, so it
     # is visible before the user presses Import.
     assert widget._confirm_account_combo.currentData() == current
-    assert widget._preview.account_id == current
+    assert _loaded_preview(widget).account_id == current
 
 
 def test_FIBR0057_changing_account_on_preview_retargets_the_commit(
@@ -912,13 +928,13 @@ def test_FIBR0057_changing_account_on_preview_retargets_the_commit(
     # The user leaves step 0 at the default "Current" (the mis-link trap) ...
     widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
     widget._select_file(str(path))
-    assert widget._preview.account_id == current
+    assert _loaded_preview(widget).account_id == current
 
     # ... then corrects the destination on the preview step to "Credit Card".
     widget._confirm_account_combo.setCurrentIndex(
         widget._confirm_account_combo.findData(credit)
     )
-    assert widget._preview.account_id == credit, (
+    assert _loaded_preview(widget).account_id == credit, (
         "changing the account on the preview step re-targets the import"
     )
 
@@ -948,12 +964,12 @@ def test_FIBR0057_retarget_relabels_the_preview_status_column(qtbot, service, tm
     widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
     widget._select_file(str(path))
     status_col = widget._preview_table.columnCount() - 1
-    assert widget._preview_table.item(0, status_col).text() == "Duplicate"
+    assert cell_text(widget._preview_table, 0, status_col) == "Duplicate"
 
     widget._confirm_account_combo.setCurrentIndex(
         widget._confirm_account_combo.findData(credit)
     )
-    assert widget._preview_table.item(0, status_col).text() == "OK"
+    assert cell_text(widget._preview_table, 0, status_col) == "OK"
 
 
 # --------------------------------------------------------------------------- #
@@ -968,6 +984,7 @@ def test_INV11_import_cycle_logs_no_secret(service, caplog):
         imp.save_profile("MyBank", HEADER, SINGLE)
         imp.match_profile(HEADER)
         preview = imp.preview(text, SINGLE, acct)
+        assert preview.period_start is not None and preview.period_end is not None
         imp.commit_import(preview, preview.period_start, preview.period_end, "s.csv")
 
     joined = "\n".join(record.getMessage() for record in caplog.records)
@@ -1192,7 +1209,7 @@ def test_FIBR0327_preview_honours_the_negative_style_preference(
     widget._account_combo.setCurrentIndex(widget._account_combo.findData(acct))
     widget._select_file(str(path))
 
-    cell = widget._preview_table.item(0, 2).text()
+    cell = cell_text(widget._preview_table, 0, 2)
     assert cell.startswith("(") and cell.endswith(")"), (
         "FIBR-0327: a user who chose bracketed negatives must see them here too.\n"
         f"  actual: {cell!r}"

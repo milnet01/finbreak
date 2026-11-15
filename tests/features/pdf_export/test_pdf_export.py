@@ -433,7 +433,7 @@ def test_FIBR0393_the_bytes_reach_the_disk_before_the_rename(
     loss itself cannot be run; this locks the order that prevents it."""
     import finbreak.services.pdf_export as mod
 
-    events = []
+    events: list[tuple[str, int | None]] = []
     real_fsync, real_replace = mod.os.fsync, mod.os.replace
 
     def _fsync(fd):

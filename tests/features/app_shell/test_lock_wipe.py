@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QStackedWidget,
+    QTabWidget,
     QTextEdit,
     QWidget,
 )
@@ -43,6 +45,7 @@ from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService
 from finbreak.services.recurring import RecurringService
 from finbreak.services.transfer_detection import TransferDetectionService
+from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
 
 pytestmark = pytest.mark.features
@@ -207,13 +210,24 @@ def _unlocked(qtbot, service) -> MainWindow:
     return window
 
 
+def _workspace(window: MainWindow) -> QTabWidget:
+    """The unlocked window's tabbed workspace, failing if it is anything else."""
+    stack = window.centralWidget()
+    assert isinstance(stack, QStackedWidget)
+    workspace = stack.currentWidget()
+    assert isinstance(workspace, QTabWidget)
+    return workspace
+
+
 def test_row30_lock_leaves_no_decrypted_value_in_any_tab(qtbot, service):
     window = _unlocked(qtbot, service)
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     for index in range(workspace.count()):  # every tab refreshes on activation
         workspace.setCurrentIndex(index)
     for tab in ("tab_home", "tab_transfers", "tab_recurring", "tab_transactions"):
-        assert _survivors(workspace.findChild(QWidget, tab)), (
+        tab_widget = workspace.findChild(QWidget, tab)
+        assert tab_widget is not None
+        assert _survivors(tab_widget), (
             f"precondition: {tab} must show marker data before the lock, or this "
             "test asserts nothing about it."
         )
@@ -234,11 +248,12 @@ def test_FIBR0456_lock_forgets_the_transaction_date_span(qtbot, service):
     line edit, which empties the visible text but not the stored date, so
     ``date()`` still answered with two values read from the vault."""
     window = _unlocked(qtbot, service)
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     for index in range(workspace.count()):
         workspace.setCurrentIndex(index)
     date_from = workspace.findChild(QDateEdit, "txn_date_from")
     date_to = workspace.findChild(QDateEdit, "txn_date_to")
+    assert date_from is not None and date_to is not None
     today = date.today()
     assert date_from.date().toPython() == today - timedelta(days=92), (
         "precondition: the picker must hold the earliest seeded date"
@@ -270,6 +285,7 @@ def test_row30_lock_wipe_reaches_the_import_wizard(qtbot, service, tmp_path, bat
     window = _unlocked(qtbot, service)
     window._open_import()
     wizard = window._live
+    assert isinstance(wizard, ImportWizardWidget)
     if batch:
         # A saved layout lets both files through to the review step unasked.
         ImportService(service.vault).save_profile("layout", _HEADER, _MAPPING)

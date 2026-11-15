@@ -450,7 +450,9 @@ def test_FIBR0407_family_a_create_makes_the_user_pick_a_type(qtbot):
 
     dialog = CreateAccountDialog(number="1234", name="PURESAVE", family="A")
     qtbot.addWidget(dialog)
-    ok = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+    box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
+    ok = box.button(QDialogButtonBox.StandardButton.Ok)
 
     assert dialog._type.currentData() is None
     assert not ok.isEnabled(), "OK must wait for a type to be chosen"
@@ -460,9 +462,9 @@ def test_FIBR0407_family_a_create_makes_the_user_pick_a_type(qtbot):
 
     loan = CreateAccountDialog(number="447556667", name=None, family="B")
     qtbot.addWidget(loan)
-    loan_ok = loan.findChild(QDialogButtonBox).button(
-        QDialogButtonBox.StandardButton.Ok
-    )
+    loan_box = loan.findChild(QDialogButtonBox)
+    assert loan_box is not None
+    loan_ok = loan_box.button(QDialogButtonBox.StandardButton.Ok)
     assert loan_ok.isEnabled(), "a family that determines the type needs no pick"
 
 

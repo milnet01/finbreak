@@ -1360,7 +1360,10 @@ def test_FIBR0404_verify_reports_a_full_disk_as_io_error(tmp_path, monkeypatch):
     wrong_password, sending the user to retype a password that was right."""
     fbk, _snap = _export_from_seed(tmp_path)
     full = _a_real_disk_full_error()
-    assert full.sqlite_errorcode & 0xFF == 13, "precondition: SQLITE_FULL"
+    # sqlcipher3 ships no type stubs, so mypy cannot see sqlite_errorcode.
+    assert full.sqlite_errorcode & 0xFF == 13, (  # type: ignore[attr-defined]
+        "precondition: SQLITE_FULL"
+    )
 
     def _disk_full(*a, **k):
         raise full

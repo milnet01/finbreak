@@ -17,7 +17,9 @@ from finbreak.services.auth import AuthService, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui._datetime_prefs import DATETIME_SYSTEM
+from finbreak.ui.alerts_dialog import AlertsDialog
 from finbreak.ui.main_window import MainWindow
+from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.transactions import TransactionsView
 
@@ -94,8 +96,8 @@ def test_statements_period_and_imported_use_prefs(qtbot, service):
     _seed_statement(service)
     widget = StatementsWidget(service, _JHB)
     qtbot.addWidget(widget)
-    assert widget._table.item(0, _COL_PERIOD).text() == "2026/06/01 – 2026/06/30"
-    assert widget._table.item(0, _COL_IMPORTED).text() == "2026/07/11 08:49"
+    assert cell_text(widget._table, 0, _COL_PERIOD) == "2026/06/01 – 2026/06/30"
+    assert cell_text(widget._table, 0, _COL_IMPORTED) == "2026/07/11 08:49"
 
 
 # ---- D6: Transactions-tab Date (moved off Home when it became the dashboard) --
@@ -153,7 +155,7 @@ def test_widget_set_datetime_prefs_rerenders(qtbot, service):
     widget.set_datetime_prefs(DateTimePrefs("UTC", "yyyy-MM-dd", "HH:mm"))
     # Same instant, now in UTC with a dashed date.
     assert (
-        widget._table.item(0, _COL_IMPORTED).text()
+        cell_text(widget._table, 0, _COL_IMPORTED)
         == format_timestamp(_IMPORTED_AT, "UTC", "yyyy-MM-dd", "HH:mm")
         == "2026-07-11 06:49"
     )
@@ -174,18 +176,23 @@ def test_settings_save_pushes_prefs_to_open_tabs(qtbot, service):
     # Fresh vault -> the shell holds all-"system" prefs; change the date format.
     window._action_settings.trigger()
     dialog = window._dialog
+    assert isinstance(dialog, SettingsDialog)
     date_combo = dialog.findChild(QComboBox, "settings_date_format")
+    assert date_combo is not None
     date_combo.setCurrentIndex(date_combo.findData("yyyy/MM/dd"))
     dialog._on_save()  # emits saved -> _on_settings_saved re-reads + pushes
 
     assert window._prefs.date_format == "yyyy/MM/dd"
     # The Date column lives on the Transactions tab now (Home is the dashboard).
+    transactions_tab = window._transactions_tab
+    statements_tab = window._statements_tab
+    assert transactions_tab is not None and statements_tab is not None
     assert (
-        cell_text(window._transactions_tab._table, 0, 0)
+        cell_text(transactions_tab._table, 0, 0)
         == format_date("2026-06-19", "yyyy/MM/dd")
         == "2026/06/19"
     )
-    assert window._statements_tab._table.item(0, _COL_PERIOD).text() == (
+    assert cell_text(statements_tab._table, 0, _COL_PERIOD) == (
         "2026/06/01 – 2026/06/30"
     )
 
@@ -555,12 +562,15 @@ def test_FIBR0328_settings_save_reaches_the_transfers_recurring_forecast_tabs(
 
     window._action_settings.trigger()
     dialog = window._dialog
+    assert isinstance(dialog, SettingsDialog)
     date_combo = dialog.findChild(QComboBox, "settings_date_format")
+    assert date_combo is not None
     date_combo.setCurrentIndex(date_combo.findData("yyyy/MM/dd"))
     dialog._on_save()
 
     assert window._prefs.date_format == "yyyy/MM/dd"
     for name, tab in tabs.items():
+        assert tab is not None
         assert tab._prefs.date_format == "yyyy/MM/dd", (
             f"a Settings Save did not reach the {name} tab, so its dates stay "
             "in the old format until the app is relaunched"
@@ -571,7 +581,9 @@ def test_FIBR0328_settings_save_reaches_the_transfers_recurring_forecast_tabs(
     # the alerts suite, which constructs the dialog itself and so cannot see
     # whether the shell passes them.
     window._open_alerts()
-    assert window._dialog._prefs.date_format == "yyyy/MM/dd", (
+    alerts = window._dialog
+    assert isinstance(alerts, AlertsDialog)
+    assert alerts._prefs.date_format == "yyyy/MM/dd", (
         "the shell opened the alerts dialog without its date prefs, so a missed "
         "payment's due date reads in the system format"
     )
