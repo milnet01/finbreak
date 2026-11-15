@@ -43,18 +43,38 @@ call in the wrapper's body, where lupdate reads it. `ui/unlock.py`'s
 | INV-2 | `test_the_walk_actually_sees_a_planted_offence` | The walk returns exactly the three dropped shapes from a planted file, and neither of the two good ones — INV-1 asserts an absence, and this is what stops a walk that matches nothing reading as a pass |
 | INV-3 | `test_the_known_offender_is_still_one` | `services/pdf_export.py` still holds at least one offence, so the by-name exclusion fails the day the work lands rather than quietly outliving it (FIBR-0311) |
 
+## The translation pipeline
+
+`test_language.py` enforces
+[`docs/specs/FIBR-0017-translation-pipeline.md`](../../../docs/specs/FIBR-0017-translation-pipeline.md),
+whose invariants it numbers. No real catalog ships, so its GUI legs run on a
+pseudo catalog built per session: every extracted source text, translated as
+`⟦text⟧`.
+
+| ID | Test | Assertion |
+|---|---|---|
+| FIBR-0017 INV-1 | `test_INV1_resolution_order`, `test_INV1_corrupt_catalog_falls_back_to_english` | An explicit available token wins; `"system"` tries the full locale name, then the bare language, then English; a catalog that will not load leaves English, silently |
+| FIBR-0017 INV-2 | `test_INV2_*` | The stored choice is kept only when it is `"system"` or an available language |
+| FIBR-0017 INV-3 | `test_INV3_first_window_is_translated` | The first-run dialog `run()` opens is already in the stored language |
+| FIBR-0017 INV-4 | `test_INV4_switch_leaves_no_old_text` | After a switch from Settings, no visible text in the main window is in the old language, and back again |
+| FIBR-0017 INV-5 | `test_INV5_qt_strings_follow` | Qt's own *Cancel* follows the language |
+| FIBR-0017 INV-6 | `test_INV6_catalogs_are_current` | `scripts/update-translations.sh` changes no committed catalog, and does change a planted stale one |
+| FIBR-0017 INV-7 | `test_INV7_qm_is_package_data` | `pyproject.toml`'s package-data covers every `.qm` |
+| FIBR-0017 INV-8 | `test_INV8_picker_*` | The picker lists *System default* then each language; saving a new choice writes it and switches, saving the same one does neither |
+| FIBR-0017 INV-9 | `test_INV9_month_name_follows_language` | Month names follow the language; amount separators keep the locale's |
+| FIBR-0017 INV-10 | `test_INV10_direction_follows` | A right-to-left language mirrors the layout, and switching back restores it |
+
 ## Why an AST walk rather than running lupdate
 
 The rule is about the **shape of the call**, which the source answers directly.
-A walk needs no tool on `PATH` — `pyside6-lupdate` ships with PySide6, but the
-gate would then depend on it — and it names the offending `file:line` rather
+A walk names the offending `file:line` rather
 than reporting an absence from a generated catalog, which is the harder thing
 to act on.
 
 ## Out of scope
 
-- **Whether the translation is any good**, or whether a `.qm` exists at all.
-  No catalog is shipped yet; that is FIBR-0017.
+- **Whether a translation is any good.** No non-English catalog ships yet
+  (FIBR-0017's `Waiting-on: user`).
 - **Non-display strings** — log lines, DB keys, enum values. The standard says
   not to wrap those, and this suite does not check that they are not wrapped:
   it only checks the arguments of calls that *are* there.

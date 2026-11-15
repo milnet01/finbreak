@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pikepdf
 from PySide6.QtCharts import QChart, QChartView
-from PySide6.QtCore import QBuffer, QCoreApplication, QIODevice, QLocale, QUrl
+from PySide6.QtCore import QBuffer, QCoreApplication, QIODevice, QUrl
 from PySide6.QtGui import QColor, QImage, QPageSize, QPdfWriter, QTextDocument
 
 from finbreak.datetime_format import format_date, format_year
@@ -49,6 +49,7 @@ from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui.charts import ChartTheme, build_donut_chart, build_trend_chart
+from finbreak.ui.language import ui_locale
 from finbreak.vault import Vault
 
 
@@ -281,13 +282,15 @@ class PdfExportService:
                 start=format_date(start.isoformat(), pref),
                 end=format_date(end.isoformat(), pref),
             )
-        # QLocale, not calendar.month_name: that one is C-locale English whatever
-        # the app's language, in a module where every other string goes through
-        # translate(). Composed through a template rather than an f-string, because
-        # month/year order is what some locales reorder (coding.md 5.2). Same
-        # spelling as ui/month_summary.py (FIBR-0327).
+        # ui_locale(), not calendar.month_name: that one is C-locale English
+        # whatever the app's language, and not QLocale(), whose language is the
+        # system's rather than the chosen one (FIBR-0017). This is in a module
+        # where every other string goes through translate(). Composed through
+        # a template rather than an f-string, because month/year order is what
+        # some locales reorder (coding.md 5.2). Same spelling as
+        # ui/month_summary.py (FIBR-0327).
         month = QCoreApplication.translate("PdfExport", "{month_name} {year}").format(
-            month_name=QLocale().standaloneMonthName(end.month),
+            month_name=ui_locale().standaloneMonthName(end.month),
             year=format_year(end.year),
         )
         if prefs.mode == MODE_CURRENT_MONTH:

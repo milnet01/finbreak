@@ -19,13 +19,14 @@ one line must have read the most useful line.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QLocale, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from finbreak.datetime_format import format_year
 from finbreak.models import MonthCause, MonthSummary, MonthVerdict
 from finbreak.services.transactions import to_display_decimal
 from finbreak.ui._amount import _format_amount
+from finbreak.ui.language import ui_locale
 
 # A merchant name is derived from raw bank text and can be arbitrarily long, so
 # it is shortened before interpolation: the first _NAME_MAX - 1 characters plus
@@ -104,7 +105,7 @@ class MonthSummaryStrip(QWidget):
         applies is decided by ``show_year``, computed by the service, which
         already has the clock; the strip needs none."""
         year, month = summary.month.split("-")
-        name = QLocale().standaloneMonthName(int(month))
+        name = ui_locale().standaloneMonthName(int(month))
         if summary.show_year:
             return self.tr("{month_name} {year}").format(
                 month_name=name, year=format_year(int(year))

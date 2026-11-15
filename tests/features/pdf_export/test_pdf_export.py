@@ -29,6 +29,7 @@ from finbreak.services.reporting import (
     ReportPrefs,
 )
 from finbreak.services.transfer_detection import TransferDetectionService
+from finbreak.ui import language
 from finbreak.ui._amount import _format_amount
 
 _TODAY = date(2026, 1, 15)
@@ -655,15 +656,16 @@ def test_FIBR0327_period_month_name_follows_the_locale(qapp, service, monkeypatc
     language, in a module where every other string goes through ``_tr()``.
 
     Asserted through ``QLocale``'s own data rather than through a translation
-    catalogue, so the test needs no ``.qm`` file loaded: switching the default
-    locale to French must move the month name. ``ui/month_summary.py`` already
-    spelled it this way.
+    catalogue, so the test needs no ``.qm`` file loaded: switching the active
+    language to French must move the month name (FIBR-0017 § 4.5).
+    ``ui/month_summary.py`` already spelled it this way.
     """
     from PySide6.QtCore import QLocale
 
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
 
+    monkeypatch.setattr(language, "_active", "fr")
     previous = QLocale()
     QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.France))
     try:
@@ -685,12 +687,16 @@ def test_FIBR0327_period_month_name_follows_the_locale(qapp, service, monkeypatc
         (_JAN, "يناير ٢٠٢٦"),
     ],
 )
-def test_FIBR0393_the_year_uses_the_locales_digits(qapp, service, prefs, expected):
+def test_FIBR0393_the_year_uses_the_locales_digits(
+    qapp, service, prefs, expected, monkeypatch
+):
     """The month name comes from QLocale, so its year must too: "يناير 2026"
     mixes the locale's month with Western digits. And no group separator — a
-    year is not a quantity ("2,026")."""
+    year is not a quantity ("2,026"). The month follows the active language
+    and the digits the locale (FIBR-0017 § 3), so both are Arabic here."""
     from PySide6.QtCore import QLocale
 
+    monkeypatch.setattr(language, "_active", "ar")
     previous = QLocale()
     QLocale.setDefault(QLocale("ar_EG"))
     try:
@@ -707,13 +713,16 @@ def _pdf_text(pdf: bytes) -> str:
         return "\n".join(page.extract_text() or "" for page in doc.pages)
 
 
-def test_FIBR0390_the_rendered_pdf_names_the_month_in_the_locale(qapp, service):
+def test_FIBR0390_the_rendered_pdf_names_the_month_in_the_locale(
+    qapp, service, monkeypatch
+):
     """Audit delivery C10: the test above reads the HTML handed to the PDF
     engine. This reads the text of the PDF itself."""
     from PySide6.QtCore import QLocale
 
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
+    monkeypatch.setattr(language, "_active", "fr")
     previous = QLocale()
     QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.France))
     try:

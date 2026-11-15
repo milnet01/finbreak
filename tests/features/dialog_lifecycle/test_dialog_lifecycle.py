@@ -222,6 +222,10 @@ _NOT_CONTENT_WIDGETS: dict[str, str] = {
         "no QDialog and no pop-up: the app-wide palette/stylesheet system "
         "(ThemeController)."
     ),
+    "language.py": (
+        "no QDialog and no pop-up: the translator swap and language preference "
+        "(LanguageController); a failed catalog falls back silently."
+    ),
     "_unlock_throttle.py": (
         "no QDialog and no pop-up: a QSettings adapter for the failed-unlock "
         "backoff state."

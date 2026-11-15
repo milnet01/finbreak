@@ -16,7 +16,7 @@ import sys
 from contextlib import suppress
 from typing import cast
 
-from PySide6.QtCore import QCoreApplication, QLocale, Qt, QThread, QTimer
+from PySide6.QtCore import QCoreApplication, Qt, QThread, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
@@ -30,6 +30,7 @@ from finbreak.services.update import remove_stale_staged_updates
 from finbreak.services.update_installer import detect_installer
 from finbreak.ui._worker import settle_detached_workers
 from finbreak.ui.icons import app_icon
+from finbreak.ui.language import LanguageController, load_language_pref
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.theme import ThemeController, load_theme_pref
 
@@ -119,7 +120,6 @@ def run(argv: list[str] | None = None) -> int:
     app.setApplicationName("finbreak")
     QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak")
     app.setWindowIcon(app_icon())  # branded icon on every window + the taskbar
-    app.setLayoutDirection(QLocale().textDirection())
 
     # After the QApplication, because the hook shows a dialog; before anything
     # that can fail, because that is what it is for.
@@ -136,6 +136,11 @@ def run(argv: list[str] | None = None) -> int:
     # follows the OS scheme live while in "system" mode.
     theme_controller = ThemeController(app)
     theme_controller.set_theme(load_theme_pref(), persist=False)
+    # The language too, so the first window is built in it (FIBR-0017 INV-3).
+    # apply() also sets the layout direction, from the language rather than the
+    # system locale.
+    language_controller = LanguageController(app)
+    language_controller.apply(load_language_pref())
 
     # One finbreak per OS user (FIBR-0189). Probed BEFORE any window is built, so a
     # second launch costs a socket round-trip rather than a flash of UI. The running
@@ -148,7 +153,11 @@ def run(argv: list[str] | None = None) -> int:
     app.aboutToQuit.connect(service.on_about_to_quit)
 
     try:
-        window = MainWindow(service, theme_controller=theme_controller)
+        window = MainWindow(
+            service,
+            theme_controller=theme_controller,
+            language_controller=language_controller,
+        )
     except InterruptedRestoreError as exc:
         QMessageBox.critical(
             None,

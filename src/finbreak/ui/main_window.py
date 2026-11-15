@@ -56,10 +56,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenuBar,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QStackedWidget,
+    QStatusBar,
     QTableWidget,
     QTabWidget,
     QTextEdit,
@@ -134,6 +136,11 @@ from finbreak.ui.forecast import ForecastWidget
 from finbreak.ui.home import HomeView
 from finbreak.ui.icons import toolbar_icon
 from finbreak.ui.import_wizard import ImportWizardWidget
+from finbreak.ui.language import (
+    LanguageController,
+    load_language_pref,
+    save_language_pref,
+)
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.recovery_key import (
     NewMasterPasswordDialog,
@@ -346,9 +353,15 @@ class MainWindow(QMainWindow):
         update_service: UpdateService | None = None,
         installer: Installer | None = None,
         theme_controller: ThemeController | None = None,
+        language_controller: LanguageController | None = None,
     ):
         super().__init__(parent)
         self._service = service
+        # The live language switch (FIBR-0017). Optional like the theme: with
+        # None, Settings shows no picker and nothing is ever rebuilt.
+        self._language = language_controller
+        # Every action _make_action built, deleted when a switch rebuilds them.
+        self._chrome_actions: list[QAction] = []
         # The app-wide theme controller (FIBR-0127 D10). Optional: with None the
         # shell shows no theme picker, wires no re-tint, and skips polish_item_views,
         # so every existing MainWindow(service) construction is untouched.
@@ -435,6 +448,8 @@ class MainWindow(QMainWindow):
         # populated; only when a controller is present (D10).
         if self._theme is not None:
             self._theme.themeChanged.connect(self._retint_toolbar_icons)
+        if self._language is not None:
+            self._language.languageChanged.connect(self._on_language_changed)
         self._build_content()
         self._build_status_bar()
 
@@ -668,6 +683,7 @@ class MainWindow(QMainWindow):
     ) -> QAction:
         action = QAction(text, self)
         action.setObjectName(object_name)
+        self._chrome_actions.append(action)
         if icon_name is not None:
             # Coloured, hover-brightening, theme-aware glyph on the toolbar + menus
             # (FIBR-0116): muted at rest, vibrant under the cursor.
@@ -689,6 +705,10 @@ class MainWindow(QMainWindow):
     # --- content + status --------------------------------------------------- #
     def _build_content(self) -> None:
         self._content = QStackedWidget()
+        self._build_placeholders()
+        self.setCentralWidget(self._content)
+
+    def _build_placeholders(self) -> None:
         self._placeholder_welcome = self._make_placeholder(
             "placeholder_welcome",
             self.tr("Welcome to finbreak — creating your vault…"),
@@ -699,7 +719,6 @@ class MainWindow(QMainWindow):
         )
         self._content.addWidget(self._placeholder_welcome)
         self._content.addWidget(self._placeholder_locked)
-        self.setCentralWidget(self._content)
 
     def _make_placeholder(
         self, object_name: str, text: str, *, unlock_button: bool
@@ -1100,6 +1119,7 @@ class MainWindow(QMainWindow):
                 self._service.vault
             ).library_enabled(),
             theme_controller=self._theme,
+            language_controller=self._language,
         )
         dialog.saved.connect(self._on_settings_saved)
         dialog.export_backup_requested.connect(self._open_backup_export)
@@ -1725,7 +1745,9 @@ class MainWindow(QMainWindow):
         # Persist the opt-in update flag from the checkbox (D5) — the auto-lock
         # value + datetime prefs the dialog already wrote to the vault in _on_save.
         dialog = self._dialog
+        language: str | None = None
         if isinstance(dialog, SettingsDialog):
+            language = dialog.language()
             self._update_service.set_enabled(dialog.update_enabled())
             # Persist the built-in category-library toggle (FIBR-0139 D6). Built on
             # demand — cheap, stateless; no new shell member. Takes effect on the next
@@ -1757,7 +1779,76 @@ class MainWindow(QMainWindow):
         if self._forecast_tab is not None:
             self._forecast_tab.set_datetime_prefs(self._prefs)
         self._teardown_dialog()
+        # After the teardown, so the rebuild finds no dialog open. Only on a
+        # change: a rebuild costs the user their place (FIBR-0017 INV-8).
+        if (
+            self._language is not None
+            and language is not None
+            and language != load_language_pref()
+        ):
+            save_language_pref(language)
+            self._language.apply(language)
         self._status(self.tr("Settings saved"))
+
+    def _on_language_changed(self) -> None:
+        """Build every string again in the new language (FIBR-0017 § 4.4).
+
+        Qt never re-translates a widget that is already built, so the chrome,
+        the placeholders and the live workspace are rebuilt rather than
+        re-labelled; each screen keeps building its strings in ``__init__``.
+        """
+        self.setWindowTitle(self.tr("finbreak"))
+        state = self.saveState()  # the toolbar's place, restored by objectName
+        # A bar added to a window already shown stays hidden until shown, and
+        # restoreState does not show it; so each new bar takes the old one's
+        # visibility (the user can hide the toolbar).
+        toolbar_shown = not self._toolbar.isHidden()
+        menu_shown = not self.menuBar().isHidden()
+        status_shown = not self.statusBar().isHidden()
+        self.removeToolBar(self._toolbar)
+        self._toolbar.deleteLater()
+        for action in self._chrome_actions:
+            action.deleteLater()
+        self._chrome_actions = []
+        self._icon_actions = {}
+        self.setMenuBar(QMenuBar())  # Qt deletes the old bar and its menus
+        self._build_chrome()
+        self.restoreState(state)
+        self._toolbar.setVisible(toolbar_shown)
+        self.menuBar().setVisible(menu_shown)
+        self.setStatusBar(QStatusBar())  # likewise
+        self._build_status_bar()
+        self.statusBar().setVisible(status_shown)
+        self._rebuild_placeholders()
+        if self._dialog is not None:
+            # A start dialog carries Quit for Ctrl+Q (FIBR-0431); give it the new one.
+            self._dialog.addAction(self._action_quit)
+        if not self._unlocked:
+            # Locked before the rebuild ran: build the locked state, not the
+            # workspace the lock just cleared (spec § 6).
+            self._set_vault_chrome_enabled(False)
+            return
+        self._set_vault_chrome_enabled(True)
+        index = self._initial_tab
+        if self._workspace is not None and shiboken6.isValid(self._workspace):
+            index = self._workspace.currentIndex()
+        self._clear_live()
+        workspace = self._ensure_workspace()
+        workspace.setCurrentIndex(index)
+        if self._home_tab is not None:
+            self._refresh_count(self._home_tab.transaction_count())
+
+    def _rebuild_placeholders(self) -> None:
+        old = (self._placeholder_welcome, self._placeholder_locked)
+        current = self._content.currentWidget()
+        self._build_placeholders()
+        if current is old[0]:
+            self._content.setCurrentWidget(self._placeholder_welcome)
+        elif current is old[1]:
+            self._content.setCurrentWidget(self._placeholder_locked)
+        for page in old:
+            self._content.removeWidget(page)
+            page.deleteLater()
 
     # --- opt-in auto-update (FIBR-0054 D7/D15) ------------------------------ #
     def _update_supported(self) -> bool:

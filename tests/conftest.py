@@ -209,7 +209,8 @@ def app_run_isolation(qapp):
 
     ``run()`` installs a ``sys.excepthook`` that opens a modal dialog, renames the
     shared QApplication, sets its desktop file name and layout direction, and
-    parents a live ``ThemeController`` to it. A test driving the real ``run()``
+    parents a live ``ThemeController`` and ``LanguageController`` to it, the
+    second with its translators installed. A test driving the real ``run()``
     left all of that behind, so later tests ran themed, under another name, and
     with a hook that blocks an offscreen run (full audit 2026-09-27, rows 2-3).
     """
@@ -218,6 +219,7 @@ def app_run_isolation(qapp):
 
     from PySide6.QtGui import QGuiApplication
 
+    from finbreak.ui import language
     from finbreak.ui.theme import ThemeController
 
     finbreak_logger = logging.getLogger("finbreak")
@@ -229,6 +231,8 @@ def app_run_isolation(qapp):
     direction = qapp.layoutDirection()
     icon = qapp.windowIcon()
     before = set(qapp.findChildren(ThemeController))
+    languages = set(qapp.findChildren(language.LanguageController))
+    active = language._active
     yield
     sys.excepthook = hook
     qapp.setApplicationName(name)
@@ -238,6 +242,11 @@ def app_run_isolation(qapp):
     for controller in set(qapp.findChildren(ThemeController)) - before:
         controller.setParent(None)
         controller.deleteLater()
+    for speaker in set(qapp.findChildren(language.LanguageController)) - languages:
+        speaker._uninstall()
+        speaker.setParent(None)
+        speaker.deleteLater()
+    language._active = active
     # run() installs the log file (FIBR-0410); a handler left behind would keep
     # writing every later test's records into this test's data folder.
     for handler in set(finbreak_logger.handlers) - set(handlers):

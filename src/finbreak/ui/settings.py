@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QLocale, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -41,7 +41,7 @@ from finbreak.services.auth import (
     AmountPrefs,
     AuthService,
 )
-from finbreak.ui import theme
+from finbreak.ui import language, theme
 from finbreak.ui._datetime_prefs import (
     populate_datetime_combos,
     read_datetime_prefs,
@@ -83,6 +83,7 @@ class SettingsDialog(QDialog):
         update_supported: bool = False,
         library_enabled: bool = True,
         theme_controller: theme.ThemeController | None = None,
+        language_controller: language.LanguageController | None = None,
     ):
         super().__init__(parent)
         self._service = service
@@ -208,9 +209,32 @@ class SettingsDialog(QDialog):
             # fire set_theme and clobber the pinned pref just by opening (INV-8).
             self._theme_combo.currentIndexChanged.connect(self._on_theme_changed)
 
+        # The FIBR-0129 language picker. Unlike the theme it applies on Save, and
+        # only when the choice changed: a switch rebuilds the main window, which
+        # costs the user their place in it (FIBR-0017 INV-8). Each language is
+        # listed under its own name, which is data, not tr()-wrapped.
+        self._language_combo: QComboBox | None = None
+        if language_controller is not None:
+            self._language_combo = QComboBox()
+            self._language_combo.setObjectName("settings_language")
+            detected = language.resolve_language(
+                language.LANGUAGE_SYSTEM, QLocale.system()
+            )
+            self._language_combo.addItem(
+                self.tr("System default ({detected})").format(
+                    detected=QLocale(detected).nativeLanguageName()
+                ),
+                language.LANGUAGE_SYSTEM,
+            )
+            for lang in language.available_languages():
+                self._language_combo.addItem(QLocale(lang).nativeLanguageName(), lang)
+            select_combo_data(self._language_combo, language.load_language_pref())
+
         form = QFormLayout()
         if self._theme_combo is not None:
             form.addRow(self.tr("Theme"), self._theme_combo)
+        if self._language_combo is not None:
+            form.addRow(self.tr("Language"), self._language_combo)
         form.addRow(self.tr("Auto-lock after"), self._combo)
         form.addRow(self.tr("Clear copied values after"), self._clipboard_combo)
         form.addRow(self.tr("Time zone"), self._timezone)
@@ -311,6 +335,13 @@ class SettingsDialog(QDialog):
         via ``CategorizationService.set_library_enabled`` (FIBR-0139 D6). Mirrors
         ``update_enabled``; the dialog holds no service ref."""
         return self._library_checkbox.isChecked()
+
+    def language(self) -> str | None:
+        """The chosen language token, read by the shell on Save; ``None`` when
+        the dialog shows no picker."""
+        if self._language_combo is None:
+            return None
+        return str(self._language_combo.currentData())
 
     @Slot(int)
     def _on_theme_changed(self, _index: int) -> None:
