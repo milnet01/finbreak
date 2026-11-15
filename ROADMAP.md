@@ -6998,7 +6998,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session-2026-09-02.
 
-- 📋 [FIBR-0331] **Turn check_untyped_defs on for the test suite, where mypy still skips most bodies.**
+- ✅ [FIBR-0331] **Turn check_untyped_defs on for the test suite, where mypy still skips most bodies.**
   Split out of FIBR-0313 L14 rather than done with it. The app package half
   is DONE and pinned: pyproject now sets check_untyped_defs for finbreak.*,
   src was already clean under it, and a deliberate error in an unannotated
@@ -7038,6 +7038,17 @@ work, and none of it is a release decision.
   statements, datetime_display, settings, pdf_import, import_, categories,
   backup_ui, auto_update. The pyproject override stays off until all of
   them are clean.
+  Shipped 2026-11-15 (3576a46). Re-measured that morning with the
+  project config: 361 errors in 19 files (the gap had grown again).
+  Batch 4 (cd5e001), test_batch_import_ui (4328ecc) and batch 5 (0121862)
+  took it to none, and check_untyped_defs now sits in [tool.mypy] for the
+  whole tree. Proved live: a planted bad assignment in an unannotated test
+  is reported with the flag and not without it. Every diff was read for
+  loosened assertions; none found. One narrow type: ignore (sqlcipher3's
+  unstubbed sqlite_errorcode) and five commented casts on test doubles.
+  Measuring trap: `mypy --check-untyped-defs tests`, given a path, loads
+  the installed package and reports hundreds of false import-untyped
+  errors; run it with no path.
   **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
   Kind: test.
 
