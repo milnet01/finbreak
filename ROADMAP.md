@@ -5366,7 +5366,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: review-code-FIBR-0468-2026-11-11.
 
-- 📋 [FIBR-0472] **The crash dialog says the app cannot continue, and shows the error's own text, when a batch stop carries on.**
+- ✅ [FIBR-0472] **The crash dialog says the app cannot continue, and shows the error's own text, when a batch stop carries on.**
   app.py's excepthook shows "finbreak hit an unexpected error and cannot
   continue:" plus `{exc_type.__name__}: {exc}`. The batch SCAN/ASK and
   RUN stops (FIBR-0471, FIBR-0407) re-raise to reach that hook after
@@ -5377,6 +5377,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   default hook prints it to stderr. Predates FIBR-0471. Not fixed there:
   it is the app-wide crash path, outside the batch subject. Decide the
   wording for a recoverable error and whether the message is shown.
+  Shipped 2026-11-15 (06c7601). The dialog names the fault, then says
+  "If finbreak stops working, close it and open it again." That holds for
+  a startup failure and a batch stop alike. The message stays, per
+  FIBR-0327. Correction to the body above: INV-9 is about the LOG FILE,
+  and an uncaught exception never reaches it (log_file.py installs no
+  stderr capture; the hook's text goes to the screen and stderr only), so
+  showing the message breaches nothing.
   **Layman:** When something unexpected goes wrong during a batch import, the error box says finbreak cannot continue, even though the import report is still there and the app works.
   Kind: review-fix.
   Source: review-code-FIBR-0471-2026-11-15.
