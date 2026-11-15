@@ -23,7 +23,7 @@ from pathlib import Path
 import pikepdf
 import pytest
 import shiboken6
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QStackedWidget
 
 from conftest import (
     _PW,
@@ -49,6 +49,7 @@ from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService, signature_for
+from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.password_dialog import PasswordDialog
 
@@ -118,7 +119,10 @@ def test_INV1_candidate_tables_extracts_single_table():
 
 
 def test_INV1_table_to_text_serialises_none_as_empty():
-    table = [_PDF_HEADER, ["01/03/2026", "Coffee", "12.50", None]]
+    table: list[list[str | None]] = [
+        list(_PDF_HEADER),
+        ["01/03/2026", "Coffee", "12.50", None],
+    ]
     text = table_to_text(table)
     from finbreak.importers.csv_importer import read_header
 
@@ -154,9 +158,13 @@ def test_INV1_two_page_repeated_header_groups_into_one(service):
 
 
 def test_INV1_group_tables_by_header_stitches_and_drops_repeated_header():
-    t1 = [["Date", "Amt"], ["01/01", "1"]]
-    t2 = [["Date", "Amt"], ["02/01", "2"]]  # same header -> grouped, its header dropped
-    t3 = [["Other"], ["x"]]  # distinct header -> its own candidate
+    t1: list[list[str | None]] = [["Date", "Amt"], ["01/01", "1"]]
+    t2: list[list[str | None]] = [["Date", "Amt"], ["02/01", "2"]]  # same header ->
+    # grouped, its header dropped
+    t3: list[list[str | None]] = [
+        ["Other"],
+        ["x"],
+    ]  # distinct header -> its own candidate
     assert group_tables_by_header([t1, t2, t3]) == [
         [["Date", "Amt"], ["01/01", "1"], ["02/01", "2"]],
         [["Other"], ["x"]],
@@ -167,14 +175,20 @@ def test_INV1_group_tables_by_header_stitches_and_drops_repeated_header():
 # INV-1a — blank / duplicate / literal-"Column N" header cells uniquified (D13)
 # --------------------------------------------------------------------------- #
 def test_INV1a_blank_dup_and_literal_column_header_uniquified():
-    raw = [["", "Amount", "Amount", "Column 1"], ["a", "b", "c", "d"]]
+    raw: list[list[str | None]] = [
+        ["", "Amount", "Amount", "Column 1"],
+        ["a", "b", "c", "d"],
+    ]
     candidate = group_tables_by_header([raw])[0]
     header = candidate[0]
     # blank pos1 -> "Column 1", but that collides with the real "Column 1" at pos4,
     # so it re-suffixes to "Column 1_2"; the first "Amount" is kept, the dup -> pos.
     assert header == ["Column 1_2", "Amount", "Column 3", "Column 1"]
     assert len(set(header)) == len(header), "collision-free"
-    signature_for(header)  # must not raise the duplicate-header ValueError
+    # The header is all strings (asserted above); the comprehension only narrows.
+    signature_for(
+        [cell for cell in header if cell is not None]
+    )  # must not raise the duplicate-header ValueError
     assert candidate[1] == ["a", "b", "c", "d"], (
         "data row untouched (header-only rewrite)"
     )
@@ -333,13 +347,13 @@ def test_INV6_header_only_candidate_dropped(monkeypatch):
 
     import finbreak.importers.pdf_importer as pdf_mod
 
-    tables = [[["A", "B"]], [["C", "D"], ["x", "1"]]]
+    tables: list[list[list[str | None]]] = [[["A", "B"]], [["C", "D"], ["x", "1"]]]
     assert [len(c) for c in group_tables_by_header(tables)] == [1, 2], (
         "precondition: grouping alone keeps the header-only table"
     )
 
     class _Page:
-        def extract_tables(self) -> list[list[list[str]]]:
+        def extract_tables(self) -> list[list[list[str | None]]]:
             return tables
 
     class _Pdf:
@@ -474,6 +488,7 @@ def test_INV2_lock_during_pdf_password_prompt_destroys_wizard_no_crash(
     window = _shell(qtbot, service)
     window._action_import.trigger()
     wizard = window._live
+    assert isinstance(wizard, ImportWizardWidget)
     wizard._account_combo.setCurrentIndex(
         wizard._account_combo.findData(_acct(service))
     )
@@ -487,7 +502,9 @@ def test_INV2_lock_during_pdf_password_prompt_destroys_wizard_no_crash(
 
     assert not shiboken6.isValid(wizard), "the wizard is destroyed on lock"
     assert not shiboken6.isValid(dialog), "the open password dialog is destroyed too"
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    stack = window.centralWidget()
+    assert isinstance(stack, QStackedWidget)
+    assert stack.currentWidget().objectName() == "placeholder_locked"
 
 
 # --------------------------------------------------------------------------- #
@@ -541,12 +558,14 @@ def test_FIBR0104_a_lock_mid_read_drops_the_result_without_a_crash(
     window = _shell(qtbot, service)
     window._action_import.trigger()
     wizard = window._live
+    assert isinstance(wizard, ImportWizardWidget)
     wizard._account_combo.setCurrentIndex(
         wizard._account_combo.findData(_acct(service))
     )
     wizard._select_file(str(path))
     qtbot.waitUntil(lambda: bool(seen))
     worker = wizard._pdf_worker
+    assert worker is not None
     try:
         service._on_idle_timeout()
         _pump_deferred_delete()
@@ -557,7 +576,9 @@ def test_FIBR0104_a_lock_mid_read_drops_the_result_without_a_crash(
         gate.set()
         assert worker.wait(10_000)
     qtbot.wait(50)  # deliver anything the worker queued
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    stack = window.centralWidget()
+    assert isinstance(stack, QStackedWidget)
+    assert stack.currentWidget().objectName() == "placeholder_locked"
 
 
 def test_FIBR0104_the_lock_hook_cuts_off_a_read_still_running(
@@ -1076,7 +1097,10 @@ def test_INV9_caps_are_the_documented_constants():
 
 
 def test_INV9_formula_cell_stored_inert(service):
-    table = [_PDF_HEADER, ["01/03/2026", "=cmd|'/c calc'!A1", "12.50", ""]]
+    table: list[list[str | None]] = [
+        list(_PDF_HEADER),
+        ["01/03/2026", "=cmd|'/c calc'!A1", "12.50", ""],
+    ]
     text = table_to_text(table)
     preview = ImportService(service.vault).preview(text, _PDF_MAPPING, _acct(service))
     assert [d.description for d in preview.drafts] == ["=cmd|'/c calc'!A1"], "inert str"
@@ -1092,10 +1116,12 @@ def test_INV10_pdf_import_then_reimport_adds_zero(service):
         PdfImporter().candidate_tables(_fixture("single_table.pdf"))[0]
     )
     p1 = imp.preview(text, _PDF_MAPPING, acct)
+    assert p1.period_start is not None and p1.period_end is not None
     imp.commit_import(p1, p1.period_start, p1.period_end, "stmt.pdf")
     assert TransactionRepository(conn).count_for_account(acct) == 3
     p2 = imp.preview(text, _PDF_MAPPING, acct)
     assert p2.new_count == 0
+    assert p2.period_start is not None and p2.period_end is not None
     imp.commit_import(p2, p2.period_start, p2.period_end, "stmt.pdf")
     assert TransactionRepository(conn).count_for_account(acct) == 3
     assert len(StatementPeriodRepository(conn).list_for_account(acct)) == 1

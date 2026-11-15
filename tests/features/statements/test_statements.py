@@ -8,11 +8,13 @@ window INI is redirected to ``tmp_path`` (autouse) so no test touches the real
 data dir; CSV fixtures are tiny in-repo strings — no real data, no network.
 """
 
+from typing import cast
+
 import pytest
 import shiboken6
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QCloseEvent, QGuiApplication
-from PySide6.QtWidgets import QDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QMessageBox, QStackedWidget, QTabWidget, QWidget
 from sqlcipher3 import dbapi2
 
 from conftest import (
@@ -21,12 +23,13 @@ from conftest import (
     _acct,
     _pump_deferred_delete,
     build_v5_vault,
+    cell_text,
     keyed_connection,
     raising_conn,
 )
 from finbreak.crypto import SALT_LEN
 from finbreak.migrations import run_migrations
-from finbreak.models import ColumnMapping
+from finbreak.models import ColumnMapping, StatementPeriod
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
@@ -37,9 +40,12 @@ from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
 from finbreak.ui._table_state import _ROW_INDEX_ROLE
 from finbreak.ui.accounts import AccountsWidget
+from finbreak.ui.categories import CategoriesWidget
+from finbreak.ui.home import HomeView
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.statements import _COL_PERIOD, StatementsWidget
+from finbreak.vault import Vault
 
 pytestmark = pytest.mark.features
 
@@ -76,6 +82,66 @@ def _shell(qtbot, service) -> MainWindow:
     qtbot.addWidget(window)
     window._enter_unlocked()
     return window
+
+
+def _page(window: MainWindow) -> QWidget:
+    """The page the shell's stack shows now, failing if there is none."""
+    stack = window.centralWidget()
+    assert isinstance(stack, QStackedWidget)
+    return stack.currentWidget()
+
+
+def _workspace(window: MainWindow) -> QTabWidget:
+    """The unlocked shell's tabbed workspace, failing if it is anything else."""
+    workspace = _page(window)
+    assert isinstance(workspace, QTabWidget)
+    return workspace
+
+
+def _tabs(window: MainWindow) -> QTabWidget:
+    """The live workspace as ``window._workspace`` holds it, failing if locked."""
+    assert window._workspace is not None
+    return window._workspace
+
+
+def _tab_at(workspace: QTabWidget, index: int) -> QWidget:
+    """The workspace tab at ``index``, failing if there is none."""
+    tab = workspace.widget(index)
+    assert tab is not None
+    return tab
+
+
+def _home_tab(window: MainWindow) -> HomeView:
+    assert window._home_tab is not None
+    return window._home_tab
+
+
+def _statements_tab(window: MainWindow) -> StatementsWidget:
+    assert window._statements_tab is not None
+    return window._statements_tab
+
+
+def _accounts_tab(window: MainWindow) -> AccountsWidget:
+    assert window._accounts_tab is not None
+    return window._accounts_tab
+
+
+def _categories_tab(window: MainWindow) -> CategoriesWidget:
+    assert window._categories_tab is not None
+    return window._categories_tab
+
+
+def _period(conn, period_id: int) -> StatementPeriod:
+    """The stored statement period, failing if the id is not there."""
+    period = StatementPeriodRepository(conn).get(period_id)
+    assert period is not None
+    return period
+
+
+def _wedged_vault(connection) -> Vault:
+    """A ``StandInVault`` typed as the ``Vault`` a service wants: the stand-in
+    carries only the ``.connection`` the service reads."""
+    return cast(Vault, StandInVault(connection))
 
 
 def _seed_raw_v5(paths, salt):
@@ -210,7 +276,7 @@ def test_INV9b_delete_atomic_rollback_between_deletes(service):
     period_id = StatementPeriodRepository(conn).list_for_account(acct)[0].id
 
     wedge = StatementService(
-        StandInVault(
+        _wedged_vault(
             raising_conn(
                 conn,
                 "DELETE FROM statement_periods",
@@ -294,9 +360,9 @@ def test_INV9d_backfill_overlap_stays_null(paths):
 # --------------------------------------------------------------------------- #
 def test_INV1_workspace_has_eight_tabs_in_order(qtbot, service):
     window = _shell(qtbot, service)
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.objectName() == "workspace"
-    names = [workspace.widget(i).objectName() for i in range(workspace.count())]
+    names = [_tab_at(workspace, i).objectName() for i in range(workspace.count())]
     # Rules (FIBR-0010) is 6th, Transfers (FIBR-0011) 7th, Recurring (FIBR-0142) 8th;
     # Transactions (FIBR-0012) is inserted 2nd, right after Home.
     assert names == [
@@ -314,7 +380,7 @@ def test_INV1_workspace_has_eight_tabs_in_order(qtbot, service):
 
 def test_INV2_nav_actions_switch_the_workspace_tab(qtbot, service):
     window = _shell(qtbot, service)
-    workspace = window._workspace
+    workspace = _tabs(window)
     for attr, index in (
         ("_action_transactions", 1),
         ("_action_statements", 2),
@@ -360,12 +426,12 @@ def test_INV3a_lock_during_import_destroys_wizard(qtbot, service):
     window._action_import.trigger()
     wizard = window._live
     assert isinstance(wizard, ImportWizardWidget)
-    assert window.centralWidget().currentWidget() is wizard
+    assert _page(window) is wizard
 
     service._on_idle_timeout()  # idle auto-lock while the wizard is showing
     _pump_deferred_delete()
     assert not shiboken6.isValid(wizard), "the import wizard is destroyed on lock"
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    assert _page(window).objectName() == "placeholder_locked"
 
 
 # --------------------------------------------------------------------------- #
@@ -392,8 +458,8 @@ def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
     window = _shell(qtbot, service)
     window.resize(820, 540)
     window.move(60, 70)
-    window._workspace.setCurrentIndex(2)  # Accounts tab
-    before_bytes = bytes(window.saveGeometry())
+    _tabs(window).setCurrentIndex(2)  # Accounts tab
+    before_bytes = window.saveGeometry().data()
     window.closeEvent(QCloseEvent())  # persists geometry + state + last tab (D7)
 
     assert window_ini.exists(), "geometry is persisted to the injected INI"
@@ -412,7 +478,7 @@ def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
     assert window2.height() == 540, "the saved geometry is restored on reconstruct"
     assert window2.height() != main_window._DEFAULT_WINDOW_SIZE.height(), "not default"
     window2._enter_unlocked()
-    assert window2._workspace.currentIndex() == 2, "the last-active tab is restored"
+    assert _tabs(window2).currentIndex() == 2, "the last-active tab is restored"
 
 
 @pytest.mark.parametrize(
@@ -690,15 +756,15 @@ def test_INV10c_overlap_confirm_names_actual_count(qtbot, service, monkeypatch):
 # --------------------------------------------------------------------------- #
 def test_INV11a_home_reflects_change_on_activation(qtbot, service):
     window = _shell(qtbot, service)
-    before = window._home_tab.transaction_count()
+    before = _home_tab(window).transaction_count()
 
     TransactionService(service.vault).add_transaction(
         _acct(service), "2026-01-01", "-5.00", "x"
     )
-    window._workspace.setCurrentIndex(2)  # away to Accounts
-    window._workspace.setCurrentIndex(0)  # back to Home -> currentChanged refreshes
+    _tabs(window).setCurrentIndex(2)  # away to Accounts
+    _tabs(window).setCurrentIndex(0)  # back to Home -> currentChanged refreshes
 
-    assert window._home_tab.transaction_count() == before + 1
+    assert _home_tab(window).transaction_count() == before + 1
     assert str(before + 1) in window._count.text(), (
         "the status count reflects the change"
     )
@@ -713,7 +779,7 @@ def test_INV11_statement_delete_refreshes_home_and_count(qtbot, service, monkeyp
         acct,
     )
     window._action_statements.trigger()  # activates + refreshes the Statements tab
-    statements = window._statements_tab
+    statements = _statements_tab(window)
     assert statements.statement_count() == 1
 
     statements._select_period(statements._rows[0].id)
@@ -722,7 +788,7 @@ def test_INV11_statement_delete_refreshes_home_and_count(qtbot, service, monkeyp
     )
     statements._delete_button.click()
 
-    assert window._home_tab.transaction_count() == 0, "Home refreshed after the delete"
+    assert _home_tab(window).transaction_count() == 0, "Home refreshed after the delete"
     assert "0" in window._count.text(), "the status count refreshed after the delete"
     assert window.statusBar().currentMessage() == "Statement deleted", (
         "the shell reports the delete in the status bar (INV-10)"
@@ -745,13 +811,13 @@ def test_INV11_import_done_rebuilds_workspace_lands_on_statements(qtbot, service
     assert isinstance(window._live, ImportWizardWidget)
     window._live.done.emit()  # the wizard signals completion
 
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.objectName() == "workspace", "a fresh workspace is rebuilt"
     assert workspace.currentWidget().objectName() == "tab_statements", (
         "lands on the Statements tab"
     )
-    assert window._statements_tab.statement_count() == 1, "the statement is listed"
-    assert window._home_tab.transaction_count() == 2, (
+    assert _statements_tab(window).statement_count() == 1, "the statement is listed"
+    assert _home_tab(window).transaction_count() == 2, (
         "Home refreshed to the imported rows"
     )
     assert "2" in window._count.text(), "the status count refreshed"
@@ -762,8 +828,8 @@ def test_INV11_import_done_rebuilds_workspace_lands_on_statements(qtbot, service
 # --------------------------------------------------------------------------- #
 def test_INV12a_tab_widgets_have_no_done_button(qtbot, service):
     window = _shell(qtbot, service)
-    assert window._accounts_tab._done_button is None, "no Done on the Accounts tab"
-    assert window._categories_tab._done_button is None, "no Done on the Categories tab"
+    assert _accounts_tab(window)._done_button is None, "no Done on the Accounts tab"
+    assert _categories_tab(window)._done_button is None, "no Done on the Categories tab"
 
     standalone = AccountsWidget(service)  # default show_done=True
     qtbot.addWidget(standalone)
@@ -837,7 +903,7 @@ def test_FIBR0059_reassign_moves_period_and_all_transactions(service):
     assert unlinked == 0, "no transfer to unlink (INV-12)"
 
     assert moved == 2, "returns the number of transactions moved (INV-4)"
-    assert StatementPeriodRepository(conn).get(pid).account_id == b, "period re-pointed"
+    assert _period(conn, pid).account_id == b, "period re-pointed"
     assert TransactionRepository(conn).count_for_account(b) == 2, (
         "all txns on the new account"
     )
@@ -855,7 +921,7 @@ def test_FIBR0059_reassign_atomic_rollback(service):
     pid = _period_id(conn, a)
 
     wedge = StatementService(
-        StandInVault(
+        _wedged_vault(
             raising_conn(
                 conn, "UPDATE transactions", "injected failure after the period update"
             )
@@ -865,9 +931,7 @@ def test_FIBR0059_reassign_atomic_rollback(service):
         wedge.reassign_account(pid, b)
 
     # SAME connection, before any reopen: NEITHER table changed.
-    assert StatementPeriodRepository(conn).get(pid).account_id == a, (
-        "period rolled back"
-    )
+    assert _period(conn, pid).account_id == a, "period rolled back"
     assert TransactionRepository(conn).count_for_account(a) == 1, "txn rolled back"
     assert TransactionRepository(conn).count_for_account(b) == 0
 
@@ -924,7 +988,7 @@ def test_FIBR0059_reassign_refused_on_span_collision(service):
         StatementService(service.vault).reassign_account(pid_a, b)
 
     # No change: a's statement + rows stay put.
-    assert StatementPeriodRepository(conn).get(pid_a).account_id == a
+    assert _period(conn, pid_a).account_id == a
     assert TransactionRepository(conn).count_for_account(a) == 1
 
 
@@ -946,7 +1010,7 @@ def test_FIBR0059_reassign_same_account_is_noop_returning_count(service):
     moved, unlinked = StatementService(service.vault).reassign_account(pid, a)
     assert unlinked == 0, "no transfer to unlink (INV-12)"
     assert moved == 2
-    assert StatementPeriodRepository(conn).get(pid).account_id == a
+    assert _period(conn, pid).account_id == a
 
 
 # -- service: INV-6 verbatim move (no dedup) + INV-4 zero -------------------- #
@@ -983,9 +1047,7 @@ def test_FIBR0059_reassign_zero_txn_statement_returns_zero(service):
     moved, unlinked = StatementService(service.vault).reassign_account(pid, b)
     assert unlinked == 0, "no transfer to unlink (INV-12)"
     assert moved == 0, "no transactions to move"
-    assert StatementPeriodRepository(conn).get(pid).account_id == b, (
-        "period still re-pointed"
-    )
+    assert _period(conn, pid).account_id == b, "period still re-pointed"
 
 
 # -- UI (widget) ------------------------------------------------------------- #
@@ -1031,7 +1093,7 @@ def test_FIBR0059_reassign_round_trip_changes_row_and_emits(
     widget._reassign_button.click()
 
     assert emitted == [True], "reassigned emitted after a successful move"
-    assert widget._table.item(0, 0).text() == "Credit Card", (
+    assert cell_text(widget._table, 0, 0) == "Credit Card", (
         "the row's Account column (col 0) shows the new account"
     )
 
@@ -1132,7 +1194,7 @@ def test_FIBR0059_shell_reports_account_changed(qtbot, service, monkeypatch):
     b = _second_account(service)
     _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
     window._action_statements.trigger()
-    statements = window._statements_tab
+    statements = _statements_tab(window)
     statements._select_period(statements._rows[0].id)
 
     _stub_picker(monkeypatch, b)
@@ -1316,7 +1378,7 @@ def test_INV4_rollback_after_handoff_restores_everything(service):
 
     # Wedge the orphan-delete (step 2), which runs after the hand-off (step 1).
     wedge = StatementService(
-        StandInVault(
+        _wedged_vault(
             raising_conn(
                 conn, "DELETE FROM transactions", "injected failure after hand-off"
             )
@@ -1702,7 +1764,7 @@ def test_FIBR0202_INV10_a_failure_part_way_leaves_nothing_deleted(service, paths
     calls cannot offer (D5)."""
     _acct_id, conn, a, b, _c = _seed_measured_trap(service)
     before = _stamps(conn)
-    wedged = StatementService(StandInVault(raising_conn(conn, "DELETE FROM", "boom")))
+    wedged = StatementService(_wedged_vault(raising_conn(conn, "DELETE FROM", "boom")))
 
     with pytest.raises(RuntimeError):
         wedged.delete_statements([a, b])
@@ -1732,7 +1794,7 @@ def test_FIBR0202_INV17_empty_batch_short_circuits_before_the_repository(service
     batch methods return early — proven against a vault whose every execute
     raises, so reaching the repository at all would surface."""
     conn = service.vault.connection
-    wedged = StatementService(StandInVault(raising_conn(conn, "", "any SQL at all")))
+    wedged = StatementService(_wedged_vault(raising_conn(conn, "", "any SQL at all")))
     assert wedged.delete_statements(()) == 0
     assert wedged.delete_preview_many(()) == (0, 0)
 
@@ -1961,7 +2023,7 @@ def test_FIBR0202_INV18_shell_reports_the_number_deleted_and_fires_once(
     reports the last one."""
     _acct_id, _conn, a, b, _c = _seed_measured_trap(service)
     window = _shell(qtbot, service)
-    widget = window._statements_tab
+    widget = _statements_tab(window)
     assert widget is not None
     monkeypatch.setattr(
         QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
@@ -1986,7 +2048,7 @@ def test_FIBR0202_INV18_a_single_delete_still_reads_as_one(qtbot, service, monke
     _stamped_txn(conn, acct, "2026-01-10", p, "only")
     conn.commit()
     window = _shell(qtbot, service)
-    widget = window._statements_tab
+    widget = _statements_tab(window)
     assert widget is not None
     monkeypatch.setattr(
         QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
@@ -2004,7 +2066,7 @@ def test_FIBR0396_the_period_cell_is_one_template(qtbot, service, translate_one)
     translate_one("StatementsWidget", "{start} – {end}", "{end} ← {start}")
     widget = StatementsWidget(service)
     qtbot.addWidget(widget)
-    shown = widget._table.item(0, _COL_PERIOD).text()
+    shown = cell_text(widget._table, 0, _COL_PERIOD)
     assert " ← " in shown, shown
     end, start = shown.split(" ← ")
     assert start <= end, shown  # both are the same day here; the order is the point
@@ -2084,7 +2146,7 @@ def test_FIBR0438_a_failed_move_keeps_the_pair(service):
     b = _second_account(service)
     pair = set(_confirmed_pair(service, imp, a, b))
     wedge = StatementService(
-        StandInVault(raising_conn(conn, "UPDATE transactions", "injected failure"))
+        _wedged_vault(raising_conn(conn, "UPDATE transactions", "injected failure"))
     )
     with pytest.raises(RuntimeError):
         wedge.reassign_account(_period_id(conn, a), b)

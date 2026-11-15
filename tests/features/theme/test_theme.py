@@ -33,6 +33,13 @@ _ALL_IDS = {"system", *_LIGHT, *_DARK}
 # --------------------------------------------------------------------------- #
 # Fixtures + helpers
 # --------------------------------------------------------------------------- #
+def _app() -> QApplication:
+    """The shared Qt application, failing if there is none."""
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    return app
+
+
 @pytest.fixture
 def theme_isolation():
     """Snapshot & restore the shared qapp's palette / style / stylesheet (D12), so
@@ -43,7 +50,7 @@ def theme_isolation():
     A ``ThemeController`` the test built is retired too. Each is parented to the
     shared app and listens for OS scheme changes, so one left in "system" mode
     re-themes whatever test is running when the scheme next flips."""
-    app = QApplication.instance()
+    app = _app()
     style_name = app.style().objectName()
     palette = QPalette(app.palette())
     stylesheet = app.styleSheet()
@@ -108,7 +115,7 @@ def test_INV1_theme_applied_before_window(
 
     class _Recorder:
         def __init__(self, *a, **k):
-            app = QApplication.instance()
+            app = _app()
             recorded["palette"] = QPalette(app.palette())
             recorded["stylesheet"] = app.styleSheet()
             raise _Sentinel
@@ -129,7 +136,7 @@ def test_INV1_theme_applied_before_window(
     with pytest.raises(_Sentinel):
         app_mod.run([])
     # run() connected the stub to aboutToQuit before the window raised.
-    QApplication.instance().aboutToQuit.disconnect(stub_service.on_about_to_quit)
+    _app().aboutToQuit.disconnect(stub_service.on_about_to_quit)
 
     expected = theme.build_palette(theme.THEMES["midnight"].tokens)
     got = recorded["palette"]
@@ -387,14 +394,19 @@ def test_INV5_different_themes_differ():
 # INV-6 — applying installs Fusion + palette + stylesheet and announces the change
 # --------------------------------------------------------------------------- #
 def test_INV6_apply_installs_everything_and_emits(qtbot, monkeypatch, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     fired: list[int] = []
     controller.themeChanged.connect(lambda: fired.append(1))
 
     names: list[object] = []
     orig = app.setStyle
-    monkeypatch.setattr(app, "setStyle", lambda n: (names.append(n), orig(n))[1])
+
+    def _recording_set_style(n):
+        names.append(n)
+        return orig(n)
+
+    monkeypatch.setattr(app, "setStyle", _recording_set_style)
 
     controller.set_theme("ledger")
     assert _window_lightness(app) > 0.5, "ledger is light"
@@ -410,7 +422,7 @@ def test_INV6_apply_installs_everything_and_emits(qtbot, monkeypatch, theme_isol
 # INV-7 — Follow system resolves + follows OS flips live; a pinned theme does not
 # --------------------------------------------------------------------------- #
 def test_INV7_system_resolves_by_scheme(qtbot, monkeypatch, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
 
     monkeypatch.setattr(controller, "_current_scheme", lambda: Qt.ColorScheme.Dark)
@@ -424,7 +436,7 @@ def test_INV7_system_resolves_by_scheme(qtbot, monkeypatch, theme_isolation):
 
 
 def test_INV7_unknown_scheme_defaults_dark(qtbot, monkeypatch, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     monkeypatch.setattr(controller, "_current_scheme", lambda: Qt.ColorScheme.Unknown)
     controller.set_theme("system")
@@ -434,7 +446,7 @@ def test_INV7_unknown_scheme_defaults_dark(qtbot, monkeypatch, theme_isolation):
 def test_INV7_live_follow_flips_and_keeps_system_mode(
     qtbot, monkeypatch, theme_isolation
 ):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     scheme = {"v": Qt.ColorScheme.Dark}
     monkeypatch.setattr(controller, "_current_scheme", lambda: scheme["v"])
@@ -457,7 +469,7 @@ def test_INV7_live_follow_flips_and_keeps_system_mode(
 
 
 def test_INV7_pinned_theme_slot_is_a_noop(qtbot, monkeypatch, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     monkeypatch.setattr(controller, "_current_scheme", lambda: Qt.ColorScheme.Dark)
     controller.set_theme("emerald")  # a pinned dark theme
@@ -473,7 +485,7 @@ def test_INV7_pinned_theme_slot_is_a_noop(qtbot, monkeypatch, theme_isolation):
 # D3 — an unknown id normalises the MODE to system
 # --------------------------------------------------------------------------- #
 def test_D3_unknown_id_normalises_mode_to_system(qtbot, monkeypatch, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     monkeypatch.setattr(controller, "_current_scheme", lambda: Qt.ColorScheme.Dark)
     controller.set_theme("bogus-theme")
@@ -485,7 +497,7 @@ def test_D3_unknown_id_normalises_mode_to_system(qtbot, monkeypatch, theme_isola
 # D4 — a failing persist leaves the theme applied and does not raise
 # --------------------------------------------------------------------------- #
 def test_D4_failed_persist_still_applies(qtbot, monkeypatch, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
 
     def boom(_id):
@@ -500,7 +512,7 @@ def test_D4_failed_persist_still_applies(qtbot, monkeypatch, theme_isolation):
 # INV-12 — the theme system is presentation-only (no vault state)
 # --------------------------------------------------------------------------- #
 def test_INV12_no_vault_reference(qtbot, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     controller.set_theme("graphite")  # no AuthService / Vault anywhere in scope
     assert app.styleSheet() != ""
@@ -522,7 +534,7 @@ def test_INV12_no_vault_reference(qtbot, theme_isolation):
 def test_INV8_open_with_pinned_pref_makes_zero_saves(
     qtbot, service, monkeypatch, theme_isolation
 ):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     theme.save_theme_pref("emerald")
     controller.set_theme("emerald")
@@ -539,7 +551,7 @@ def test_INV8_open_with_pinned_pref_makes_zero_saves(
 
 
 def test_INV8_selecting_applies_and_persists_live(qtbot, service, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     theme.save_theme_pref("ledger")
     controller.set_theme("ledger")
@@ -558,7 +570,7 @@ def test_INV8_selecting_applies_and_persists_live(qtbot, service, theme_isolatio
 # INV-9 — the picker offers Follow-system + six themes, grouped, preselected
 # --------------------------------------------------------------------------- #
 def test_INV9_picker_contents_and_grouping(qtbot, service, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     theme.save_theme_pref("graphite")
     controller.set_theme("graphite")
@@ -587,7 +599,7 @@ def test_INV9_no_picker_without_controller(qtbot, service):
 # INV-10 — toolbar glyphs re-tint on a theme change
 # --------------------------------------------------------------------------- #
 def test_INV10_toolbar_icons_retint_on_theme_change(qtbot, service, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     controller.set_theme("ledger")  # light
 
@@ -623,7 +635,7 @@ def test_INV10_EVERY_toolbar_glyph_retints_not_just_home(
     forgets its hue is caught the day it lands."""
     from finbreak.ui import icons
 
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     controller.set_theme("ledger")  # light
 
@@ -664,7 +676,7 @@ def test_INV10_hover_state_differs_for_every_toolbar_glyph(qapp, theme_isolation
 # INV-11 — grid views show row highlighting (striping + hover/selection QSS)
 # --------------------------------------------------------------------------- #
 def test_INV11_polish_enables_alternating_rows(qtbot, service, theme_isolation):
-    app = QApplication.instance()
+    app = _app()
     controller = theme.ThemeController(app)
     controller.set_theme("ledger")
 
@@ -672,6 +684,7 @@ def test_INV11_polish_enables_alternating_rows(qtbot, service, theme_isolation):
     qtbot.addWidget(window)
     window._enter_unlocked()
 
+    assert window._workspace is not None
     tables = window._workspace.findChildren(QTableView)
     assert tables, "the workspace has table views"
     assert all(tv.alternatingRowColors() for tv in tables), "all views striped"

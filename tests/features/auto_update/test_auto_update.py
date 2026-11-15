@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import io
 import os
 import re
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
+from typing import cast
 
 import pytest
 import shiboken6
@@ -38,6 +41,7 @@ from finbreak.services.update import (
 )
 from finbreak.services.update_installer import (
     AppImageInstaller,
+    Installer,
     WindowsInstaller,
     _powershell_path,
     _ps_single_quote,
@@ -1361,7 +1365,14 @@ def test_INV10_redirect_to_non_https_is_refused():
     request/fp args are never touched — ``_require_https`` raises first."""
     handler = update_fetch._HttpsOnlyRedirectHandler()
     with pytest.raises(ValueError):
-        handler.redirect_request(None, None, 302, "Found", {}, "http://evil/downgrade")
+        handler.redirect_request(
+            urllib.request.Request("https://example.test/app"),
+            io.BytesIO(),
+            302,
+            "Found",
+            {},
+            "http://evil/downgrade",
+        )
 
 
 def test_fetch_latest_release_parses_json(monkeypatch):
@@ -1923,6 +1934,18 @@ def test_prompt_shows_both_versions(qtbot):
     assert "0.1.0" in texts and "0.1.1" in texts
 
 
+def _as_update_service(double: object) -> UpdateService:
+    """A hand-written stand-in typed as the ``UpdateService`` a worker or the shell
+    takes: a deliberate test double that carries only the methods the caller uses."""
+    return cast(UpdateService, double)
+
+
+def _as_installer(double: object) -> Installer:
+    """A hand-written stand-in typed as the ``Installer`` the shell takes (it
+    lacks ``asset_suffix``, which the shell never calls in these tests)."""
+    return cast(Installer, double)
+
+
 class _StubCheckService:
     def __init__(self, result=None, error=None):
         self._result = result
@@ -1938,7 +1961,7 @@ def test_D7_check_worker_emits_found(qtbot):
     from finbreak.ui._update_worker import UpdateCheckWorker
 
     info = UpdateInfo("0.1.1", "a", "b", "c", "d", "e")
-    worker = UpdateCheckWorker(_StubCheckService(result=info))
+    worker = UpdateCheckWorker(_as_update_service(_StubCheckService(result=info)))
     seen: list = []
     worker.found.connect(lambda i: seen.append(("found", i)))
     worker.none.connect(lambda: seen.append(("none",)))
@@ -1949,7 +1972,7 @@ def test_D7_check_worker_emits_found(qtbot):
 def test_D7_check_worker_emits_none(qtbot):
     from finbreak.ui._update_worker import UpdateCheckWorker
 
-    worker = UpdateCheckWorker(_StubCheckService(result=None))
+    worker = UpdateCheckWorker(_as_update_service(_StubCheckService(result=None)))
     seen: list = []
     worker.found.connect(lambda i: seen.append("found"))
     worker.none.connect(lambda: seen.append("none"))
@@ -1960,7 +1983,9 @@ def test_D7_check_worker_emits_none(qtbot):
 def test_D7_check_worker_emits_failed_on_unexpected_error(qtbot):
     from finbreak.ui._update_worker import UpdateCheckWorker
 
-    worker = UpdateCheckWorker(_StubCheckService(error=RuntimeError("boom")))
+    worker = UpdateCheckWorker(
+        _as_update_service(_StubCheckService(error=RuntimeError("boom")))
+    )
     seen: list = []
     worker.failed.connect(lambda exc: seen.append(exc))
     worker.run()
@@ -1989,7 +2014,9 @@ def test_FIBR0108_download_worker_relays_progress(qtbot, tmp_path):
     from finbreak.ui._update_worker import DownloadWorker
 
     service = _StubDownloadService(path=tmp_path / "v", chunks=[(10, 100), (100, 100)])
-    worker = DownloadWorker(service, UpdateInfo("0.1.1", "", "", "", "", ""))
+    worker = DownloadWorker(
+        _as_update_service(service), UpdateInfo("0.1.1", "", "", "", "", "")
+    )
     seen: list[tuple[int, int]] = []
     worker.progress.connect(lambda received, total: seen.append((received, total)))
     worker.run()
@@ -2001,7 +2028,8 @@ def test_D7_download_worker_emits_ready(qtbot, tmp_path):
 
     verified = tmp_path / "verified.AppImage"
     worker = DownloadWorker(
-        _StubDownloadService(path=verified), UpdateInfo("0.1.1", "", "", "", "", "")
+        _as_update_service(_StubDownloadService(path=verified)),
+        UpdateInfo("0.1.1", "", "", "", "", ""),
     )
     seen: list = []
     worker.ready.connect(lambda p: seen.append(p))
@@ -2013,7 +2041,7 @@ def test_D7_download_worker_emits_failed(qtbot):
     from finbreak.ui._update_worker import DownloadWorker
 
     worker = DownloadWorker(
-        _StubDownloadService(error=UpdateVerificationError("bad")),
+        _as_update_service(_StubDownloadService(error=UpdateVerificationError("bad"))),
         UpdateInfo("0.1.1", "", "", "", "", ""),
     )
     seen: list = []
@@ -2119,7 +2147,7 @@ def test_FIBR0392_an_interrupted_download_leaves_no_file_and_says_nothing(
 
     verified = tmp_path / "finbreak-update-x.AppImage"
     service = _BlockingDownloadService(verified, report_progress=report_progress)
-    worker = DownloadWorker(service, _sample_info())
+    worker = DownloadWorker(_as_update_service(service), _sample_info())
     seen: list = []
     worker.ready.connect(lambda p: seen.append(("ready", p)))
     worker.failed.connect(lambda e: seen.append(("failed", e)))
@@ -2161,11 +2189,18 @@ def test_an_installer_that_cannot_self_update_leaves_the_updater_inert(
     assert fetcher.fetch_calls == 0, "a check ran for an installer that said no"
 
     started: list = []
-    monkeypatch.setattr(
-        mw, "UpdateCheckWorker", lambda *a, **k: started.append(a) or _NoWorker()
-    )
+
+    def _record_start(*a, **k):
+        started.append(a)
+        return _NoWorker()
+
+    monkeypatch.setattr(mw, "UpdateCheckWorker", _record_start)
     told: list = []
-    monkeypatch.setattr(mw.QMessageBox, "information", lambda *a, **k: told.append(a))
+
+    def _record_information(*a, **k):
+        told.append(a)
+
+    monkeypatch.setattr(mw.QMessageBox, "information", _record_information)
     window, _ = _updater_shell(
         qtbot,
         service,
@@ -2188,7 +2223,11 @@ class _NoWorker:
 
 def _updater_shell(qtbot, service, *, info=None, enabled=True, installer=None):
     updater = _FakeUpdateService(info=info, enabled=enabled)
-    window = MainWindow(service, update_service=updater, installer=installer)
+    window = MainWindow(
+        service,
+        update_service=_as_update_service(updater),
+        installer=None if installer is None else _as_installer(installer),
+    )
     qtbot.addWidget(window)
     return window, updater
 
@@ -2458,6 +2497,7 @@ def test_settings_checkbox_reflects_and_exposes_state(qtbot, service):
     dialog = SettingsDialog(service, "ZAR", update_enabled=True, update_supported=True)
     qtbot.addWidget(dialog)
     checkbox = dialog.findChild(QCheckBox, "settings_check_updates")
+    assert checkbox is not None
     assert checkbox.isEnabled()
     assert checkbox.isChecked()
     assert dialog.update_enabled() is True
@@ -2665,8 +2705,8 @@ def test_FIBR0390_a_second_check_while_one_runs_reuses_it(
 
     window = MainWindow(
         service,
-        update_service=_Blocking(),
-        installer=_FakeInstaller(tmp_path / "app.AppImage"),
+        update_service=_as_update_service(_Blocking()),
+        installer=_as_installer(_FakeInstaller(tmp_path / "app.AppImage")),
     )
     qtbot.addWidget(window)
 
@@ -2714,8 +2754,8 @@ def test_FIBR0390_quit_saves_the_layout_and_drains_a_running_check(
 
     window = MainWindow(
         service,
-        update_service=_Slow(),
-        installer=_FakeInstaller(tmp_path / "app.AppImage"),
+        update_service=_as_update_service(_Slow()),
+        installer=_as_installer(_FakeInstaller(tmp_path / "app.AppImage")),
     )
     qtbot.addWidget(window)
     window.show()
@@ -2823,8 +2863,8 @@ def test_FIBR0394_a_check_started_while_locked_still_answers(
     )
     window = MainWindow(
         service,
-        update_service=_Outcome(),
-        installer=_FakeInstaller(tmp_path / "app.AppImage"),
+        update_service=_as_update_service(_Outcome()),
+        installer=_as_installer(_FakeInstaller(tmp_path / "app.AppImage")),
     )
     qtbot.addWidget(window)
     assert window._dialog is not None, "precondition: the unlock screen is up"

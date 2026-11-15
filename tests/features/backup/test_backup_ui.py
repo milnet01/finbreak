@@ -10,6 +10,7 @@ import zipfile
 
 import pytest
 from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QStackedWidget, QTabWidget
 
 from conftest import _PW
 from finbreak.errors import VaultStateError
@@ -192,7 +193,10 @@ def test_restore_from_shell_enters_unlocked_under_new_master(qtbot, tmp_path):
     window._on_restore_requested()  # runs the synchronous restore + unlock
 
     assert service._key is not None, "the shell is unlocked under the new master"
-    workspace = window.centralWidget().currentWidget()
+    stack = window.centralWidget()
+    assert isinstance(stack, QStackedWidget)
+    workspace = stack.currentWidget()
+    assert isinstance(workspace, QTabWidget)
     assert workspace.objectName() == "workspace", "the unlocked workspace is shown"
     # The restored data is present: files existing would also hold for an empty
     # vault installed under the new master, so read the source's account back.
@@ -222,6 +226,7 @@ def test_FIBR0436_a_full_disk_restore_names_the_disk(qtbot, tmp_path, monkeypatc
     qtbot.addWidget(window)
     window._open_restore()
     restore = window._dialog
+    assert isinstance(restore, BackupRestoreDialog)
     restore._source_field.setText(str(_make_fbk(tmp_path)))
     restore._backup_password.setText(_BACKUP_PW)
     restore._new_master.setText(_M2)
@@ -264,6 +269,7 @@ def test_FIBR0394_restore_clears_the_replaced_vaults_hint_and_lockout(qtbot, tmp
     qtbot.addWidget(window)
     window._open_restore()
     restore = window._dialog
+    assert isinstance(restore, BackupRestoreDialog)
     restore._source_field.setText(str(fbk))
     restore._backup_password.setText(_BACKUP_PW)
     restore._new_master.setText(_M2)
@@ -508,8 +514,10 @@ def test_export_recovers_cursor_on_engine_error(qtbot, paths, monkeypatch):
     qtbot.addWidget(window)
     window._enter_unlocked()
     window._open_backup_export()
-    window._dialog._password.setText(_BACKUP_PW)
-    window._dialog._confirm.setText(_BACKUP_PW)
+    export = window._dialog
+    assert isinstance(export, BackupExportDialog)
+    export._password.setText(_BACKUP_PW)
+    export._confirm.setText(_BACKUP_PW)
 
     monkeypatch.setattr(
         QFileDialog,
@@ -547,8 +555,10 @@ def test_FIBR0394_an_auto_lock_inside_the_save_picker_ends_the_backup(
     qtbot.addWidget(window)
     window._enter_unlocked()
     window._open_backup_export()
-    window._dialog._password.setText(_BACKUP_PW)
-    window._dialog._confirm.setText(_BACKUP_PW)
+    export = window._dialog
+    assert isinstance(export, BackupExportDialog)
+    export._password.setText(_BACKUP_PW)
+    export._confirm.setText(_BACKUP_PW)
     out = paths[0].parent / "x.fbk"
 
     def _locks_while_open(*a, **k):
@@ -582,8 +592,10 @@ def test_FIBR0404_saving_over_the_vault_is_not_called_too_large(
     qtbot.addWidget(window)
     window._enter_unlocked()
     window._open_backup_export()
-    window._dialog._password.setText(_BACKUP_PW)
-    window._dialog._confirm.setText(_BACKUP_PW)
+    export = window._dialog
+    assert isinstance(export, BackupExportDialog)
+    export._password.setText(_BACKUP_PW)
+    export._confirm.setText(_BACKUP_PW)
     monkeypatch.setattr(
         QFileDialog,
         "getSaveFileName",
@@ -624,8 +636,10 @@ def test_INV14_export_dialog_handles_oversized_db_without_crashing(
     qtbot.addWidget(window)
     window._enter_unlocked()
     window._open_backup_export()
-    window._dialog._password.setText(_BACKUP_PW)
-    window._dialog._confirm.setText(_BACKUP_PW)
+    export = window._dialog
+    assert isinstance(export, BackupExportDialog)
+    export._password.setText(_BACKUP_PW)
+    export._confirm.setText(_BACKUP_PW)
 
     monkeypatch.setattr(
         QFileDialog,
@@ -633,11 +647,12 @@ def test_INV14_export_dialog_handles_oversized_db_without_crashing(
         staticmethod(lambda *a, **k: (str(paths[0].parent / "x.fbk"), "")),
     )
     warned: list[tuple] = []
-    monkeypatch.setattr(
-        QMessageBox,
-        "warning",
-        staticmethod(lambda *a, **k: warned.append(a) or QMessageBox.StandardButton.Ok),
-    )
+
+    def _record_warning(*a, **k):
+        warned.append(a)
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(_record_warning))
 
     def boom(self, dest, pw, **k):
         raise BackupError("intermediate vault.db exceeds MAX_BACKUP_DB_BYTES")
@@ -772,6 +787,7 @@ def test_verify_wiring_runs_service_and_renders(qtbot, paths, monkeypatch):
 
     # The Settings "Verify backup…" signal opens the verify dialog.
     window._open_settings()
+    assert isinstance(window._dialog, SettingsDialog)
     window._dialog.verify_backup_requested.emit()
     dialog = window._dialog
     assert isinstance(dialog, BackupVerifyDialog), "verify signal opens the dialog"

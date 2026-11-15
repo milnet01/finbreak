@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
+    QTabWidget,
     QToolBar,
     QWidget,
 )
@@ -35,7 +36,9 @@ from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
 from finbreak.ui._amount import _format_amount
 from finbreak.ui._worker import DeriveWorker
+from finbreak.ui.export_dialog import ExportDialog
 from finbreak.ui.first_run import FirstRunDialog
+from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.unlock import UnlockDialog
@@ -48,6 +51,20 @@ def service(paths):
     svc = AuthService(*paths)
     yield svc
     svc.lock()
+
+
+def _page(window: MainWindow) -> QWidget:
+    """The page the shell's stack shows now, failing if there is none."""
+    stack = window.centralWidget()
+    assert isinstance(stack, QStackedWidget)
+    return stack.currentWidget()
+
+
+def _workspace(window: MainWindow) -> QTabWidget:
+    """The unlocked shell's tabbed workspace, failing if it is anything else."""
+    workspace = _page(window)
+    assert isinstance(workspace, QTabWidget)
+    return workspace
 
 
 def _default_id(service: AuthService) -> int:
@@ -134,7 +151,7 @@ def test_INV2a_first_run_happy_path(qtbot, service):
     window = MainWindow(service)
     qtbot.addWidget(window)
 
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_welcome"
+    assert _page(window).objectName() == "placeholder_welcome"
     assert isinstance(window._dialog, FirstRunDialog)
     assert not window._toolbar.isEnabled(), "chrome disabled until the vault exists"
 
@@ -145,7 +162,7 @@ def test_INV2a_first_run_happy_path(qtbot, service):
         dlg._submit.click()
 
     assert window._toolbar.isEnabled()
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.objectName() == "workspace"
     assert workspace.currentWidget().objectName() == "tab_home"
 
@@ -159,7 +176,7 @@ def test_INV2b_unlock_happy_path(qtbot, service):
 
     window = MainWindow(service)
     qtbot.addWidget(window)
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    assert _page(window).objectName() == "placeholder_locked"
     assert isinstance(window._dialog, UnlockDialog)
 
     dlg = window._dialog
@@ -180,7 +197,7 @@ def test_INV2b_unlock_happy_path(qtbot, service):
     with qtbot.waitSignal(dlg.unlocked, timeout=15000):
         dlg._unlock_button.click()
     assert window._toolbar.isEnabled()
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.objectName() == "workspace"
     assert workspace.currentWidget().objectName() == "tab_home"
 
@@ -206,9 +223,12 @@ def test_INV2d_first_run_cancel_quits(qtbot, service, monkeypatch, paths):
     window.show()
     drained = []
     real_drain = window._drain_update_workers
-    monkeypatch.setattr(
-        window, "_drain_update_workers", lambda: (drained.append(1), real_drain())
-    )
+
+    def _counting_drain():
+        drained.append(1)
+        return real_drain()
+
+    monkeypatch.setattr(window, "_drain_update_workers", _counting_drain)
     dlg.reject()
     assert drained == [1], "dismissing first-run must run the window's close path"
     assert not window.isVisible(), "dismissing first-run closes the only window"
@@ -229,7 +249,7 @@ def test_INV2e_unlock_cancel_leaves_locked_shell(qtbot, service, monkeypatch):
     monkeypatch.setattr(QApplication, "quit", lambda *a: calls.append(1))
     dlg.reject()
     assert calls == [], "dismissing unlock does NOT quit"
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    assert _page(window).objectName() == "placeholder_locked"
     assert window._dialog is None
 
     button = window.findChild(QPushButton, "button_unlock")
@@ -243,20 +263,22 @@ def test_INV2f_no_cancel_during_derivation_crash(qtbot, service, monkeypatch, ki
     if kind == "unlock":
         service.first_run(bytearray(_PW), "ZAR")
         service.lock()
-        import finbreak.ui.unlock as module
+        import finbreak.ui.unlock as unlock_module
 
-        monkeypatch.setattr(module, "DeriveWorker", _StubWorker)
-        dlg = UnlockDialog(service)
+        monkeypatch.setattr(unlock_module, "DeriveWorker", _StubWorker)
+        unlock = UnlockDialog(service)
+        dlg: UnlockDialog | FirstRunDialog = unlock
         dlg._password.setText(_PW.decode())
-        submit = dlg._unlock_button
+        submit = unlock._unlock_button
     else:
-        import finbreak.ui.first_run as module
+        import finbreak.ui.first_run as first_run_module
 
-        monkeypatch.setattr(module, "DeriveWorker", _StubWorker)
-        dlg = FirstRunDialog(service)
+        monkeypatch.setattr(first_run_module, "DeriveWorker", _StubWorker)
+        first_run = FirstRunDialog(service)
+        dlg = first_run
         dlg._password.setText(_PW.decode())
-        dlg._confirm.setText(_PW.decode())
-        submit = dlg._submit
+        first_run._confirm.setText(_PW.decode())
+        submit = first_run._submit
     qtbot.addWidget(dlg)
 
     submit.click()
@@ -285,7 +307,7 @@ def test_INV3_no_transaction_data_while_locked(qtbot, service):
 
     window = MainWindow(service)
     qtbot.addWidget(window)
-    current = window.centralWidget().currentWidget()
+    current = _page(window)
     assert current.objectName() == "placeholder_locked"
     # No data-bearing widget (the relocated transaction table) survives the lock.
     from finbreak.ui.transactions import TransactionsView
@@ -301,7 +323,7 @@ def test_INV4a_autolock_destroys_content_same_window(qtbot, service):
     # FIBR-0052 reshape: the destroyed object is now the whole tabbed workspace
     # (all four data tabs), not a single HomeView (INV-3).
     window = _unlocked_home_shell(qtbot, service)
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.objectName() == "workspace"
 
     service._on_idle_timeout()  # production entry: lock() then on_auto_lock()
@@ -311,9 +333,10 @@ def test_INV4a_autolock_destroys_content_same_window(qtbot, service):
     assert not shiboken6.isValid(workspace), (
         "the workspace (decrypted rows) is destroyed"
     )
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    assert _page(window).objectName() == "placeholder_locked"
     assert not window._toolbar.isEnabled()
     count = window.findChild(QLabel, "status_txn_count")
+    assert count is not None
     assert count.isHidden(), "the transaction count is hidden while locked"
     assert isinstance(window._dialog, UnlockDialog), "the UnlockDialog re-opened"
 
@@ -348,7 +371,8 @@ def test_INV4c_autolock_empties_the_rows_before_the_deferred_delete(qtbot, servi
     TransactionService(service.vault).add_transaction(
         _default_id(service), "2026-07-01", "-12.34", "ZZSECRETMEMO"
     )
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
+    assert window._transactions_tab is not None
     window._transactions_tab.refresh()
     assert "transactions_table" in filled_tables(workspace), (
         "the fixture put rows on screen before the lock"
@@ -443,7 +467,7 @@ def test_INV6a_content_routing_switches_tabs_stable_instances(qtbot, service):
     # current tab (never rebuild it); the tab widget instances are stable across
     # switches, unlike the old build-a-fresh-widget-then-done-returns-Home model.
     window = _unlocked_home_shell(qtbot, service)
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.objectName() == "workspace"
 
     for attr, object_name in (
@@ -500,9 +524,12 @@ def test_INV7_status_bar_count_and_messages(qtbot, service):
 def test_INV8a_donate_opens_exact_urls(qtbot, service, monkeypatch):
     window = _unlocked_home_shell(qtbot, service)
     calls = []
-    monkeypatch.setattr(
-        QDesktopServices, "openUrl", lambda url: calls.append(url.toString()) or True
-    )
+
+    def _record_open(url):
+        calls.append(url.toString())
+        return True
+
+    monkeypatch.setattr(QDesktopServices, "openUrl", _record_open)
 
     window._action_donate_github.trigger()
     window._action_donate_patreon.trigger()
@@ -541,9 +568,12 @@ def test_INV8a_funding_yml_in_sync():
 def test_INV8b_report_issue_opens_url(qtbot, service, monkeypatch):
     window = _unlocked_home_shell(qtbot, service)
     calls = []
-    monkeypatch.setattr(
-        QDesktopServices, "openUrl", lambda url: calls.append(url.toString()) or True
-    )
+
+    def _record_open(url):
+        calls.append(url.toString())
+        return True
+
+    monkeypatch.setattr(QDesktopServices, "openUrl", _record_open)
 
     window._action_report_issue.trigger()
 
@@ -571,7 +601,7 @@ def test_INV9_manual_entry_roundtrip_from_home(qtbot, service):
         dlg._add_button.click()
 
     assert len(txn.list_transactions()) == before + 1
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     assert workspace.currentWidget().objectName() == "tab_transactions", (
         "committing lands on the Transactions tab so the new row is visible (D11)"
     )
@@ -579,12 +609,13 @@ def test_INV9_manual_entry_roundtrip_from_home(qtbot, service):
 
 def test_INV9_manual_entry_roundtrip_from_non_home(qtbot, service):
     window = _unlocked_home_shell(qtbot, service)
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
     window._action_accounts.trigger()
     assert workspace.currentWidget().objectName() == "tab_accounts"
 
     window._action_manual_entry.trigger()
     dlg = window._dialog
+    assert isinstance(dlg, ManualEntryDialog)
     dlg._amount.setText("100.00")
     dlg._description.setText("salary")
     with qtbot.waitSignal(dlg.committed):
@@ -602,14 +633,21 @@ def test_FIBR0049_amount_and_description_carry_a_visible_hint(qtbot, service):
     window = _unlocked_home_shell(qtbot, service)
     window._action_manual_entry.trigger()
     dlg = window._dialog
+    assert isinstance(dlg, ManualEntryDialog)
     form = dlg.findChild(QFormLayout)
+    assert form is not None
 
-    for field, words in (
+    fields: list[tuple[QWidget, tuple[str, ...]]] = [
         (dlg._amount, ("Money in", "Money out", "minus")),
         (dlg._description, ("What it was for",)),
-    ):
-        row, _ = form.getWidgetPosition(field)
-        hint = form.itemAt(row + 1, QFormLayout.ItemRole.FieldRole).widget()
+    ]
+    for field, words in fields:
+        position = form.getWidgetPosition(field)
+        assert isinstance(position, tuple)  # the stub types it as plain object
+        row = position[0]
+        hint_item = form.itemAt(row + 1, QFormLayout.ItemRole.FieldRole)
+        assert hint_item is not None
+        hint = hint_item.widget()
         assert isinstance(hint, QLabel) and hint.isVisible(), field.objectName()
         assert all(w in hint.text() for w in words), hint.text()
         assert field.accessibleDescription() == hint.text()
@@ -637,6 +675,7 @@ def test_FIBR0072_navigating_away_cannot_discard_an_open_import(qtbot, service):
     window = _unlocked_home_shell(qtbot, service)
     window._action_import.trigger()
     wizard = window._live
+    assert isinstance(wizard, ImportWizardWidget)
 
     for action in _chrome_actions(window):
         action.trigger()
@@ -674,6 +713,7 @@ def test_FIBR0072_a_late_done_after_auto_lock_keeps_the_locked_chrome_off(
     window = _unlocked_home_shell(qtbot, service)
     window._action_import.trigger()
     wizard = window._live
+    assert isinstance(wizard, ImportWizardWidget)
 
     service._on_idle_timeout()
     assert shiboken6.isValid(wizard), "precondition: the delete is still pending"
@@ -695,6 +735,7 @@ def test_INV9_manual_entry_cancel_and_invalid(qtbot, service):
 
     window._action_manual_entry.trigger()
     dlg = window._dialog
+    assert isinstance(dlg, ManualEntryDialog)
     dlg._amount.setText("not-a-number")
     dlg._description.setText("x")
     dlg._add_button.click()
@@ -1050,9 +1091,12 @@ def test_FIBR0431_ctrl_q_quits_from_the_modal_start_screens(
         dialog.activateWindow()
     drained = []
     real_drain = window._drain_update_workers
-    monkeypatch.setattr(
-        window, "_drain_update_workers", lambda: (drained.append(1), real_drain())
-    )
+
+    def _counting_drain():
+        drained.append(1)
+        return real_drain()
+
+    monkeypatch.setattr(window, "_drain_update_workers", _counting_drain)
 
     try:
         qtbot.keyClick(dialog, Qt.Key.Key_Q, Qt.KeyboardModifier.ControlModifier)
@@ -1065,8 +1109,6 @@ def test_FIBR0431_ctrl_q_quits_from_the_modal_start_screens(
 
 
 def test_FIBR0013_open_export_opens_a_prefilled_dialog(qtbot, service):
-    from finbreak.ui.export_dialog import ExportDialog
-
     window = _unlocked_home_shell(qtbot, service)
     window._action_export.trigger()
     dialog = window._dialog
@@ -1089,6 +1131,7 @@ def test_FIBR0013_export_writes_a_pdf_via_the_shell(
     )
     window._action_export.trigger()
     dialog = window._dialog
+    assert isinstance(dialog, ExportDialog)
     dialog.export_requested.emit()  # as if Export… were clicked
     with pikepdf.open(str(out)) as doc:  # a real, valid PDF landed at the path
         assert len(doc.pages) >= 1
@@ -1104,6 +1147,7 @@ def test_FIBR0013_cancel_save_is_a_noop(qtbot, service, tmp_path, monkeypatch):
     )
     window._action_export.trigger()
     dialog = window._dialog
+    assert isinstance(dialog, ExportDialog)
     dialog.export_requested.emit()
     assert not list(tmp_path.glob("*.pdf"))  # no report written
     assert window._dialog is dialog  # the export dialog stays open (D9)
@@ -1134,6 +1178,7 @@ def test_FIBR0013_export_failure_shows_message_and_keeps_dialog(
     )
     window._action_export.trigger()
     dialog = window._dialog
+    assert isinstance(dialog, ExportDialog)
     dialog.export_requested.emit()
     assert warnings  # a friendly message was shown (INV-12)
     assert not out.exists()  # no partial file
@@ -1164,6 +1209,7 @@ def test_FIBR0394_an_auto_lock_inside_the_save_picker_ends_the_export(
         staticmethod(lambda *a, **k: warnings.append(a)),
     )
     window._action_export.trigger()
+    assert isinstance(window._dialog, ExportDialog)
     window._dialog.export_requested.emit()
 
     assert warnings == [], "no save error over the lock screen"
@@ -1176,10 +1222,12 @@ def test_FIBR0394_unlock_returns_to_the_tab_used_before_the_lock(qtbot, service)
     at launch: lock and unlock in one session and you landed on the launch-time
     tab instead of the one you were using."""
     window = _unlocked_home_shell(qtbot, service)
+    assert window._workspace is not None
     window._workspace.setCurrentIndex(3)  # the user moves to another tab
     window._lock()
     assert service.unlock(bytearray(_PW))  # what the unlock dialog's worker does
     window._enter_unlocked()
+    assert window._workspace is not None
     assert window._workspace.currentIndex() == 3
 
 
@@ -1235,7 +1283,9 @@ def test_FIBR0390_a_real_startup_failure_reaches_the_user(
 
     with pytest.raises(PermissionError) as raised:
         app_mod.run([])
-    QApplication.instance().aboutToQuit.disconnect(stub_service.on_about_to_quit)
+    app = QApplication.instance()
+    assert app is not None
+    app.aboutToQuit.disconnect(stub_service.on_about_to_quit)
     sys.excepthook(raised.type, raised.value, raised.tb)
 
     assert chained == [PermissionError], "the console traceback still runs"
@@ -1359,7 +1409,8 @@ def test_INV4c_autolock_empties_the_parallel_row_lists_too(qtbot, service):
     TransactionService(service.vault).add_transaction(
         _default_id(service), "2026-07-01", "-12.34", "ZZSECRETMEMO"
     )
-    workspace = window.centralWidget().currentWidget()
+    workspace = _workspace(window)
+    assert window._transactions_tab is not None and window._accounts_tab is not None
     window._transactions_tab.refresh()
     window._accounts_tab._refresh()
 
@@ -1407,6 +1458,7 @@ def test_the_lock_time_wipe_reaches_the_widget_it_is_handed(qtbot, service):
     """
     window = _unlocked_home_shell(qtbot, service)
     tab = window._accounts_tab
+    assert tab is not None
     tab._refresh()
     assert tab._rows, "precondition: the tab must hold rows before the wipe"
 
