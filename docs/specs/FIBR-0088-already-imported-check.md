@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # FIBR-0088 — Warn before importing a file that was already imported
 
-**Status:** spec draft (2026-11-15).
+**Status:** accepted (2026-11-15).
 **Kind:** implement.
 **Source:** ROADMAP FIBR-0088 (user-request-2026-07-11, dogfooding v0.1.0).
 
@@ -281,6 +281,13 @@ The new suite directory must be sorted into `tests/features/prose_checks/`'s
 `tests/features/reconciliation/test_no_schema_change.py::test_INV8_schema_version_at_current_latest_v16`
 is a deliberate tripwire on `LATEST_SCHEMA_VERSION == 16`: it fails on this
 change, and its pin moves to 17 with a note that v17 is not reconciliation's.
+`tests/features/loan_sign/test_migration_v16.py` breaks too: its
+`_back_to_v15` sets back only the version of a fresh vault that already holds
+`imported_files`, so v17's `CREATE TABLE` fails on re-run. That fixture also
+drops `imported_files` and its index; § 4.1's DDL stays a plain `CREATE`.
+`tests/features/db_performance/test_db_performance.py` asserts a vault at
+LATEST holds exactly `_EXPECTED_INDEXES`, so that set gains
+`idx_imported_files_sha256`.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -327,6 +334,10 @@ change, and its pin moves to 17 with a note that v17 is not reconciliation's.
 - `CHANGELOG.md` — an Unreleased entry.
 - `tests/features/reconciliation/test_no_schema_change.py` — its version pin
   and docstring move to v17 (§ 7).
+- `tests/features/loan_sign/test_migration_v16.py` — `_back_to_v15` also
+  drops the v17 table and index (§ 7).
+- `tests/features/db_performance/test_db_performance.py` — `_EXPECTED_INDEXES`
+  gains `idx_imported_files_sha256` (§ 7).
 - `docs/specs/FIBR-0085-batch-import-service.md` — none: no outcome changes.
 - `README.md` — none unless its feature list names import safeguards; checked
   at implementation.
