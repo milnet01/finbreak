@@ -66,8 +66,8 @@ def _install_excepthook() -> None:
                     "finbreak",
                     QCoreApplication.translate(
                         "App",
-                        "finbreak hit an unexpected error and cannot continue:"
-                        "\n{error}",
+                        "finbreak hit an unexpected error:\n{error}\n\n"
+                        "If finbreak stops working, close it and open it again.",
                     ).format(error=f"{exc_type.__name__}: {exc}"),
                 )
 

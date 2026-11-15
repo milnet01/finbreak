@@ -1287,6 +1287,9 @@ def test_FIBR0327_an_unhandled_startup_error_is_shown_not_swallowed(qapp, monkey
         "the dialog must name the fault, or the user has nothing to report.\n"
         f"  actual: {text!r}"
     )
+    # A batch import's stop re-raises here after showing its report, and the
+    # app carries on (FIBR-0472), so the dialog must not say it cannot.
+    assert "cannot continue" not in text, text
 
 
 def test_FIBR0327_a_broken_dialog_does_not_replace_the_fault_it_reports(
