@@ -7308,7 +7308,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: in-session-2026-09-21 (observed during a pre-push gate run).
 
-- 📋 [FIBR-0348] **The i18n guard is blind to a keyword-argument tr() call, so the class it closes can reopen silently.**
+- ✅ [FIBR-0348] **The i18n guard is blind to a keyword-argument tr() call, so the class it closes can reopen silently.**
   tests/features/i18n/test_translatable_strings.py closes FIBR-0310 R3: a
   tr() or translate() argument that pyside6-lupdate reads must be a string
   literal, or the string extracts to an empty catalog entry and ships
@@ -7343,6 +7343,14 @@ work, and none of it is a release decision.
   Do NOT close this by adding the keyword form to the walk and reading
   node.keywords for a literal. A keyword call with a literal is still
   invisible to lupdate, so accepting it would encode a false allowance.
+  Shipped 2026-11-15 (5405d23) in the fix shape above: too few positional
+  arguments is an offence of its own. Measured with pyside6-lupdate the
+  same day: tr(text=...) and both keyword forms of translate() extract
+  nothing, even with a literal. The planted leg now holds the three
+  keyword forms plus a keyword literal (8 offences); it caught 4 of 8
+  before the fix. The real-tree leg still passes, so no live call uses a
+  keyword form. Test-only change. review-tests was not run: one guard tightened,
+  proved red then green, judged not worth a lane (2026-11-15).
   **Layman:** A safety net that catches untranslatable text has a gap — write the same mistake one particular way and it slips past unnoticed.
   Kind: test.
   Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
