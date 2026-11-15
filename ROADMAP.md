@@ -5341,7 +5341,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: code-review-FIBR-0104-2026-11-11.
 
-- 📋 [FIBR-0471] **Batch scan has dead lock handlers and no stop-and-report on an unexpected error.**
+- ✅ [FIBR-0471] **Batch scan has dead lock handlers and no stop-and-report on an unexpected error.**
   BatchImportService._scan_net catches FinbreakError, and VaultLockedError
   is a subclass, so the wizard's `except VaultLockedError` after
   rescan_step and settle_pdf_read can never fire. A lock is safe today
@@ -5350,6 +5350,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   _on_batch_read: the chain stops, the record stays `waiting`, and only
   Cancel is left. RUN has a stop-and-report handler for this (FIBR-0407);
   SCAN has none. Both predate FIBR-0468, which found them.
+  Shipped 2026-11-15 (3b34d4f, review fix f8ecbba). An unexpected
+  error in a SCAN or ASK turn ends the batch with the report, imports
+  nothing, and re-raises for the crash hook. The two dead lock handlers
+  are gone. review-code --single: 4 MEDIUM, 3 LOW, 3 INFO. Fixed:
+  answer() at both ASK doors (the mapping door could reach single-file
+  import), blocked rows left promising a question, review() errors, the
+  refresh and re-arm tails, the doubled untranslated report line.
+  Dismissed: L3 (the worker's except Exception lets only SystemExit or
+  KeyboardInterrupt through; neither is raised on a worker). The INFO
+  coverage notes are notes, not defects. Queued: the crash dialog's
+  wording and message as FIBR-0472. Record (not committed, public repo):
+  /mnt/Emulators/.claude/Scratchpad/finbreak/review-code-2026-11-15-fibr0471-JE6j/.
   **Layman:** If something unexpected goes wrong while a batch import is reading files, the batch can stop with only Cancel left to press.
   Kind: review-fix.
   Source: review-code-FIBR-0468-2026-11-11.
