@@ -17,8 +17,9 @@ nothing new.*
 ## 1. Goal
 
 Picking a file in the single-file import wizard whose exact contents were
-imported before shows a question first: before the file is parsed, before a
-CSV mapping is asked for and before a PDF password is asked for. The user
+imported before shows a question first: before a CSV or PDF file is parsed,
+before a CSV mapping is asked for and before a PDF password is asked for. An
+OFX file is parsed first, only to count its statements (§ 4.4). The user
 either stops there or imports it again exactly as today. Every import, single
 or batch, records the file's fingerprint so a later pick can be recognised.
 
@@ -58,6 +59,10 @@ Each was made by the developer on 2026-11-15.
    re-derived both ways on every account change.
 5. **Name the most recent prior import only.** One account, one period and
    one date is enough to decide; a full history is the Statements tab's job.
+   A file holding several statements — a multi-account OFX — also says how
+   many of them were imported, where that is fewer than it holds. Otherwise
+   a user who imported statement 1 is told the whole file is in, and the
+   default Cancel drops statement 2 unseen.
 
 ## 4. Design
 
@@ -92,17 +97,21 @@ class PriorImport:            # models.py
     period_start: str         # ISO date
     period_end: str           # ISO date
     imported_at: str          # UTC ISO timestamp of THIS file's latest import
+    statement_count: int      # statements this file's bytes were imported into
 
 class ImportedFileRepository:
     def add(self, statement_period_id: int, file_sha256: str) -> None:
-        """INSERT, stamping imported_at; on a (statement_period_id,
-        file_sha256) conflict, UPDATE imported_at instead, so a repeat
-        import is the latest. Commit-free: the caller's import
-        transaction owns the commit."""
+        """DELETE any (statement_period_id, file_sha256) row, then INSERT
+        one stamping imported_at, so a repeat import takes a new, higher
+        id. Commit-free: the caller's import transaction owns the commit."""
     def latest(self, file_sha256: str) -> PriorImport | None:
-        """JOIN statement_periods and accounts; ORDER BY
-        imported_files.imported_at DESC, imported_files.id DESC; LIMIT 1."""
+        """JOIN statement_periods and accounts; ORDER BY imported_files.id
+        DESC; LIMIT 1. statement_count counts the file's rows."""
 ```
+
+"Latest" is the highest id, never the newest `imported_at`. SQLite gives a
+new row an id above every live one, so the order is the order of imports. A
+clock set back between two imports cannot reorder them.
 
 Deleting a statement (`StatementService.delete_statements`) deletes its
 `statement_periods` row, and `ON DELETE CASCADE` removes its fingerprints —
@@ -140,6 +149,8 @@ def commit_import(self, preview, period_start, period_end, source_filename,
   format. `_select_ofx` and `_select_pdf` take the bytes instead of reading
   again; the CSV branch decodes them with `decode_csv`. The wizard keeps
   `source.sha256` for the commit. **The bytes hashed are the bytes parsed.**
+  The format is sniffed from those bytes too: `looks_like_ofx` and
+  `looks_like_pdf` take an optional `data` and read the disk only without it.
 - Immediately after the read, `prior_import(sha256)`. On a match, a parented
   `QMessageBox`, shown with `show_modal` (FIBR-0065 D1) as the wizard's PDF
   password prompt is, reads through `self.tr`:
@@ -147,6 +158,17 @@ def commit_import(self, preview, period_start, period_end, source_filename,
   > You already imported this file on {imported}, into {account}, for
   > {start} – {end}. Import it again? Transactions already in finbreak are
   > skipped either way.
+
+  An OFX file with a match is parsed before the question, once; the parse
+  is kept and reused on Import again. Where its statements outnumber the
+  match's `statement_count`, the question reads instead:
+
+  > You already imported {count} of the {total} statements in this file, most
+  > recently on {imported}, into {account}, for {start} – {end}. Import from
+  > it again? Transactions already in finbreak are skipped either way.
+
+  An OFX file that fails to parse gets the first wording; Import again then
+  shows the parse error as today.
 
   Buttons **Import again** and **Cancel**; Cancel is the default and the
   Escape button. Cancel leaves the wizard on the pick step with no file
@@ -201,7 +223,8 @@ to `commit_import`. No outcome, reason string or review rule changes.
   *Breaks when:* the foreign key lacks `ON DELETE CASCADE`.
 
 - **INV-5** — Picking a file whose fingerprint matches shows the question
-  before any parse, CSV mapping step or PDF password prompt. Cancel leaves the
+  before any CSV or PDF parse, CSV mapping step or PDF password prompt (an
+  OFX file is parsed first, § 4.4). Cancel leaves the
   pick step showing, no preview built, and the vault unchanged.
   *Test:* `test_INV5_question_comes_first_and_cancel_changes_nothing` —
   import a locked PDF fixture, pick it again with the question answered
@@ -226,7 +249,7 @@ to `commit_import`. No outcome, reason string or review rule changes.
   *Test:* `test_INV8_question_names_the_latest_import` — import the same file
   into account A, then account B, then A again; set a non-default date
   format; assert the text names A and the third import's formatted dates.
-  *Breaks when:* `latest` orders ascending, `add` keeps the first stamp on a
+  *Breaks when:* `latest` orders ascending, `add` keeps the first row on a
   repeat, or the wizard formats ISO dates itself.
 
 - **INV-9** — Migration v16 → v17 creates the table and index in one atomic
@@ -249,10 +272,38 @@ to `commit_import`. No outcome, reason string or review rule changes.
   passes unchanged.
   *Breaks when:* a fingerprint match sets `already_imported`, or freezes it.
 
+- **INV-12** — A multi-statement OFX file whose statements were only partly
+  imported says how many were, out of how many. Once every statement is in,
+  the first wording returns.
+  *Test:* `test_INV12_partly_imported_ofx_says_how_many` — import statement 1
+  of a two-statement OFX through the wizard; re-pick: the text names 1 of 2.
+  Import statement 2 the same way; re-pick: the first wording.
+  *Breaks when:* the wizard asks about the file before counting its
+  statements, or `statement_count` counts something other than the file's
+  rows.
+
+- **INV-13** — "Latest" is the order of imports, not of clock readings.
+  *Test:* `test_INV13_latest_survives_a_clock_set_back` — import a file into
+  account A, then into account B with the clock earlier than A's stamp; the
+  question names B.
+  *Breaks when:* `latest` orders by `imported_at`, or `add` keeps the old id
+  on a repeat.
+
+- **INV-14** — The wizard routes a file by the bytes it read, not by what is
+  on disk when the user answers.
+  *Test:* `test_INV14_format_is_sniffed_from_the_held_bytes` — import an OFX
+  file named `.txt`, re-pick it, delete it while the question shows, and
+  answer Import again: the preview is built from the held bytes.
+  *Breaks when:* `_load_source` sniffs by path alone.
+
 ## 6. Failure modes
 
 - **The file changes between pick and commit.** It is read once (§ 4.4), so
-  the recorded fingerprint is of the bytes imported, whatever is on disk later.
+  the recorded fingerprint and the format are of the bytes imported, whatever
+  is on disk later (INV-14).
+- **One OFX statement imported into two accounts.** It leaves two rows, so
+  `statement_count` can reach the file's total while another statement was
+  never imported. The first wording then shows, naming the latest import.
 - **A different file with the same bytes.** That is the same statement, so
   the question is correct.
 - **The prior import's account was renamed.** `latest` joins `accounts` at
@@ -268,8 +319,8 @@ to `commit_import`. No outcome, reason string or review rule changes.
 
 ## 7. Tests
 
-A new suite, `tests/features/already_imported/`, holds INV-1 to INV-8 and
-INV-10, with `test_migration_v17.py` for INV-9. INV-11 is the existing batch
+A new suite, `tests/features/already_imported/`, holds INV-1 to INV-8,
+INV-10 and INV-12 to INV-14, with `test_migration_v17.py` for INV-9. INV-11 is the existing batch
 test. Each new test is seen failing against the code before the change.
 
 A locked PDF is made in-test, the way
@@ -336,6 +387,9 @@ argument through.
 | INV-9 | `test_migration_v17.py` |
 | INV-10 | Partial: `test_INV10_fingerprint_is_never_logged` covers the import and pick paths; a log line added elsewhere later is caught by nothing |
 | INV-11 | `test_batch_import.py::test_INV10_already_imported_is_recomputed_both_ways` |
+| INV-12 | `test_already_imported.py::test_INV12_partly_imported_ofx_says_how_many` |
+| INV-13 | `test_already_imported.py::test_INV13_latest_survives_a_clock_set_back` |
+| INV-14 | `test_already_imported.py::test_INV14_format_is_sniffed_from_the_held_bytes` |
 | § 3 decision 5 (latest only) | **nothing** — a preference; INV-8 checks which import is named, not that others are left out |
 
 ## 11. Cross-doc impact
