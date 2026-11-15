@@ -117,12 +117,16 @@ class LanguageController(QObject):           # parented to the QApplication
   screen shows before the vault opens. The theme preference sits there for the
   same reason.
 - `resolve_language` follows FIBR-0209's order: an explicit available token
-  first; then `system.name()` (for example `pt_BR`); then the part before the
-  `_` (`pt`); then `"en"`.
+  first; then the first available entry of `system.uiLanguages()`, the
+  system's display languages in preference order, each read with `_` for `-`
+  (`pt-BR` as `pt_BR`, then the list's own bare `pt`); then `"en"`. Not
+  `system.name()`: on Windows that is the region format, not the display
+  language.
 - `apply` removes the translators it installed earlier and installs two new
   ones, both parented to the app. They are `finbreak_<lang>.qm` from
-  `CATALOG_DIR`, and `qtbase_<lang>.qm` from Qt's translations path when that
-  file exists. Resolving to `"en"` installs neither. `apply` then calls
+  `CATALOG_DIR`, and Qt's own catalog for the language from Qt's translations
+  path, when there is one. `QTranslator.load(QLocale(lang), "qtbase", "_",
+  <path>)` finds it, so `pt` also finds `qtbase_pt_BR.qm`. Resolving to `"en"` installs neither. `apply` then calls
   `app.setLayoutDirection(ui_locale().textDirection())`.
 
 ### 4.3 Startup
@@ -136,9 +140,11 @@ there is a single place that decides the direction.
 
 The picker is a combo in `SettingsDialog`, built like the theme combo. Its
 first entry is *System default (<detected language>)*, followed by one entry per
-available language, under its own name (`language_name`: English as "English",
-any other as `QLocale(lang).nativeLanguageName()`, which for `en` reads
-"American English").
+available language, under its own name. `language_name` gives English as
+"English", because `QLocale("en").nativeLanguageName()` reads "American
+English". Any other language gets its native name, with its native territory
+when the token names one ("português (Brasil)"), so `pt` and `pt_BR` differ.
+A token Qt has no name for shows as itself.
 
 On save, `MainWindow._on_settings_saved` checks whether the token changed. If
 it did, it calls `save_language_pref` and then `LanguageController.apply`.
@@ -165,8 +171,8 @@ numbers or dates, and stays as it is (§ 3).
 ## 5. Invariants
 
 - **INV-1** — `resolve_language` returns an explicit token when that token is
-  available. For `"system"` it returns the system locale's full name if
-  available, else its bare language if available, else `"en"`. It never
+  available. For `"system"` it returns the first available entry of the
+  system locale's `uiLanguages()`, else `"en"`. It never
   raises, and it never returns a token outside `available_languages()`.
   *Test:* `tests/features/i18n/test_language.py::test_INV1_*`, with a
   `CATALOG_DIR` holding `finbreak_pt.qm` and `finbreak_zh_CN.qm`. The cases are
@@ -207,7 +213,10 @@ numbers or dates, and stays as it is (§ 3).
   language.
   *Test:* `test_INV5_qt_strings_follow`. It uses `fr`, whose qtbase catalog
   the PySide6 wheel ships, with a pseudo `finbreak_fr.qm`.
-  *Breaks when:* only finbreak's translator is installed.
+  `test_INV5_qt_strings_find_a_regional_catalog` uses `pt`, whose only qtbase
+  catalog is `qtbase_pt_BR.qm`.
+  *Breaks when:* only finbreak's translator is installed, or the qtbase lookup
+  tries the exact file name only.
 
 - **INV-6** — Every shipped catalog is current: running
   `scripts/update-translations.sh` changes no committed `.ts` or `.qm` file.
@@ -227,7 +236,8 @@ numbers or dates, and stays as it is (§ 3).
 - **INV-8** — The picker offers *System default* and then each available
   language under its own name. Saving a different choice writes the token and
   switches. Saving the same choice does neither.
-  *Test:* `test_INV8_picker_*`, with the pseudo catalog dir holding `fr`.
+  *Test:* `test_INV8_picker_*`, with the pseudo catalog dir holding `fr`;
+  `test_INV8_language_name` for the names, `pt` against `pt_BR` included.
   *Breaks when:* saving any setting rebuilds the window, which throws away
   the user's place in it for nothing.
 
@@ -248,8 +258,10 @@ numbers or dates, and stays as it is (§ 3).
 
 - **A catalog that fails to load** (corrupt `.qm`, or unreadable).
   `QTranslator.load` returns false, and `apply` falls back to English, as
-  FIBR-0209 says, with no dialog. INV-1's silent rule covers it, and a
-  corrupt-file case is added to INV-1's test.
+  FIBR-0209 says, with no dialog. It writes one warning, naming the file, to
+  the log file (FIBR-0410), because the picker still shows the chosen
+  language. INV-1's silent rule covers it, and a corrupt-file case is added
+  to INV-1's test.
 - **A widget kept outside the rebuilt tree.** The one known case is a dialog
   that stays open through a switch, and a switch happens only from Settings,
   which closes first. A future non-modal window must connect to
@@ -319,11 +331,11 @@ shellcheck stage covers it.
 | INV-1 | `tests/features/i18n/test_language.py::test_INV1_*` |
 | INV-2 | `test_language.py::test_INV2_*` |
 | INV-3 | `test_language.py::test_INV3_first_window_is_translated` |
-| INV-4 | `test_language.py::test_INV4_switch_leaves_no_old_text`. **Partial:** it walks the main window and its current tab, not every tab |
-| INV-5 | `test_language.py::test_INV5_qt_strings_follow` |
+| INV-4 | `test_language.py::test_INV4_*`; `test_INV4_toolbar_keeps_its_place` checks a moved toolbar keeps its edge. **Partial:** it walks the main window and its current tab, not every tab |
+| INV-5 | `test_language.py::test_INV5_*` |
 | INV-6 | `test_language.py::test_INV6_catalogs_are_current` |
 | INV-7 | `test_language.py::test_INV7_qm_is_package_data`. **Partial:** the freeze scripts are trusted to keep adding all of `finbreak/data`, as the category library already relies on |
-| INV-8 | `test_language.py::test_INV8_picker_*` |
+| INV-8 | `test_language.py::test_INV8_*` |
 | INV-9 | `test_language.py::test_INV9_month_name_follows_language` |
 | INV-10 | `test_language.py::test_INV10_direction_follows` |
 | A future non-modal window re-translates itself | **nothing**: `coding.md` § 5.2 states it, and INV-4 sees only what is open during the test |

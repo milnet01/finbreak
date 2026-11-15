@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=472 -->
+<!-- ants-roadmap-id-high-water: FIBR=473 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5484,6 +5484,27 @@ on the § 2 surface.
   **Layman:** finbreak should open in whatever language your computer is set to, without you having to pick it. If it does not know your language, or does not have a translation for it yet, it opens in English.
   Kind: feature.
   Source: user-request-2026-08-03.
+  Lanes: ui, i18n.
+
+- 📋 [FIBR-0473] **Before the first non-English catalog ships: month-name grammar, sentence spacing, bundle check.**
+  Queued from the FIBR-0017 review-code lane (2026-11-15). None of these
+  can show while English is the only language, so each waits for the first
+  catalog (FIBR-0017's Waiting-on).
+  1. ui/month_summary.py puts standaloneMonthName() (the nominative form)
+  inside a sentence, "{month} cost you {amount} more than your usual
+  month." Polish, Russian and Czech need a different case there, and a
+  translator cannot change it. Fix: twelve literal tr() month strings
+  with a disambiguation, or let the template carry the month wording.
+  pdf_export.py's standalone month is correct as it is.
+  2. MonthSummaryStrip joins its sentences with an ASCII space, which is
+  wrong for Chinese and Japanese. Fix: make the separator a tr() string.
+  allowlist-006 accepts the join's shape, not its separator.
+  3. Check that data/i18n/*.qm and PySide6's qtbase_*.qm reach the
+  PyInstaller, AppImage and OBS bundles: run build-smoke.sh with a catalog
+  present and switch language inside the clean-room container.
+  **Layman:** Three small things to fix when the first real translation is added, so it reads correctly and reaches every download.
+  Kind: review-fix.
+  Source: review-code-2026-11-15-fibr0017.
   Lanes: ui, i18n.
 
 ## v1.2.0 — Import breadth

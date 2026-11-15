@@ -126,8 +126,9 @@ def run(argv: list[str] | None = None) -> int:
     _install_excepthook()
 
     # The local log file design.md § Observability promises (FIBR-0410). A data
-    # folder that cannot be found is reported later by the vault's own path
-    # lookup, so it is not reported twice here.
+    # folder that cannot be found is reported by the next read of it (the theme
+    # preference just below), which raises the same error into the hook's
+    # dialog, so it is not reported twice here.
     with suppress(FinbreakError):
         install_log_file(paths.data_dir())
 

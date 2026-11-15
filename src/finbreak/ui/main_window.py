@@ -1806,6 +1806,10 @@ class MainWindow(QMainWindow):
         menu_shown = not self.menuBar().isHidden()
         status_shown = not self.statusBar().isHidden()
         self.removeToolBar(self._toolbar)
+        # Unparented now, not at deleteLater: restoreState matches toolbars by
+        # objectName, and would otherwise place the old bar and leave the new
+        # one at its default edge.
+        self._toolbar.setParent(None)
         self._toolbar.deleteLater()
         for action in self._chrome_actions:
             action.deleteLater()

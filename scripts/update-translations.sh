@@ -19,6 +19,10 @@ mkdir -p "$I18N"
 
 catalogs=()
 for lang in "$@"; do
+    if ! [[ "$lang" =~ ^[a-z]{2,3}(_[A-Z]{2})?$ ]]; then
+        echo "update-translations.sh: '$lang' is not a language code like es or pt_BR" >&2
+        exit 2
+    fi
     catalogs+=("$I18N/finbreak_${lang}.ts")
 done
 for ts in "$I18N"/finbreak_*.ts; do
@@ -34,7 +38,14 @@ if [ "${#catalogs[@]}" -eq 0 ]; then
     exit 0
 fi
 
-mapfile -t sources < <(git ls-files 'src/finbreak/*.py')
+# Not `< <(git …)`: set -e cannot see a failure inside a process substitution,
+# and lupdate given no sources would empty every catalog under -no-obsolete.
+listing="$(git ls-files 'src/finbreak/*.py')"
+mapfile -t sources <<< "$listing"
+if [ -z "$listing" ]; then
+    echo "update-translations.sh: no tracked sources found; run it in a git checkout" >&2
+    exit 1
+fi
 
 for ts in "${catalogs[@]}"; do
     pyside6-lupdate -no-obsolete -locations none "${sources[@]}" -ts "$ts"

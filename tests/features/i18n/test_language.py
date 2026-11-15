@@ -9,6 +9,7 @@ session, it cannot go stale the way a committed fixture would.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -250,12 +251,30 @@ def test_INV1_resolution_order(pt_and_zh, pref, system, expected):
     assert got in language.available_languages()
 
 
-def test_INV1_corrupt_catalog_falls_back_to_english(tmp_path, monkeypatch, controller):
+def test_INV1_corrupt_catalog_falls_back_to_english(
+    tmp_path, monkeypatch, controller, caplog
+):
     (tmp_path / "finbreak_pt.qm").write_bytes(b"not a catalog")
     monkeypatch.setattr(language, "CATALOG_DIR", tmp_path)
-    controller.apply("pt")  # must not raise, and must not show a dialog
+    with caplog.at_level(logging.WARNING, logger="finbreak"):
+        controller.apply("pt")  # must not raise, and must not show a dialog
     assert controller._translators == []
     assert language.ui_locale().language() == QLocale.Language.English
+    # The picker still shows the choice, so the log is the only trace (§ 6).
+    assert any("finbreak_pt.qm" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize(
+    ("lang", "name"),
+    [
+        ("en", "English"),
+        ("pt", "português"),
+        ("pt_BR", "português (Brasil)"),  # differs from pt in the picker
+        ("xx", "xx"),  # Qt has no name for it: the token, never an empty entry
+    ],
+)
+def test_INV8_language_name(lang, name):
+    assert language.language_name(lang) == name
 
 
 # --------------------------------------------------------------------------- #
@@ -347,6 +366,13 @@ def test_INV4_switch_leaves_no_old_text(qtbot, service, catalogs, controller):
     assert stale == [], f"still in the pseudo language: {sorted(set(stale))}"
 
 
+def test_INV4_toolbar_keeps_its_place(qtbot, service, catalogs, controller):
+    window = _unlocked_window(qtbot, service, controller)
+    window.addToolBar(Qt.ToolBarArea.LeftToolBarArea, window._toolbar)
+    _save_language(window, "fr")
+    assert window.toolBarArea(window._toolbar) == Qt.ToolBarArea.LeftToolBarArea
+
+
 # --------------------------------------------------------------------------- #
 # INV-5 — Qt's own words follow the language
 # --------------------------------------------------------------------------- #
@@ -358,6 +384,17 @@ def test_INV5_qt_strings_follow(qtbot, catalogs, controller):
     qtbot.addWidget(box)
     text = box.button(QDialogButtonBox.StandardButton.Cancel).text()
     assert text.replace("&", "") == "Annuler"
+
+
+def test_INV5_qt_strings_find_a_regional_catalog(qtbot, catalogs, controller):
+    # The wheel has qtbase_pt_BR but no qtbase_pt, so pt must reach the former.
+    qtbase = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
+    assert not (qtbase / "qtbase_pt.qm").exists()
+    controller.apply("pt")
+    box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+    qtbot.addWidget(box)
+    text = box.button(QDialogButtonBox.StandardButton.Cancel).text()
+    assert text.replace("&", "") == "Cancelar"
 
 
 # --------------------------------------------------------------------------- #

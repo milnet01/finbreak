@@ -18,6 +18,7 @@ does, so ``MainWindow`` rebuilds itself on ``languageChanged``
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -31,6 +32,8 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QApplication
 
 from finbreak import paths
+
+log = logging.getLogger(__name__)
 
 LANGUAGE_PREF_KEY = "language"
 LANGUAGE_SYSTEM = "system"
@@ -62,7 +65,13 @@ def language_name(lang: str) -> str:
     misnames it for every other region."""
     if lang == SOURCE_LANGUAGE:
         return QLocale.languageToString(QLocale.Language.English)
-    return QLocale(lang).nativeLanguageName()
+    locale = QLocale(lang)
+    name = locale.nativeLanguageName()
+    if not name:
+        return lang  # a code Qt does not know: never an empty picker entry
+    if "_" in lang:  # pt_BR beside pt: both are "português" otherwise
+        return f"{name} ({locale.nativeTerritoryName()})"
+    return name
 
 
 def load_language_pref() -> str:
@@ -81,15 +90,18 @@ def save_language_pref(token: str) -> None:
 
 
 def resolve_language(pref: str, system: QLocale) -> str:
-    """FIBR-0209's order: an explicit available token; then the system locale's
-    full name (``pt_BR``); then its bare language (``pt``); then English."""
+    """FIBR-0209's order: an explicit available token; then the first available
+    of the system's display languages, in preference order (``pt-BR`` as
+    ``pt_BR``, then the list's own bare ``pt``); then English. Not
+    ``system.name()``: on Windows that is the region format, not the display
+    language."""
     available = available_languages()
     if pref != LANGUAGE_SYSTEM:
         return pref if pref in available else SOURCE_LANGUAGE
-    full = system.name()
-    for candidate in (full, full.split("_")[0]):
-        if candidate in available:
-            return candidate
+    for candidate in system.uiLanguages():
+        token = candidate.replace("-", "_")
+        if token in available:
+            return token
     return SOURCE_LANGUAGE
 
 
@@ -119,10 +131,14 @@ class LanguageController(QObject):
         self._uninstall()
         if lang != SOURCE_LANGUAGE:
             ours = QTranslator(self._app)
-            if ours.load(str(CATALOG_DIR / f"finbreak_{lang}.qm")):
+            ours_path = CATALOG_DIR / f"finbreak_{lang}.qm"
+            if ours.load(str(ours_path)):
                 self._install(ours)
                 self._install_qtbase(lang)
             else:
+                # No dialog (FIBR-0209), but the picker still shows the choice,
+                # so the log file is the only trace of why it is English.
+                log.warning("translation catalog %s did not load", ours_path)
                 ours.deleteLater()
                 lang = SOURCE_LANGUAGE
         _active = lang
@@ -132,10 +148,11 @@ class LanguageController(QObject):
     def _install_qtbase(self, lang: str) -> None:
         # Qt's own words (OK, Cancel, the text-edit menus). Not every language
         # has a catalog in the wheel; then they stay English (spec § 6).
-        directory = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
-        qtbase = directory / f"qtbase_{lang}.qm"
+        # The QLocale lookup also tries regional files: the wheel has
+        # qtbase_pt_BR.qm and no qtbase_pt.qm.
+        directory = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
         translator = QTranslator(self._app)
-        if qtbase.is_file() and translator.load(str(qtbase)):
+        if translator.load(QLocale(lang), "qtbase", "_", directory):
             self._install(translator)
         else:
             translator.deleteLater()

@@ -53,14 +53,14 @@ pseudo catalog built per session: every extracted source text, translated as
 
 | ID | Test | Assertion |
 |---|---|---|
-| FIBR-0017 INV-1 | `test_INV1_resolution_order`, `test_INV1_corrupt_catalog_falls_back_to_english` | An explicit available token wins; `"system"` tries the full locale name, then the bare language, then English; a catalog that will not load leaves English, silently |
+| FIBR-0017 INV-1 | `test_INV1_resolution_order`, `test_INV1_corrupt_catalog_falls_back_to_english` | An explicit available token wins; `"system"` takes the first available of the system's display languages (`uiLanguages()`), else English; a catalog that will not load leaves English with no dialog, and logs a warning |
 | FIBR-0017 INV-2 | `test_INV2_*` | The stored choice is kept only when it is `"system"` or an available language |
 | FIBR-0017 INV-3 | `test_INV3_first_window_is_translated` | The first-run dialog `run()` opens is already in the stored language |
-| FIBR-0017 INV-4 | `test_INV4_switch_leaves_no_old_text` | After a switch from Settings, no visible text in the main window is in the old language, and back again |
-| FIBR-0017 INV-5 | `test_INV5_qt_strings_follow` | Qt's own *Cancel* follows the language |
+| FIBR-0017 INV-4 | `test_INV4_*` | After a switch from Settings, no visible text in the main window is in the old language, and back again; a moved toolbar keeps its edge |
+| FIBR-0017 INV-5 | `test_INV5_*` | Qt's own *Cancel* follows the language, through a regional qtbase catalog where there is no bare one |
 | FIBR-0017 INV-6 | `test_INV6_catalogs_are_current` | `scripts/update-translations.sh` changes no committed catalog, and does change a planted stale one |
 | FIBR-0017 INV-7 | `test_INV7_qm_is_package_data` | `pyproject.toml`'s package-data covers every `.qm` |
-| FIBR-0017 INV-8 | `test_INV8_picker_*` | The picker lists *System default* then each language; saving a new choice writes it and switches, saving the same one does neither |
+| FIBR-0017 INV-8 | `test_INV8_*` | The picker lists *System default* then each language under its own name (`pt` and `pt_BR` distinct); saving a new choice writes it and switches, saving the same one does neither |
 | FIBR-0017 INV-9 | `test_INV9_month_name_follows_language` | Month names follow the language; amount separators keep the locale's |
 | FIBR-0017 INV-10 | `test_INV10_direction_follows` | A right-to-left language mirrors the layout, and switching back restores it |
 
