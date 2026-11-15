@@ -28,6 +28,12 @@ signaling per
   it, and in English otherwise. Choosing a language in Settings changes
   every screen at once, with no restart. Only English ships for now; other
   languages appear in the list as their translations are added.
+- **A warning when you pick a statement file you've already imported**
+  (FIBR-0088). finbreak says when you imported it, into which account and
+  for which period, and asks whether to import it again — before it reads
+  the file or asks for a PDF's password. Importing it again adds nothing you
+  already have. A renamed copy is still recognised; files imported before
+  this version are not.
 
 ### Changed
 

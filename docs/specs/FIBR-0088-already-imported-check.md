@@ -278,9 +278,10 @@ non-empty user password so a pick would otherwise prompt.
 
 The new suite directory must be sorted into `tests/features/prose_checks/`'s
 `_NO_PROSE` ledger, or that guard fails.
-`tests/features/reconciliation/test_no_schema_change.py::test_INV8_schema_version_at_current_latest_v16`
-is a deliberate tripwire on `LATEST_SCHEMA_VERSION == 16`: it fails on this
-change, and its pin moves to 17 with a note that v17 is not reconciliation's.
+`tests/features/reconciliation/test_no_schema_change.py`'s
+`test_INV8_schema_version_at_current_latest_*` is a deliberate tripwire on
+`LATEST_SCHEMA_VERSION`: it fails on this change, and its pin moves to 17 with
+a note that v17 is not reconciliation's.
 `tests/features/loan_sign/test_migration_v16.py` breaks too: its
 `_back_to_v15` sets back only the version of a fresh vault that already holds
 `imported_files`, so v17's `CREATE TABLE` fails on re-run. That fixture also
@@ -288,6 +289,15 @@ drops `imported_files` and its index; § 4.1's DDL stays a plain `CREATE`.
 `tests/features/db_performance/test_db_performance.py` asserts a vault at
 LATEST holds exactly `_EXPECTED_INDEXES`, so that set gains
 `idx_imported_files_sha256`.
+
+Four wizard tests pick the same file twice, so the second pick now shows the
+question: `ofx_import`'s `test_INV7d_second_import_is_all_duplicate`,
+`pdf_import`'s `test_INV7e_import_inserts_rows_and_reimport_adds_zero` and
+`test_INV7f_remembered_password_auto_applies_no_prompt`, and
+`standard_bank_pdf`'s `test_INV13_wizard_reimport_adds_zero`. Each answers
+Import again through `tests/conftest.py::import_again`. Three
+`commit_import` stand-ins in `batch_import/test_batch_import.py` pass the new
+argument through.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -338,6 +348,9 @@ LATEST holds exactly `_EXPECTED_INDEXES`, so that set gains
   drops the v17 table and index (§ 7).
 - `tests/features/db_performance/test_db_performance.py` — `_EXPECTED_INDEXES`
   gains `idx_imported_files_sha256` (§ 7).
+- The four re-pick wizard tests and the batch suite's `commit_import`
+  stand-ins named in § 7.
+- `tests/features/reconciliation/spec.md` — its INV-8 row's pin moves to 17.
 - `docs/specs/FIBR-0085-batch-import-service.md` — none: no outcome changes.
 - `README.md` — none unless its feature list names import safeguards; checked
   at implementation.

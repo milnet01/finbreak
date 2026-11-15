@@ -276,7 +276,8 @@ UI state.
   referential tree, `parent_id`), `categorization_rules`, `transfer_pairs` (records a
   confirmed or rejected transfer pair — success criterion 3, FIBR-0011), `import_profiles`, `statement_periods`
   (a statement's coverage period per import — success criterion for FIBR-0038),
-  `settings`, `schema_version`. The opt-in stored PDF passwords (asset A4 in
+  `imported_files` (the SHA-256 of each file imported into a statement, so a
+  file picked again is recognised — FIBR-0088), `settings`, `schema_version`. The opt-in stored PDF passwords (asset A4 in
   security-model.md) are **not** a separate table — they live in the
   `accounts.statement_pdf_password` column (FIBR-0009), still inside the
   encrypted vault. Exact columns are fixed in each item's spec.
