@@ -5647,6 +5647,12 @@ automatic forward migration, which § 2's carve-out says is not a break.
   vault migration, 3+ subsystems, two open design calls); the migration
   makes it expensive to build wrong, so review-contract --max-loops 3
   gates it.
+  2026-11-15: spec docs/specs/FIBR-0283-bank-field-on-accounts.md
+  gated by review-contract, 2 loops (cap 2, rule 14 - not the 3 the
+  note above names). 6 verified findings, all fixed, none dismissed;
+  no deferred tail. Loop 2's two INV-11 test fixes are read by no lane.
+  Status accepted; next is the TDD build. Log:
+  docs/reviews/FIBR-0283-bank-field-on-accounts-loop-log.md.
   **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
   Kind: feature.
   Source: user-request-2026-08-19.
