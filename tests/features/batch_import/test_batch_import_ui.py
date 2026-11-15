@@ -21,6 +21,7 @@ RowError through the real scan ladder into a rendered cell.
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -35,6 +36,7 @@ from finbreak.services.batch_import import BatchFile, BatchImportService
 from finbreak.services.import_ import ImportResult, ImportService
 from finbreak.ui import import_batch as import_batch_mod
 from finbreak.ui import import_wizard as wizard_mod
+from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.import_wizard import (
     _STEP_BATCH,
@@ -1280,7 +1282,8 @@ def test_FIBR0407_batch_create_says_what_number_was_stored(
     review = widget._batch_review
     monkeypatch.setattr(review, "_settle", lambda _record, _account_id: None)
 
-    review._created(BatchFile(path="/tmp/x.pdf"), _EnteredAccount("Cheque", number))
+    entered = cast(CreateAccountDialog, _EnteredAccount("Cheque", number))  # its double
+    review._created(BatchFile(path="/tmp/x.pdf"), entered)
 
     assert expected in review._note.text(), review._note.text()
     assert review._note.textFormat() == Qt.TextFormat.PlainText
@@ -1570,11 +1573,9 @@ def test_FIBR0382_row_tooltip_shows_the_path_as_typed(
     qtbot.waitUntil(lambda: widget._batch_review._table.rowCount() == 2, timeout=3000)
 
     table = widget._batch_review._table
-    tips = [
-        table.item(row, 0).toolTip()
-        for row in range(table.rowCount())
-        if "bold" in table.item(row, 0).toolTip()
-    ]
+    items = [table.item(row, 0) for row in range(table.rowCount())]
+    assert None not in items, "every row has a file cell"
+    tips = [item.toolTip() for item in items if item and "bold" in item.toolTip()]
     assert tips, "precondition: the marked file's row carries a tooltip"
     shown = QtGui.QTextDocument()
     tip = tips[0]
@@ -1677,6 +1678,7 @@ def test_FIBR0468_cancel_mid_read_drops_the_result(
     widget._select_files(_sb_and_csv(tmp_path))
     qtbot.waitUntil(lambda: bool(seen), timeout=3000)
     worker = widget._batch_read
+    assert worker is not None, "precondition: a read is in flight"
     widget._batch_review._cancel_button.click()
     gate.set()
     assert worker.wait(10_000)
@@ -1745,6 +1747,7 @@ def test_FIBR0468_a_lock_mid_read_lets_go_of_the_record_being_read(
     widget._select_files(_sb_and_csv(tmp_path))
     qtbot.waitUntil(lambda: bool(seen), timeout=3000)
     worker = widget._batch_read
+    assert worker is not None, "precondition: a read is in flight"
     widget.clear_rows()
     gate.set()
     assert worker.wait(10_000)
