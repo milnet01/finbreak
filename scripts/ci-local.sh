@@ -79,21 +79,21 @@ PYPI_PID=$!
 pip-audit -s osv -r "$AUDIT_DIR/requirements.txt" --no-deps --disable-pip > "$AUDIT_DIR/osv" 2>&1 &
 OSV_PID=$!
 
-# `src tests`, not the whole tree, and that is a decision rather than an
-# oversight. The one tracked .py outside it is a captured reproduction script
+# `src tests scripts`, not the whole tree, and that is a decision rather than
+# an oversight. The one tracked .py outside them is a captured reproduction script
 # under docs/reviews/ — evidence of a defect, kept exactly as it was run. It is
 # imported by nothing and shipped in nothing, and linting it would invite
 # tidying edits that destroy the thing it is kept for (FIBR-0328).
 echo "== ruff check =="
-ruff check src tests
+ruff check src tests scripts
 
 echo "== ruff format --check =="
-ruff format --check src tests
+ruff format --check src tests scripts
 
 # The gate's own delivery machinery was the one part of the repo nothing checked:
 # every shell script plus 3 workflows, none linted. A bug in release-linux.sh or
 # packaging/obs/obs-submit.sh ships a broken release, and the Python stages above
-# cannot see it (ruff/bandit/mypy/pytest all scope to src/tests). All clean as of
+# cannot see it (bandit and pytest scope to src/tests). All clean as of
 # adding this, so it is a regression guard, not a backlog.
 #
 # Selected via `git ls-files`, NOT a fixed glob: the first cut of this stage used

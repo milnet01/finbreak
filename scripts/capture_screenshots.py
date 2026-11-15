@@ -134,7 +134,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    app = QApplication.instance() or QApplication(sys.argv)
+    app = QApplication.instance()
+    if not isinstance(app, QApplication):
+        app = QApplication(sys.argv)
     theme = ThemeController(app)
 
     # Keep the demo vault at a stable, git-ignored path (not a throwaway temp dir)
@@ -148,7 +150,7 @@ def main() -> None:
         stale.unlink(missing_ok=True)
     auth = AuthService(vault, sidecar)
     auth.first_run(bytearray(b"demo-passphrase"), "ZAR")
-    seed_demo_vault.seed(auth, today=date.today())
+    seed_demo_vault.seed(auth, today=date.today())  # noqa: DTZ011 -- the demo's local day
 
     window = MainWindow(auth, theme_controller=theme)
     window.resize(args.width, args.height)
@@ -163,6 +165,7 @@ def main() -> None:
         theme_dir = out_root / theme_id
         theme_dir.mkdir(parents=True, exist_ok=True)
         for name, index in _SCREENS:
+            assert window._workspace is not None  # built by the unlock above
             window._workspace.setCurrentIndex(index)
             _settle(app)
             _freeze_charts(window)

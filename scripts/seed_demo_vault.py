@@ -128,7 +128,7 @@ def _build_categories(vault) -> dict[str, int]:
 
 def seed(auth: AuthService, *, today: date | None = None) -> None:
     """Populate `auth`'s unlocked vault with the synthetic demo picture."""
-    anchor = today or date.today()
+    anchor = today or date.today()  # noqa: DTZ011 -- the demo's local day
     vault = auth.vault
 
     # 1) Accounts — rename the seeded "Default" and add two more. Each carries a
