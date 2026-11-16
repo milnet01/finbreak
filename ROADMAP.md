@@ -5653,6 +5653,12 @@ automatic forward migration, which § 2's carve-out says is not a break.
   no deferred tail. Loop 2's two INV-11 test fixes are read by no lane.
   Status accepted; next is the TDD build. Log:
   docs/reviews/FIBR-0283-bank-field-on-accounts-loop-log.md.
+  2026-11-16: built test-first (02da4fb). Every INV went red
+  first; full gate green; 32 deliberate breaks of the spec's
+  "breaks when" cases all caught by an assertion (mutation_probe),
+  covering loop 2's unreviewed INV-11 fixes too. One caller the spec
+  missed: scripts/seed_demo_vault.py. Next: check-code, review-code,
+  close-findings, then flip.
   **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
   Kind: feature.
   Source: user-request-2026-08-19.
