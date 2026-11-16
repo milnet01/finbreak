@@ -869,11 +869,15 @@ class ImportWizardWidget(QWidget):
         """
         if self._pending_hint is None:  # defensive: the button is hidden otherwise
             return
+        try:
+            banks = self._accounts.bank_suggestions()
+        except VaultLockedError:
+            return  # auto-lock fired first — silent, like the other handlers
         dialog = CreateAccountDialog(
             number=self._pending_hint.number,
             name=self._pending_hint.name,
             family=self._pending_hint.family,
-            banks=self._accounts.bank_suggestions(),
+            banks=banks,
             parent=self,
         )
         # Non-blocking + parented (FIBR-0065 D1): an idle auto-lock destroys the

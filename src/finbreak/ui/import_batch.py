@@ -479,11 +479,15 @@ class BatchReviewWidget(QWidget):
         Nothing is written until the user accepts the dialog."""
         if record.hint is None:
             return
+        try:
+            banks = self._accounts.bank_suggestions()
+        except VaultLockedError:
+            return  # auto-lock fired first — silent, like the other handlers
         create = CreateAccountDialog(
             number=record.hint.number,
             name=record.hint.name,
             family=record.hint.family,
-            banks=self._accounts.bank_suggestions(),
+            banks=banks,
             parent=self,
         )
         show_modal(create, lambda: self._created(record, create))

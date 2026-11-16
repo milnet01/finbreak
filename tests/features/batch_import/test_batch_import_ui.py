@@ -1291,6 +1291,23 @@ def test_FIBR0283_INV12_batch_create_stores_the_bank(
     assert created.bank == stored
 
 
+def test_FIBR0283_batch_create_after_a_lock_is_silent(qtbot, service, monkeypatch):
+    from finbreak.errors import VaultLockedError
+    from finbreak.importers.base import SourceAccountHint
+
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+
+    def locked(_self):
+        raise VaultLockedError("locked")
+
+    monkeypatch.setattr(AccountService, "bank_suggestions", locked)
+    record = BatchFile(path="/home/a/x.pdf")
+    record.hint = SourceAccountHint(number="447556667")
+    review._create_account(record)
+    assert review.findChild(CreateAccountDialog) is None
+
+
 def test_FIBR0283_INV8_review_account_cell_shows_the_bank(qtbot, service):
     account = AccountService(service.vault).add_account(
         "Cheque", "current", bank="Nedbank"

@@ -335,6 +335,36 @@ def test_FIBR0283_INV12_create_stores_the_bank_and_labels_the_new_item(
         assert combo.itemText(index) == "New Savings (Nedbank)"
 
 
+def test_FIBR0283_create_after_a_lock_is_silent(qtbot, service, tmp_path, monkeypatch):
+    """The suggestions read in Create meets a locked vault silently, like every
+    sibling slot here: no dialog, no exception out of the slot."""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.account_create import CreateAccountDialog
+
+    seeded = _accounts(service).list_accounts()[0].id
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+
+    def locked(_self):
+        raise VaultLockedError("locked")
+
+    monkeypatch.setattr(AccountService, "bank_suggestions", locked)
+    widget._on_create_account()
+    assert widget.findChild(CreateAccountDialog) is None
+
+
+def test_FIBR0283_INV8_password_prompt_names_the_bank(qtbot, service):
+    """The PDF-password prompt names the account the way the combo shows it
+    (spec § 4.3's password-prompt row)."""
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    cheque = svc.add_account("Cheque", "current", bank="Nedbank").id
+    widget = _wizard(qtbot, service, seeded)
+    combo = widget._confirm_account_combo
+    combo.setCurrentIndex(combo.findData(cheque))
+    assert widget._account_name() == "Cheque (Nedbank)"
+
+
 def test_create_with_no_name_surfaces_the_error(qtbot, service, tmp_path):
     """OFX and families B/D print no name, so the box arrives empty and the user
     must fill it. Accepting anyway must say so, not fail silently."""

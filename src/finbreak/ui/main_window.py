@@ -37,6 +37,7 @@ from PySide6.QtCore import (
     QObject,
     QSettings,
     QSize,
+    QStringListModel,
     Qt,
     QTimer,
     QUrl,
@@ -264,7 +265,8 @@ def _clear_decrypted_rows(widget: QWidget) -> None:
 
     Tables were not the only place decrypted values sat: account names in combo
     boxes, figures in labels, category and account names in chart slices
-    (FIBR-0367 audit row 30). Every such widget is emptied too. The widget is
+    (FIBR-0367 audit row 30), and recorded bank names in a text box's
+    suggestion list (FIBR-0283). Every such widget is emptied too. The widget is
     about to be deleted, so its signals are blocked first: nothing reacts to
     the emptying by reading a vault that is already locked."""
     children = widget.findChildren(QWidget)
@@ -278,6 +280,13 @@ def _clear_decrypted_rows(widget: QWidget) -> None:
             (QTreeWidget, QComboBox, QLabel, QLineEdit, QPlainTextEdit, QTextEdit),
         ):
             child.clear()
+            # A suggestion list (the Bank box's, FIBR-0283) lives in the
+            # completer's model, which is not a widget and so is not reached
+            # above.
+            completer = child.completer() if isinstance(child, QLineEdit) else None
+            model = completer.model() if completer is not None else None
+            if isinstance(model, QStringListModel):
+                model.setStringList([])
         elif isinstance(child, QChartView):
             chart = child.chart()
             chart.removeAllSeries()

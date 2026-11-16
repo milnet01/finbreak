@@ -40,8 +40,9 @@ def select_combo_data(combo: QComboBox, value: object) -> None:
 def account_label(account: Account) -> str:
     """How an account is named where the user picks or reads one among
     several: the name, plus the bank in brackets when one is recorded
-    (FIBR-0283 § 4.3). With no bank it is the name exactly."""
-    if account.bank is None:
+    (FIBR-0283 § 4.3). With no bank it is the name exactly; a blank one, which
+    only an edit outside the app can store, counts as none."""
+    if not account.bank:
         return account.name
     return QCoreApplication.translate("AccountLabel", "{name} ({bank})").format(
         name=account.name, bank=account.bank

@@ -1877,6 +1877,11 @@ def test_FIBR0283_INV6_bank_suggestions_dedupe_case_blind_stored_wins(service):
     svc.add_account("Three", "current", bank="Nedbank")
     assert svc.bank_suggestions() == ["Nedbank", "standard bank"]
 
+    # Two stored spellings of one bank: the earliest-recorded account's wins,
+    # whatever order the rows are stored in.
+    svc.add_account("Four", "current", bank="NEDBANK")
+    assert svc.bank_suggestions() == ["Nedbank", "standard bank"]
+
 
 def test_FIBR0283_INV7_account_label_is_the_name_without_a_bank():
     from finbreak.models import Account
@@ -1887,6 +1892,8 @@ def test_FIBR0283_INV7_account_label_is_the_name_without_a_bank():
         account_label(Account(1, "Cheque", "current", "t", bank="Nedbank"))
         == "Cheque (Nedbank)"
     )
+    # A blank bank stored outside the app's normalising writers reads as none.
+    assert account_label(Account(1, "Cheque", "current", "t", bank="")) == "Cheque"
 
 
 def test_FIBR0283_INV10_accounts_screen_round_trips_the_bank(qtbot, service):

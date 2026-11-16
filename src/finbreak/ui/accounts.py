@@ -1,5 +1,5 @@
-"""Accounts manager screen — a sortable 5-column table plus an add/edit form
-(FIBR-0005 INV-7, FIBR-0113).
+"""Accounts manager screen — a sortable table plus an add/edit form
+(FIBR-0005 INV-7, FIBR-0113, FIBR-0283).
 
 All strings go through ``tr()`` and every widget sits in a Qt layout manager, so
 the screen is translation-ready and RTL-safe (coding.md § 5.2). The type picker
@@ -222,8 +222,8 @@ class AccountsWidget(QWidget):
         self._done_button = QPushButton(self.tr("Done")) if show_done else None
         self._error = QLabel()
 
-        # Two rows: Name + Type above, Account number + Note below with the two
-        # buttons at the end. Inline on the tab, not a dialog — it preserves the
+        # Two rows: Name + Type + Bank above, Account number + Note below with the
+        # two buttons at the end. Inline on the tab, not a dialog — it preserves the
         # type-a-name-and-hit-Add flow (D3).
         add_row = QGridLayout()
         add_row.addWidget(self._name, 0, 0)

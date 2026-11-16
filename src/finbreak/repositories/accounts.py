@@ -73,9 +73,12 @@ class AccountRepository:
         self._conn.commit()
 
     def banks(self) -> list[str]:
-        """Every distinct bank recorded on an account, unordered."""
+        """Every distinct bank recorded on an account, the earliest-recorded
+        first — so where two spellings fold together, which one
+        ``bank_suggestions`` keeps is fixed rather than up to the planner."""
         rows = self._conn.execute(
-            "SELECT DISTINCT bank FROM accounts WHERE bank IS NOT NULL"
+            "SELECT bank FROM accounts WHERE bank IS NOT NULL "
+            "GROUP BY bank ORDER BY MIN(id)"
         ).fetchall()
         return [row[0] for row in rows]
 

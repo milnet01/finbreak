@@ -74,10 +74,15 @@ def _add(svc: AuthService, account_id: int, when: date, minor: int, desc: str) -
 def _seed(svc: AuthService) -> None:
     """Marker data every data tab shows: a recurring series (one confirmed, one
     suggested), a transfer pair confirmed and one suggested, and an account whose
-    name carries the marker."""
+    name and bank carry the marker (the bank also feeds a text box's suggestion
+    list, FIBR-0283)."""
     today = date.today()
     first = AccountRepository(svc.vault.connection).list_all()[0].id
-    other = AccountService(svc.vault).add_account(f"{MARK} Savings", "savings").id
+    other = (
+        AccountService(svc.vault)
+        .add_account(f"{MARK} Savings", "savings", bank=f"{MARK} Bank")
+        .id
+    )
     for k in range(4):
         _add(svc, first, today - timedelta(days=30 * k), -int(DIGITS), f"{MARK} Stream")
         _add(svc, first, today - timedelta(days=30 * k + 2), -4321, f"{MARK} Gym")
@@ -183,6 +188,14 @@ def _survivors(root: QWidget) -> list[str]:
             texts.append(widget.text())
         elif isinstance(widget, QLineEdit):
             texts.append(widget.text())
+            # A completer's model is a QObject, not a widget, so findChildren
+            # (QWidget) never reaches it — the suggestion list is read here.
+            completer = widget.completer()
+            if completer is not None and completer.model() is not None:
+                model = completer.model()  # a list model: one column
+                texts.extend(
+                    str(model.index(row, 0).data()) for row in range(model.rowCount())
+                )
         elif isinstance(widget, (QPlainTextEdit, QTextEdit)):
             texts.append(widget.toPlainText())
         elif isinstance(widget, QComboBox):

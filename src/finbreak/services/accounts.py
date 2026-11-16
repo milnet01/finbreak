@@ -47,12 +47,12 @@ class AccountService:
     def list_accounts(self) -> list[Account]:
         return self._accounts().list_all()
 
-    # The asymmetry below is deliberate (FIBR-0193 D2/D3). ``add_account``'s two
-    # new fields are optional: an omitted column on an ``INSERT`` is written
-    # NULL, which is the value the caller meant. ``update_account``'s are
-    # REQUIRED, because the repository issues an unconditional ``UPDATE … SET``
-    # — a defaulted ``None`` would make every existing three-argument call
-    # silently erase a stored account number and note.
+    # The asymmetry below is deliberate (FIBR-0193 D2/D3, FIBR-0283).
+    # ``add_account``'s optional fields default to None: an omitted column on an
+    # ``INSERT`` is written NULL, which is the value the caller meant.
+    # ``update_account``'s are REQUIRED, because the repository issues an
+    # unconditional ``UPDATE … SET`` — a defaulted ``None`` would make a call
+    # that forgot one silently erase a stored account number, note or bank.
     def add_account(
         self,
         name: str,

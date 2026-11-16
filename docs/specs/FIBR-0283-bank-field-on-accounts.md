@@ -57,8 +57,8 @@ the roadmap item left open. Each follows from a fact in the tree.
    (`services/accounts.py::_normalise_optional`, FIBR-0193 INV-5).
 3. **Where the bank is shown beside the name**: the three import pickers
    named in § 2 item 2, the account the import wizard adds to its combo after
-   Create, and the PDF export's account header line and per-account summary
-   row. These are where a user picks or reads one account among several.
+   Create, the PDF-password prompt that names the chosen account, and the PDF
+   export's account header line and per-account summary row. These are where a user picks or reads one account among several.
    The other places that name an account are § 9.
 4. **The bank is appended as the table's last logical column, and shown second
    by default.** A saved layout keys each column by its logical index, so
@@ -96,8 +96,8 @@ keep working (the reason FIBR-0193 gave its two fields defaults).
   required on both, with no default**, as `account_number` and `note` already
   are on `update`: a caller that forgets it fails at once rather than erasing
   the stored bank.
-- `banks() -> list[str]`: `SELECT DISTINCT bank FROM accounts WHERE bank IS NOT
-  NULL`.
+- `banks() -> list[str]`: each recorded bank once, the earliest-recorded
+  account's first (`GROUP BY bank ORDER BY MIN(id)`).
 
 `services/accounts.py`:
 
@@ -106,8 +106,8 @@ keep working (the reason FIBR-0193 gave its two fields defaults).
   Both pass `bank` through `_normalise_optional`.
 - `KNOWN_BANKS: tuple[str, ...] = ("Standard Bank",)`.
 - `bank_suggestions() -> list[str]`: the stored banks, then `KNOWN_BANKS`, with
-  duplicates removed by `text.fold_name` (the stored spelling wins), sorted by
-  `fold_name`.
+  duplicates removed by `text.fold_name` (the stored spelling wins; between two
+  stored spellings, the earliest-recorded), sorted by `fold_name`.
 
 ### 4.3 The label
 
@@ -115,7 +115,7 @@ keep working (the reason FIBR-0193 gave its two fields defaults).
 
 ```python
 def account_label(account: Account) -> str:
-    if account.bank is None:
+    if not account.bank:
         return account.name
     return QCoreApplication.translate("AccountLabel", "{name} ({bank})").format(
         name=account.name, bank=account.bank
@@ -123,7 +123,8 @@ def account_label(account: Account) -> str:
 ```
 
 With no bank the label is the name exactly, so every vault that records no
-bank looks the same as today. `services/pdf_export.py` already imports from
+bank looks the same as today. A blank bank, which only an edit outside the app
+can store, counts as none. `services/pdf_export.py` already imports from
 `ui/` (`ui/_amount.py`), so it can use this too.
 
 Sites switched from `account.name` to `account_label(account)`:
@@ -136,6 +137,7 @@ Sites switched from `account.name` to `account_label(account)`:
 | `ui/import_batch.py`, the `_account_names` map | the review table's Account cell |
 | `services/pdf_export.py::_account_names` | the header line, for three or fewer accounts |
 | `services/pdf_export.py`, the per-account summary row | the row's first cell |
+| `ui/import_wizard.py::_account_name` | the PDF-password prompt, which reads the preview combo's text |
 
 Sorting is unchanged: every site that sorts still sorts by `name`.
 
@@ -229,23 +231,28 @@ values. Nothing here adds one, and security-model INV-9 still holds.
 
 - **INV-6** — `bank_suggestions()` holds each bank once, compared case-blind,
   and sorted. Where a stored bank matches a known bank, the stored spelling
-  wins.
+  wins. Between two stored spellings, the earliest-recorded account's wins.
   *Test:* store `"standard bank"` and `"Nedbank"`. The result is `["Nedbank",
-  "standard bank"]`. On an empty vault it is `["Standard Bank"]`.
+  "standard bank"]`, and stays so after a later `"NEDBANK"`. On an empty vault
+  it is `["Standard Bank"]`.
   *Breaks when:* deduplication is case-sensitive (both Standard Bank
-  spellings appear), or `KNOWN_BANKS` overrides the stored spelling.
+  spellings appear), `KNOWN_BANKS` overrides the stored spelling, or `banks()`
+  returns its rows in no fixed order.
 
-- **INV-7** — `account_label` returns the name exactly when the bank is NULL,
-  and `"{name} ({bank})"` otherwise.
+- **INV-7** — `account_label` returns the name exactly when the bank is NULL
+  or blank, and `"{name} ({bank})"` otherwise.
   *Test:* `account_label(Account(1, "Cheque", "current", "t"))` is
-  `"Cheque"`, and with `bank="Nedbank"` it is `"Cheque (Nedbank)"`.
-  *Breaks when:* a NULL bank renders as `"Cheque ()"` or `"Cheque (None)"`.
+  `"Cheque"`, and so is the same account with `bank=""`. With
+  `bank="Nedbank"` it is `"Cheque (Nedbank)"`.
+  *Breaks when:* a NULL or blank bank renders as `"Cheque ()"` or
+  `"Cheque (None)"`.
 
 - **INV-8** — Each site in § 4.3's table shows `account_label`. For an
   account with a bank, its text includes the bank.
   *Test:* one test per site, each with an account whose bank is `"Nedbank"`:
   the picker's and the wizard's combo `itemText`, the batch review's Account
-  cell, the wizard's item after Create, and the PDF header and summary row
+  cell, the wizard's item after Create, the wizard's `_account_name()`, and
+  the PDF header and summary row
   read from `PdfExportService._build_html`, which the existing PDF tests
   already call.
   *Breaks when:* any one site still reads `account.name`.
