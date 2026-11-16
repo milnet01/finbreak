@@ -5608,7 +5608,7 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
   Consolidation design (proposed direction, user Q 2026-07-11 "how do mixed-currency statements consolidate into graphs/summaries?"): NO live FX rates (offline posture — only the FIBR-0054 updater egress). Default = per-currency subtotals: the dashboard shows each currency separately (ZAR panel, USD panel), NEVER summing across currencies (upholds FIBR-0021's rule). PLUS an optional USER-ENTERED exchange rate (stored in the vault) that converts everything to the base currency for a single consolidated total + unified graphs, always LABELLED "converted at your rate, entered <date>" so it's never mistaken for a live figure; user updates it at will. Warrants a small ADR ("how finbreak handles FX") when built. Rejected: live-rate fetch (breaks offline).
 
-- 🚧 [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
+- ✅ [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
   The Accounts screen carries Name, Type, Account number, Note and
   Status, and nothing else. A vault holding accounts at two banks
   therefore records the owning bank nowhere at all: the only signal is
@@ -5659,6 +5659,14 @@ automatic forward migration, which § 2's carve-out says is not a break.
   covering loop 2's unreviewed INV-11 fixes too. One caller the spec
   missed: scripts/seed_demo_vault.py. Next: check-code, review-code,
   close-findings, then flip.
+  2026-11-16: shipped (02da4fb, fdd8012). check-code clean on the diff.
+  review-code (3 lanes, one pass): 7 findings, 0 HIGH; 7 fixed, plus
+  2 of its questions fixed (PDF-password prompt now a listed label
+  site; a blank bank shows the name alone) and 1 dismissed (popup sort
+  order, per spec § 4.2). Spec amended in place, loop-log row "impl".
+  review-tests not run on the changed tests: mutation_probe stood in,
+  38 of 38 deliberate breaks caught by a test. CHANGELOG [Unreleased]
+  and README carry the Bank field.
   **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
   Kind: feature.
   Source: user-request-2026-08-19.
