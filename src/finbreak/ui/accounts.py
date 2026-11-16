@@ -13,11 +13,12 @@ via ``selected_index`` and the fill tags each row with its insertion index.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QStringListModel, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QCompleter,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -57,7 +58,10 @@ from finbreak.ui._table_state import (
 )
 from finbreak.ui._widgets import select_combo_data
 
-_COL_NAME, _COL_TYPE, _COL_NUMBER, _COL_NOTE, _COL_STATUS = range(5)
+# Bank is appended as logical 5 and shown second (FIBR-0283 § 4.4): a saved
+# layout keys each column by its logical index, so inserting it at 1 would hand
+# Type's saved width and sort to Bank.
+_COL_NAME, _COL_TYPE, _COL_NUMBER, _COL_NOTE, _COL_STATUS, _COL_BANK = range(6)
 
 # Status-column sort key: a severity RANK, so clicking the header groups the
 # accounts that need attention rather than ordering marker strings by codepoint
@@ -133,7 +137,7 @@ class AccountsWidget(QWidget):
         self._rows: list[Account] = []
         self._with_pw: set[int] = set()
 
-        self._table = QTableWidget(0, 5)
+        self._table = QTableWidget(0, 6)
         # A distinct objectName so remember_columns keys this table uniquely and
         # it cannot cross-corrupt another table's saved layout (FIBR-0012).
         self._table.setObjectName("accounts_table")
@@ -144,12 +148,17 @@ class AccountsWidget(QWidget):
                 self.tr("Account number"),
                 self.tr("Note"),
                 self.tr("Status"),
+                self.tr("Bank"),
             ]
         )
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         enable_sorting(self._table)  # click a header to sort; second click toggles
+        # Before remember_columns, so "Bank second" is both the first-run layout
+        # and the one Reset layout restores. A five-column saved layout, once
+        # restored, leaves Bank at the end instead (§ 4.4, measured).
+        self._table.horizontalHeader().moveSection(_COL_BANK, 1)
         remember_columns(self._table)  # persist column widths/order across sessions
 
         self._name = QLineEdit()
@@ -169,6 +178,14 @@ class AccountsWidget(QWidget):
         self._note = QLineEdit()
         self._note.setPlaceholderText(self.tr("Note (optional)"))
         self._note.setAccessibleName(self.tr("Note"))
+        self._bank = QLineEdit()
+        self._bank.setPlaceholderText(self.tr("Bank (optional)"))
+        self._bank.setAccessibleName(self.tr("Bank"))
+        # Suggests the banks already recorded plus KNOWN_BANKS; the model is
+        # refilled in _refresh, so a newly typed bank is offered next time.
+        self._bank_completer = QCompleter(self)
+        self._bank_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._bank.setCompleter(self._bank_completer)
         # Session-scoped reveal: constructed unchecked, written to no store.
         # A lock needs no extra code to reset it — MainWindow._lock() destroys
         # the workspace and the next unlock builds a fresh widget (FIBR-0198 D2).
@@ -211,6 +228,7 @@ class AccountsWidget(QWidget):
         add_row = QGridLayout()
         add_row.addWidget(self._name, 0, 0)
         add_row.addWidget(self._type, 0, 1)
+        add_row.addWidget(self._bank, 0, 2)
         add_row.addWidget(self._account_number, 1, 0)
         add_row.addWidget(self._note, 1, 1)
         add_row.addWidget(self._add_button, 1, 2)
@@ -236,7 +254,7 @@ class AccountsWidget(QWidget):
         self._forget_pw_button.clicked.connect(self._on_forget_password)
         if self._done_button is not None:
             self._done_button.clicked.connect(self.done)
-        # Selecting an account loads all four inputs, so the same form serves
+        # Selecting an account loads every input, so the same form serves
         # both Add (nothing selected) and Update (D8 — the seeded Default
         # account is renamed / retyped here).
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
@@ -309,7 +327,7 @@ class AccountsWidget(QWidget):
         # (4) re-render both surfaces; clear-then-fill leaves no selection
         self._refresh()
         # (5) restore the selection WITHOUT waking _on_selection_changed, which
-        # would repopulate all four inputs from storage over a half-typed edit
+        # would repopulate every input from storage over a half-typed edit
         # (INV-4). The unblock is in a finally: a raise between the two would
         # leave the table permanently deaf to selection.
         if selected_id is not None:
@@ -330,18 +348,20 @@ class AccountsWidget(QWidget):
                 self._type.currentData(),
                 account_number=self._account_number.text(),
                 note=self._note.text(),
+                bank=self._bank.text(),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
-        # Only the three line edits. NOT the Type picker: QComboBox.clear()
+        # Only the line edits. NOT the Type picker: QComboBox.clear()
         # removes its ITEMS, which would destroy the seven type entries and the
         # token-behind-label contract __init__ builds.
         self._name.clear()
         self._account_number.clear()
         self._note.clear()
+        self._bank.clear()
         self._refresh()
 
     @Slot()
@@ -359,6 +379,7 @@ class AccountsWidget(QWidget):
                 # positional call raises TypeError (FIBR-0193 § 4.2).
                 account_number=self._account_number.text(),
                 note=self._note.text(),
+                bank=self._bank.text(),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
@@ -386,6 +407,7 @@ class AccountsWidget(QWidget):
         # vault on the next Update (§ 4.1).
         self._account_number.setText(account.account_number or "")
         self._note.setText(account.note or "")
+        self._bank.setText(account.bank or "")
 
     @Slot()
     def _on_forget_password(self) -> None:
@@ -488,7 +510,7 @@ class AccountsWidget(QWidget):
 
     def _refresh(self) -> None:
         # The guard wraps the WHOLE pre-fill read block, not a named subset. All
-        # five reads reach ``Vault.connection``, which is where VaultLockedError
+        # six reads reach ``Vault.connection``, which is where VaultLockedError
         # is raised, so whichever runs first is the one that raises — scoping it
         # to today's first read would silently stop covering the hazard the day
         # someone reorders them. Reachable because FIBR-0198's auto-hide timeout
@@ -508,6 +530,7 @@ class AccountsWidget(QWidget):
             statuses = self._reconciliation.account_statuses()
             exponent = read_minor_unit_exponent(self._vault.connection)
             symbol = TransactionService(self._vault).base_currency()
+            banks = self._accounts.bank_suggestions()
         except VaultLockedError:
             # Neither self._rows nor self._with_pw has been re-assigned and the
             # table is untouched, so the previous render stays intact — which on
@@ -517,6 +540,7 @@ class AccountsWidget(QWidget):
             return
         self._rows = rows
         self._with_pw = with_pw
+        self._bank_completer.setModel(QStringListModel(banks, self._bank_completer))
         with fill_guard(self._table):
             # CLEAR-then-fill (D6, INV-22): a surviving selection would ride its
             # item through the re-sort and resolve to a DIFFERENT account. The
@@ -564,6 +588,7 @@ class AccountsWidget(QWidget):
                         self._status_text(recon_text, key_text),
                         self._severity_rank(statuses[account.id]),
                     ),
+                    _COL_BANK: QTableWidgetItem(account.bank or ""),
                 }
                 for col, item in items.items():
                     self._table.setItem(row, col, item)

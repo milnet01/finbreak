@@ -35,6 +35,11 @@ signaling per
   accounts' statements, it says how many of them you have imported so far.
   Importing it again adds nothing you already have. A renamed copy is still
   recognised; files imported before this version are not.
+- **A Bank box on each account** (FIBR-0283). Type the bank an account is at,
+  or pick one finbreak suggests. The Accounts screen shows it in its own
+  column, and the import account choosers and a PDF report's account names
+  show it in brackets after the name, so accounts at two banks are easy to
+  tell apart. It is optional: accounts you already have start with no bank.
 
 ### Changed
 

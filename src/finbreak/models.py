@@ -78,6 +78,9 @@ class Account:
     created_at: str
     account_number: str | None = None
     note: str | None = None
+    # v18 (FIBR-0283): the bank holding the account, free text; NULL when
+    # not recorded. Appended last for the same positional reason as above.
+    bank: str | None = None
 
 
 class CategorySource(StrEnum):

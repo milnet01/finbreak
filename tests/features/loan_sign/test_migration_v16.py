@@ -84,6 +84,8 @@ def _back_to_v15(svc: AuthService) -> None:
     # v17 (FIBR-0088) adds a table, so the re-run would fail on its CREATE.
     conn.execute("DROP INDEX idx_imported_files_sha256")
     conn.execute("DROP TABLE imported_files")
+    # v18 (FIBR-0283) adds a column, the same way.
+    conn.execute("ALTER TABLE accounts DROP COLUMN bank")
     conn.execute("UPDATE schema_version SET version = 15")
     conn.commit()
 

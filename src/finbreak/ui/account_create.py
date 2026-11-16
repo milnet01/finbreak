@@ -1,9 +1,10 @@
 """CreateAccountDialog — make an account from what a statement printed (FIBR-0086).
 
-A small ``QDialog`` (one dialog per file, like ``ui/account_picker``): name, type
-and account number, prefilled from the statement's own header and every field
-still editable. The import wizard opens it from the ``no_match`` outcome, where the
-statement carries a number no configured account has.
+A small ``QDialog`` (one dialog per file, like ``ui/account_picker``): name, type,
+account number and bank, the first three prefilled from the statement's own
+header and every field still editable. The import wizard opens it from the
+``no_match`` outcome, where the statement carries a number no configured account
+has.
 
 The dialog is "dumb" — it takes prefill strings and hands back the entered values;
 the caller owns the ``AccountService`` write. All strings go through ``tr()`` and
@@ -12,8 +13,12 @@ every widget sits in a layout manager (coding.md § 5.2).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QCompleter,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -41,6 +46,7 @@ class CreateAccountDialog(QDialog):
         number: str,
         name: str | None = None,
         family: str | None = None,
+        banks: Sequence[str] = (),
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -58,6 +64,14 @@ class CreateAccountDialog(QDialog):
         # stray fragment.
         self._name = QLineEdit(name or "")
         self._name.setAccessibleName(self.tr("Account name"))
+
+        # Starts empty: pre-filling it from the statement is FIBR-0284.
+        self._bank = QLineEdit()
+        self._bank.setAccessibleName(self.tr("Bank"))
+        self._bank.setPlaceholderText(self.tr("Optional"))
+        completer = QCompleter(list(banks), self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._bank.setCompleter(completer)
 
         self._type = QComboBox()
         self._type.setAccessibleName(self.tr("Account type"))
@@ -97,6 +111,7 @@ class CreateAccountDialog(QDialog):
         form.addRow(self.tr("Name"), self._name)
         form.addRow(self.tr("Type"), self._type)
         form.addRow(self.tr("Account number"), self._number)
+        form.addRow(self.tr("Bank"), self._bank)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -117,3 +132,6 @@ class CreateAccountDialog(QDialog):
 
     def entered_number(self) -> str:
         return self._number.text()
+
+    def entered_bank(self) -> str:
+        return self._bank.text()

@@ -143,6 +143,7 @@ def seed(auth: AuthService, *, today: date | None = None) -> None:
         "current",
         account_number="62141230078",
         note="Main salary account",
+        bank="Standard Bank",
     )
     acct = {
         "cheque": default.id,

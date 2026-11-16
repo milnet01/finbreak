@@ -1254,8 +1254,8 @@ def test_FIBR0407_fanned_out_statements_from_two_same_named_files_are_told_apart
 class _EnteredAccount:
     """What CreateAccountDialog hands back once the user accepts it."""
 
-    def __init__(self, name: str, number: str | None) -> None:
-        self._name, self._number = name, number
+    def __init__(self, name: str, number: str | None, bank: str = "") -> None:
+        self._name, self._number, self._bank = name, number, bank
 
     def entered_name(self) -> str:
         return self._name
@@ -1265,6 +1265,44 @@ class _EnteredAccount:
 
     def entered_number(self) -> str | None:
         return self._number
+
+    def entered_bank(self) -> str:
+        return self._bank
+
+
+@pytest.mark.parametrize(
+    ("bank", "stored"),
+    [("", None), (" Nedbank ", "Nedbank")],
+    ids=["bank-blank", "bank-typed"],
+)
+def test_FIBR0283_INV12_batch_create_stores_the_bank(
+    qtbot, service, monkeypatch, bank, stored
+):
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+    monkeypatch.setattr(review, "_settle", lambda _record, _account_id: None)
+
+    entered = cast(CreateAccountDialog, _EnteredAccount("Cheque", None, bank))
+    review._created(BatchFile(path="/tmp/x.pdf"), entered)
+
+    created = next(
+        a for a in AccountService(service.vault).list_accounts() if a.name == "Cheque"
+    )
+    assert created.bank == stored
+
+
+def test_FIBR0283_INV8_review_account_cell_shows_the_bank(qtbot, service):
+    account = AccountService(service.vault).add_account(
+        "Cheque", "current", bank="Nedbank"
+    )
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+    record = BatchFile(path="/tmp/x.pdf")
+    record.account_id = account.id
+    review.set_files([record])
+    assert cell_text(review._table, 0, import_batch_mod.COL_ACCOUNT) == (
+        "Cheque (Nedbank)"
+    )
 
 
 @pytest.mark.parametrize(

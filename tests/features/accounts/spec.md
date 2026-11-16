@@ -212,6 +212,24 @@ except INV-1 leg (c), which builds a `MainWindow` solely to drive a lock cycle.
   fill reading `self._reveal.isChecked()` rather than a toggle parameter.
   Source: FIBR-0198 INV-5.
 
+## FIBR-0283 — the bank on each account (schema v18)
+
+Contract: `docs/specs/FIBR-0283-bank-field-on-accounts.md`.
+
+- **INV-1, INV-2** — A v17 vault gains exactly one nullable `bank` column,
+  every existing row unchanged, and a failure inside the step leaves v17.
+  Enforced by `test_migration_v18.py`.
+- **INV-3 to INV-7, INV-10, INV-11** — `test_accounts.py`, the `FIBR0283`
+  tests: both read paths return the bank; it is stripped and a blank one is
+  NULL; `update_account` and `AccountRepository.update` require it;
+  suggestions are case-blind with the stored spelling winning; `account_label`
+  is the name alone without a bank; the Accounts screen round-trips it; and
+  Bank is logical column 5, shown second, with a five-column saved layout
+  restoring unchanged.
+- **INV-8, INV-9, INV-12** live beside each site's own tests:
+  `statements/test_statements.py`, `account_detect/test_wizard.py`,
+  `batch_import/test_batch_import_ui.py` and `pdf_export/test_pdf_export.py`.
+
 ## Out of scope
 
 Editing an existing transaction's account; reassigning/bulk-moving transactions;

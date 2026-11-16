@@ -290,8 +290,49 @@ def test_created_account_receives_the_preview(qtbot, service, tmp_path):
     new_id = created[0].id
     # Stored AS PRINTED, not as the normalised key.
     assert created[0].account_number == "99 888 777 6"
+    # A Bank box left blank stores NULL (FIBR-0283 INV-12).
+    assert created[0].bank is None
     assert widget._confirm_account_combo.currentData() == new_id
     assert widget._preview.account_id == new_id, "the preview followed the new account"
+
+
+def test_FIBR0283_INV8_wizard_combos_label_an_account_with_its_bank(qtbot, service):
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    svc.add_account("Cheque", "current", bank="Nedbank")
+    widget = _wizard(qtbot, service, seeded)
+    for combo in (widget._account_combo, widget._confirm_account_combo):
+        texts = [combo.itemText(i) for i in range(combo.count())]
+        assert "Cheque (Nedbank)" in texts, texts
+        assert "Default" in texts, texts
+
+
+def test_FIBR0283_INV12_create_stores_the_bank_and_labels_the_new_item(
+    qtbot, service, tmp_path
+):
+    """The bank typed in the Create dialog is stored, the dialog suggests the
+    vault's banks, and both combos name the new account with its bank."""
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    svc.update_account(
+        seeded, "Default", "current", account_number=None, note=None, bank="Absa"
+    )
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+
+    dialog = _open_create_dialog(widget)
+    suggestions = dialog._bank.completer().model().stringList()
+    assert suggestions == svc.bank_suggestions(), suggestions
+    dialog._name.setText("New Savings")
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
+    dialog._bank.setText(" Nedbank ")
+    dialog.accept()
+
+    created = next(a for a in svc.list_accounts() if a.name == "New Savings")
+    assert created.bank == "Nedbank"
+    for combo in (widget._account_combo, widget._confirm_account_combo):
+        index = combo.findData(created.id)
+        assert combo.itemText(index) == "New Savings (Nedbank)"
 
 
 def test_create_with_no_name_surfaces_the_error(qtbot, service, tmp_path):

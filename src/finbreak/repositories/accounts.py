@@ -19,32 +19,38 @@ class AccountRepository:
     def __init__(self, connection: dbapi2.Connection):
         self._conn = connection
 
-    # ``account_number`` / ``note`` (v13, FIBR-0193) are REQUIRED parameters on
-    # both writers, not defaulted: ``update`` issues an unconditional
-    # ``UPDATE … SET``, so a defaulted ``None`` would let a three-argument caller
-    # silently erase a stored account number and note. ``add`` matches for
-    # symmetry rather than because an ``INSERT`` default would be dangerous.
+    # ``account_number`` / ``note`` (v13, FIBR-0193) and ``bank`` (v18,
+    # FIBR-0283) are REQUIRED parameters on both writers, not defaulted:
+    # ``update`` issues an unconditional ``UPDATE … SET``, so a defaulted
+    # ``None`` would let a caller that forgot one silently erase it. ``add``
+    # matches for symmetry rather than because an ``INSERT`` default would be
+    # dangerous.
     def add(
-        self, name: str, type: str, account_number: str | None, note: str | None
+        self,
+        name: str,
+        type: str,
+        account_number: str | None,
+        note: str | None,
+        bank: str | None,
     ) -> int:
         cursor = self._conn.execute(
-            "INSERT INTO accounts(name, type, created_at, account_number, note) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name, type, datetime.now(UTC).isoformat(), account_number, note),
+            "INSERT INTO accounts(name, type, created_at, account_number, note, bank) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (name, type, datetime.now(UTC).isoformat(), account_number, note, bank),
         )
         self._conn.commit()
         return last_insert_id(cursor)
 
     def list_all(self) -> list[Account]:
         rows = self._conn.execute(
-            "SELECT id, name, type, created_at, account_number, note FROM accounts "
-            "ORDER BY name COLLATE NOCASE, id"
+            "SELECT id, name, type, created_at, account_number, note, bank "
+            "FROM accounts ORDER BY name COLLATE NOCASE, id"
         ).fetchall()
         return [Account(*row) for row in rows]
 
     def get(self, account_id: int) -> Account | None:
         row = self._conn.execute(
-            "SELECT id, name, type, created_at, account_number, note "
+            "SELECT id, name, type, created_at, account_number, note, bank "
             "FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
@@ -57,13 +63,21 @@ class AccountRepository:
         type: str,
         account_number: str | None,
         note: str | None,
+        bank: str | None,
     ) -> None:
         self._conn.execute(
-            "UPDATE accounts SET name = ?, type = ?, account_number = ?, note = ? "
-            "WHERE id = ?",
-            (name, type, account_number, note, account_id),
+            "UPDATE accounts SET name = ?, type = ?, account_number = ?, note = ?, "
+            "bank = ? WHERE id = ?",
+            (name, type, account_number, note, bank, account_id),
         )
         self._conn.commit()
+
+    def banks(self) -> list[str]:
+        """Every distinct bank recorded on an account, unordered."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT bank FROM accounts WHERE bank IS NOT NULL"
+        ).fetchall()
+        return [row[0] for row in rows]
 
     def delete(self, account_id: int) -> None:
         self._conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))

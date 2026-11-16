@@ -48,6 +48,7 @@ from finbreak.services.batch_import import (
     BatchImportService,
 )
 from finbreak.ui._table_state import remember_columns
+from finbreak.ui._widgets import account_label
 from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.modal import show_modal
@@ -237,7 +238,9 @@ class BatchReviewWidget(QWidget):
         leaves the last names on screen rather than raising out of a repaint.
         """
         try:
-            self._account_names = {a.id: a.name for a in self._accounts.list_accounts()}
+            self._account_names = {
+                a.id: account_label(a) for a in self._accounts.list_accounts()
+            }
         except VaultLockedError:
             pass  # keep the previous snapshot; the shell is tearing this down
         labels = file_labels(self._files)
@@ -480,6 +483,7 @@ class BatchReviewWidget(QWidget):
             number=record.hint.number,
             name=record.hint.name,
             family=record.hint.family,
+            banks=self._accounts.bank_suggestions(),
             parent=self,
         )
         show_modal(create, lambda: self._created(record, create))
@@ -491,6 +495,7 @@ class BatchReviewWidget(QWidget):
                 dialog.entered_name(),
                 dialog.entered_type(),
                 account_number=dialog.entered_number(),
+                bank=dialog.entered_bank(),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the other handlers

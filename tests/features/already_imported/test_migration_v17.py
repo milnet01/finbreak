@@ -14,7 +14,7 @@ from collections.abc import Iterator
 import pytest
 
 from conftest import _PW, _acct, raising_conn
-from finbreak.migrations import run_migrations
+from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.auth import AuthService
@@ -72,6 +72,8 @@ def v16(service) -> AuthService:
     conn.commit()
     conn.execute("DROP INDEX idx_imported_files_sha256")
     conn.execute("DROP TABLE imported_files")
+    # v18 (FIBR-0283) adds a column, so the re-run would fail on its ALTER.
+    conn.execute("ALTER TABLE accounts DROP COLUMN bank")
     conn.execute("UPDATE schema_version SET version = 16")
     conn.commit()
     return svc
@@ -83,7 +85,7 @@ def test_INV9_v17_creates_the_table_and_keeps_every_row(v16) -> None:
 
     run_migrations(v16.vault.connection)
 
-    assert _version(v16) == 17
+    assert _version(v16) == LATEST_SCHEMA_VERSION
     assert _objects(v16) == {"imported_files", "idx_imported_files_sha256"}
     assert _rows(v16) == before
 
@@ -101,12 +103,12 @@ def test_INV9_v17_failing_after_the_create_leaves_a_v16_vault(v16) -> None:
     assert _objects(v16) == set(), "the CREATE TABLE was not rolled back"
     assert _rows(v16) == before
     run_migrations(v16.vault.connection)  # re-openable: the step runs clean
-    assert _version(v16) == 17
+    assert _version(v16) == LATEST_SCHEMA_VERSION
 
 
 def test_INV9_v17_runs_once(v16) -> None:
     run_migrations(v16.vault.connection)
     run_migrations(v16.vault.connection)  # at v17: no step runs
 
-    assert _version(v16) == 17
+    assert _version(v16) == LATEST_SCHEMA_VERSION
     assert _objects(v16) == {"imported_files", "idx_imported_files_sha256"}

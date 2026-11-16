@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 17
+LATEST_SCHEMA_VERSION = 18
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -560,6 +560,17 @@ def _migrate_to_v17(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 17")
 
 
+def _migrate_to_v18(conn: dbapi2.Connection) -> None:
+    """v17 -> v18: the nullable ``accounts.bank`` column (FIBR-0283).
+
+    No default and no backfill: a bank guessed from an account number is the
+    signal FIBR-0283 removes, so every existing account reads NULL ("not
+    recorded"). One atomic unit like every sibling step."""
+    with owned_transaction(conn):
+        conn.execute("ALTER TABLE accounts ADD COLUMN bank TEXT")
+        conn.execute("UPDATE schema_version SET version = 18")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -577,4 +588,5 @@ _MIGRATIONS = {
     15: _migrate_to_v15,
     16: _migrate_to_v16,
     17: _migrate_to_v17,
+    18: _migrate_to_v18,
 }

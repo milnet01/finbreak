@@ -142,6 +142,39 @@ def test_named_accounts_header_lists_names(qapp, service):
     )
 
 
+def test_FIBR0283_INV8_header_and_summary_row_show_the_bank(qapp, service):
+    a = _accounts(service)[0].id
+    b = (
+        AccountService(service.vault)
+        .add_account("Savings", "savings", bank="Nedbank")
+        .id
+    )
+    _add(service, a, 100_00)
+    _add(service, b, 50_00)
+    html, _ = _svc(service)._build_html(_options(account_ids=frozenset({a, b})), _TODAY)
+    header, rest = html.split("<h2>", 1)
+    block = rest.split("By account", 1)[1]
+    assert "Savings (Nedbank)" in header, header
+    assert "<td>Savings (Nedbank)</td>" in block, block
+
+
+def test_FIBR0283_INV9_a_markup_bank_is_escaped_in_header_and_row(qapp, service):
+    a = _accounts(service)[0].id
+    b = (
+        AccountService(service.vault)
+        .add_account("Savings", "savings", bank="<b>X</b>")
+        .id
+    )
+    _add(service, a, 100_00)
+    _add(service, b, 50_00)
+    html, _ = _svc(service)._build_html(_options(account_ids=frozenset({a, b})), _TODAY)
+    header, rest = html.split("<h2>", 1)
+    block = rest.split("By account", 1)[1]
+    assert "Savings (&lt;b&gt;X&lt;/b&gt;)" in header, header
+    assert "<td>Savings (&lt;b&gt;X&lt;/b&gt;)</td>" in block, block
+    assert "<b>X</b>" not in html
+
+
 def test_over_three_accounts_collapses_to_count(qapp, service):
     ids = {_accounts(service)[0].id}
     for n in ("Bee", "Cee", "Dee"):

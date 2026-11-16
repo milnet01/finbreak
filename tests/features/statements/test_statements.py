@@ -1077,6 +1077,18 @@ def test_FIBR0059_picker_preselects_current_account(qtbot, service):
     )
 
 
+def test_FIBR0283_INV8_picker_labels_an_account_with_its_bank(qtbot, service):
+    from finbreak.ui.account_picker import AccountPickerDialog
+
+    AccountService(service.vault).add_account("Cheque", "current", bank="Nedbank")
+    accounts = AccountService(service.vault).list_accounts()
+    dialog = AccountPickerDialog(accounts, accounts[0].id, None)
+    qtbot.addWidget(dialog)
+    texts = [dialog._combo.itemText(i) for i in range(dialog._combo.count())]
+    assert "Cheque (Nedbank)" in texts, texts
+    assert "Default" in texts, "an account with no bank shows its name alone"
+
+
 def test_FIBR0059_reassign_round_trip_changes_row_and_emits(
     qtbot, service, monkeypatch
 ):

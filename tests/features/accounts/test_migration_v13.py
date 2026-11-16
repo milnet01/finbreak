@@ -145,8 +145,9 @@ def test_INV1_v12_vault_upgrades_to_v13_in_place(paths) -> None:
         conn.execute("SELECT version FROM schema_version").fetchone()[0]
         == LATEST_SCHEMA_VERSION
     )
-    # (ii) gaining EXACTLY those two columns, both nullable
-    assert _cols(conn, "accounts") == before_cols | {"account_number", "note"}
+    # (ii) gaining EXACTLY those two columns, both nullable. The walk runs to
+    # latest, so v18's ``bank`` (FIBR-0283) arrives too.
+    assert _cols(conn, "accounts") == before_cols | {"account_number", "note", "bank"}
     notnull = _notnull(conn, "accounts")
     assert notnull["account_number"] == 0
     assert notnull["note"] == 0

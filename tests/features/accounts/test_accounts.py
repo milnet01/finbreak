@@ -102,7 +102,9 @@ def test_INV1_crud_roundtrip_and_order(service):
     # created_at is a well-formed ISO-8601 timestamp (fromisoformat raises if not).
     datetime.fromisoformat(got.created_at)
 
-    svc.update_account(current.id, "Cheque", "current", account_number=None, note=None)
+    svc.update_account(
+        current.id, "Cheque", "current", account_number=None, note=None, bank=None
+    )
     got = repo.get(current.id)
     assert got is not None
     assert got.name == "Cheque"
@@ -114,7 +116,7 @@ def test_INV1_crud_roundtrip_and_order(service):
 def test_INV1_missing_id_update_and_delete_are_noops(service):
     repo = AccountRepository(service.vault.connection)
     repo.delete(999_999)  # no row, no raise
-    repo.update(999_999, "ghost", "other", None, None)  # no row, no raise
+    repo.update(999_999, "ghost", "other", None, None, None)  # no row, no raise
     assert repo.get(999_999) is None
 
 
@@ -165,11 +167,13 @@ def test_INV3_name_stored_trimmed_and_update_allows_own_name(service):
     acct = svc.add_account("  Savings  ", "savings")
     assert acct.name == "Savings", "stored trimmed"
     # Re-saving the same account with its own (unchanged) name is allowed.
-    svc.update_account(acct.id, "Savings", "current", account_number=None, note=None)
+    svc.update_account(
+        acct.id, "Savings", "current", account_number=None, note=None, bank=None
+    )
     # But colliding with a *different* account's name is refused.
     with pytest.raises(ValueError):
         svc.update_account(
-            acct.id, "Default", "current", account_number=None, note=None
+            acct.id, "Default", "current", account_number=None, note=None, bank=None
         )
 
 
@@ -549,7 +553,12 @@ def test_INV8_account_cycle_logs_no_secret(service, caplog):
             "Spare", "other", account_number=account_number, note=note
         )
         svc.update_account(
-            spare.id, "Spare2", "savings", account_number=account_number, note=note
+            spare.id,
+            "Spare2",
+            "savings",
+            account_number=account_number,
+            note=note,
+            bank=None,
         )
         svc.delete_account(spare.id)
 
@@ -945,7 +954,12 @@ def test_INV6_update_persists_account_number_and_note(service):
     )
 
     svc.update_account(
-        acct.id, "Holiday", "savings", account_number="NEW-2222", note="new note"
+        acct.id,
+        "Holiday",
+        "savings",
+        account_number="NEW-2222",
+        note="new note",
+        bank=None,
     )
 
     got = repo.get(acct.id)
@@ -965,7 +979,9 @@ def test_INV6_update_blanks_clear_both_fields_to_null(service):
         "Holiday", "savings", account_number="62145530078", note="Ann's card"
     )
 
-    svc.update_account(acct.id, "Holiday", "savings", account_number="   ", note="   ")
+    svc.update_account(
+        acct.id, "Holiday", "savings", account_number="   ", note="   ", bank=None
+    )
 
     row = conn.execute(
         "SELECT account_number IS NULL, note IS NULL FROM accounts WHERE id = ?",
@@ -1029,7 +1045,7 @@ def _seed_sorted(service) -> dict[str, int]:
         if i == 1:  # reuse the seeded Default as the middle account
             account_id = _default_id(service.vault)
             svc.update_account(
-                account_id, name, type_, account_number=number, note=note
+                account_id, name, type_, account_number=number, note=note, bank=None
             )
         else:
             account_id = svc.add_account(
@@ -1769,3 +1785,182 @@ def test_FIBR0396_the_status_cell_is_composed_by_one_template(
     assert _cell(widget, "EEgoodkey", _COL_STATUS) == (
         "🔑 statement password saved / ✓ balances reconcile"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0283 — the optional bank on each account
+# (docs/specs/FIBR-0283-bank-field-on-accounts.md)
+# --------------------------------------------------------------------------- #
+_COL_BANK = 5
+
+
+def _header_text(widget, column: int) -> str:
+    item = widget._table.horizontalHeaderItem(column)
+    assert item is not None, f"no header item at logical column {column}"
+    return item.text()
+
+
+def test_FIBR0283_INV3_bank_round_trips_on_both_read_paths(service):
+    """Distinct values in every field, so a misordered SELECT reddens rather
+    than the model's default absorbing an omitted column."""
+    svc = AccountService(service.vault)
+    acct = svc.add_account(
+        "Holiday", "savings", account_number="NUM-1", note="a note", bank="Nedbank"
+    )
+    assert acct.bank == "Nedbank"
+
+    repo = AccountRepository(service.vault.connection)
+    for label, got in (
+        ("get", repo.get(acct.id)),
+        ("list_all", next(a for a in repo.list_all() if a.id == acct.id)),
+    ):
+        assert got is not None, label
+        assert (got.name, got.type, got.account_number, got.note, got.bank) == (
+            "Holiday",
+            "savings",
+            "NUM-1",
+            "a note",
+            "Nedbank",
+        ), label
+        datetime.fromisoformat(got.created_at)
+
+
+def test_FIBR0283_INV4_bank_is_stripped_and_blank_is_null(service):
+    svc = AccountService(service.vault)
+    blank = svc.add_account("Blank", "other", bank="  ")
+    padded = svc.add_account("Padded", "other", bank=" Nedbank ")
+    omitted = svc.add_account("Omitted", "other")
+    assert blank.bank is None
+    assert padded.bank == "Nedbank"
+    assert omitted.bank is None
+
+    svc.update_account(
+        padded.id, "Padded", "other", account_number=None, note=None, bank="   "
+    )
+    row = service.vault.connection.execute(
+        "SELECT bank IS NULL FROM accounts WHERE id = ?", (padded.id,)
+    ).fetchone()
+    assert row[0] == 1, "a blanked bank is stored as NULL, not ''"
+
+
+def test_FIBR0283_INV5_update_sets_clears_and_requires_bank(service):
+    svc = AccountService(service.vault)
+    repo = AccountRepository(service.vault.connection)
+    acct = svc.add_account("Holiday", "savings")
+
+    svc.update_account(
+        acct.id, "Holiday", "savings", account_number=None, note=None, bank="Nedbank"
+    )
+    got = repo.get(acct.id)
+    assert got is not None and got.bank == "Nedbank"
+
+    svc.update_account(
+        acct.id, "Holiday", "savings", account_number=None, note=None, bank=None
+    )
+    got = repo.get(acct.id)
+    assert got is not None and got.bank is None
+
+    with pytest.raises(TypeError):
+        svc.update_account(  # type: ignore[call-arg]
+            acct.id, "Holiday", "savings", account_number=None, note=None
+        )
+    with pytest.raises(TypeError):
+        repo.update(acct.id, "Holiday", "savings", None, None)  # type: ignore[call-arg]
+
+
+def test_FIBR0283_INV6_bank_suggestions_dedupe_case_blind_stored_wins(service):
+    svc = AccountService(service.vault)
+    assert svc.bank_suggestions() == ["Standard Bank"]
+
+    svc.add_account("One", "current", bank="standard bank")
+    svc.add_account("Two", "current", bank="Nedbank")
+    svc.add_account("Three", "current", bank="Nedbank")
+    assert svc.bank_suggestions() == ["Nedbank", "standard bank"]
+
+
+def test_FIBR0283_INV7_account_label_is_the_name_without_a_bank():
+    from finbreak.models import Account
+    from finbreak.ui._widgets import account_label
+
+    assert account_label(Account(1, "Cheque", "current", "t")) == "Cheque"
+    assert (
+        account_label(Account(1, "Cheque", "current", "t", bank="Nedbank"))
+        == "Cheque (Nedbank)"
+    )
+
+
+def test_FIBR0283_INV10_accounts_screen_round_trips_the_bank(qtbot, service):
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    first = svc.add_account("First", "current", bank="Nedbank")
+    second = svc.add_account("Second", "current")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert _cell(widget, "First", _COL_BANK) == "Nedbank"
+    assert _cell(widget, "Second", _COL_BANK) == ""
+
+    # Selecting fills the field; selecting a bank-less row empties it again.
+    widget._select_account(first.id)
+    assert widget._bank.text() == "Nedbank"
+    widget._select_account(second.id)
+    assert widget._bank.text() == ""
+
+    # Add stores the typed bank and clears the field.
+    widget._table.clearSelection()
+    widget._name.setText("Third")
+    widget._bank.setText("Capitec")
+    widget._add_button.click()
+    assert widget._bank.text() == ""
+    assert _cell(widget, "Third", _COL_BANK) == "Capitec"
+
+    # Update stores an edited bank, and an emptied field stores NULL.
+    widget._select_account(first.id)
+    widget._bank.setText("Absa")
+    widget._update_button.click()
+    got = AccountRepository(service.vault.connection).get(first.id)
+    assert got is not None and got.bank == "Absa"
+    widget._select_account(first.id)
+    widget._bank.setText("")
+    widget._update_button.click()
+    got = AccountRepository(service.vault.connection).get(first.id)
+    assert got is not None and got.bank is None
+
+
+def test_FIBR0283_INV11_bank_is_appended_last_and_shown_second(qtbot, service):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QTableWidget
+
+    from finbreak import paths
+    from finbreak.ui._table_state import reset_columns
+    from finbreak.ui.accounts import AccountsWidget
+
+    # Fresh INI: Bank is logical 5, shown second; Name stays logical 0.
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    header = widget._table.horizontalHeader()
+    assert _header_text(widget, _COL_BANK) == "Bank"
+    assert _header_text(widget, _COL_NAME) == "Name"
+    assert header.visualIndex(_COL_BANK) == 1
+    header.moveSection(1, 5)  # the user drags Bank away...
+    assert header.visualIndex(_COL_BANK) == 5
+    reset_columns(widget)  # ...and Reset layout puts it back second
+    assert header.visualIndex(_COL_BANK) == 1
+    assert _header_text(widget, _COL_BANK) == "Bank"
+
+    # A layout saved by the five-column screen: column 1 widened.
+    five = QTableWidget(0, 5)
+    five.horizontalHeader().setSectionsMovable(True)
+    five.horizontalHeader().resizeSection(1, 222)
+    settings = QSettings(str(paths.window_settings_path()), QSettings.Format.IniFormat)
+    settings.setValue("columns/accounts_table", five.horizontalHeader().saveState())
+    settings.sync()
+
+    restored = AccountsWidget(service)
+    qtbot.addWidget(restored)
+    header = restored._table.horizontalHeader()
+    assert header.sectionSize(1) == 222, "Type keeps its saved width"
+    assert [header.visualIndex(i) for i in range(5)] == [0, 1, 2, 3, 4]
+    assert header.visualIndex(_COL_BANK) == 5, "Bank is appended last"
+    assert _header_text(restored, _COL_BANK) == "Bank"

@@ -93,6 +93,7 @@ from finbreak.services.transactions import (
 )
 from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import remember_columns
+from finbreak.ui._widgets import account_label
 from finbreak.ui._worker import JobWorker, start_job
 from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.import_batch import BatchReviewWidget
@@ -265,11 +266,11 @@ class ImportWizardWidget(QWidget):
         self._goto_step(_STEP_PICK)
 
     def _fill_account_combo(self, combo: QComboBox) -> None:
-        """Populate an account picker (label = name, data = id). Shared by the
-        pick step and the preview step's destination picker (FIBR-0057), so both
-        list the same accounts in the same order."""
+        """Populate an account picker (label = ``account_label``, data = id).
+        Shared by the pick step and the preview step's destination picker
+        (FIBR-0057), so both list the same accounts in the same order."""
         for account in self._accounts.list_accounts():
-            combo.addItem(account.name, account.id)
+            combo.addItem(account_label(account), account.id)
 
     # -- step 0: pick file + account -----------------------------------------
     def _build_pick_step(self) -> QWidget:
@@ -872,6 +873,7 @@ class ImportWizardWidget(QWidget):
             number=self._pending_hint.number,
             name=self._pending_hint.name,
             family=self._pending_hint.family,
+            banks=self._accounts.bank_suggestions(),
             parent=self,
         )
         # Non-blocking + parented (FIBR-0065 D1): an idle auto-lock destroys the
@@ -890,6 +892,7 @@ class ImportWizardWidget(QWidget):
                 dialog.entered_name(),
                 dialog.entered_type(),
                 account_number=dialog.entered_number(),
+                bank=dialog.entered_bank(),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the other handlers
@@ -899,7 +902,7 @@ class ImportWizardWidget(QWidget):
 
         # Both combos gain the new account, so the pick step lists it too.
         for combo in (self._account_combo, self._confirm_account_combo):
-            combo.addItem(account.name, account.id)
+            combo.addItem(account_label(account), account.id)
         # Deliberately NOT under a QSignalBlocker — the mirror image of
         # _apply_account_match. The preview already exists by now, so we NEED
         # currentIndexChanged to reach _on_confirm_account_changed and retarget it;

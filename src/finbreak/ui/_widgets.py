@@ -17,7 +17,7 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QComboBox
 
-from finbreak.models import Category, CategoryKind
+from finbreak.models import Account, Category, CategoryKind
 
 # One fixed translate context — ``"CategoryTypeLabels"`` — is shared by the
 # section headers, the ``Name (Type)`` row tag, AND the category manager
@@ -35,6 +35,17 @@ def select_combo_data(combo: QComboBox, value: object) -> None:
     index = combo.findData(value)
     if index >= 0:
         combo.setCurrentIndex(index)
+
+
+def account_label(account: Account) -> str:
+    """How an account is named where the user picks or reads one among
+    several: the name, plus the bank in brackets when one is recorded
+    (FIBR-0283 § 4.3). With no bank it is the name exactly."""
+    if account.bank is None:
+        return account.name
+    return QCoreApplication.translate("AccountLabel", "{name} ({bank})").format(
+        name=account.name, bank=account.bank
+    )
 
 
 def category_type_labels() -> dict[str, str]:

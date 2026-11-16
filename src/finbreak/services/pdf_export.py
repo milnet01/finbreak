@@ -48,6 +48,7 @@ from finbreak.services.reporting import (
 from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
+from finbreak.ui._widgets import account_label
 from finbreak.ui.charts import ChartTheme, build_donut_chart, build_trend_chart
 from finbreak.ui.language import ui_locale
 from finbreak.vault import Vault
@@ -260,7 +261,7 @@ class PdfExportService:
         accounts`` beyond 3 (a bounded header string, D2)."""
         if options.account_ids is None:
             return QCoreApplication.translate("PdfExport", "All accounts")
-        names = [a.name for a in self._accounts_in_scope(options)]
+        names = [account_label(a) for a in self._accounts_in_scope(options)]
         if len(names) > 3:
             return QCoreApplication.translate("PdfExport", "{n} accounts").format(
                 n=len(names)
@@ -374,7 +375,7 @@ class PdfExportService:
         s = reporting.summary(prefs, frozenset({acct.id}), today)
         style = self._negative_style()
         return (
-            f"<tr><td>{escape(acct.name)}</td>"
+            f"<tr><td>{escape(account_label(acct))}</td>"
             f"<td>{escape(_format_amount(s.income, symbol, style))}</td>"
             f"<td>{escape(_format_amount(s.expenditure, symbol, style))}</td>"
             f"<td>{escape(_format_amount(s.net, symbol, style))}</td></tr>"

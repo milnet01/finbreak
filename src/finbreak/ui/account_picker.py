@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.importers.base import SourceAccountHint
 from finbreak.models import Account
-from finbreak.ui._widgets import select_combo_data
+from finbreak.ui._widgets import account_label, select_combo_data
 
 
 class AccountPickerDialog(QDialog):
@@ -48,7 +48,7 @@ class AccountPickerDialog(QDialog):
 
         self._combo = QComboBox()
         for account in accounts:
-            self._combo.addItem(account.name, account.id)
+            self._combo.addItem(account_label(account), account.id)
         if self._combo.findData(current_account_id) < 0:
             # No destination yet. The batch review's Account cell says
             # "— pick one —" for such a row and the picker has to agree:

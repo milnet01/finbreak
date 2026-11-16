@@ -20,6 +20,10 @@ from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
 
+# Banks whose statements finbreak can read (FIBR-0050), offered as bank
+# suggestions before the vault records any (FIBR-0283 § 3).
+KNOWN_BANKS: tuple[str, ...] = ("Standard Bank",)
+
 
 def _normalise_optional(value: str | None) -> str | None:
     """Strip, and collapse an empty result to None — so a blank form field is
@@ -56,6 +60,7 @@ class AccountService:
         *,
         account_number: str | None = None,
         note: str | None = None,
+        bank: str | None = None,
     ) -> Account:
         name = self._validate(name, type)
         repo = self._accounts()
@@ -64,6 +69,7 @@ class AccountService:
             type,
             _normalise_optional(account_number),
             _normalise_optional(note),
+            _normalise_optional(bank),
         )
         log.info("account created")
         # get() is Optional; the row was just inserted, so it is present.
@@ -77,6 +83,7 @@ class AccountService:
         *,
         account_number: str | None,
         note: str | None,
+        bank: str | None,
     ) -> None:
         name = self._validate(name, type, exclude_id=account_id)
         self._accounts().update(
@@ -85,8 +92,17 @@ class AccountService:
             type,
             _normalise_optional(account_number),
             _normalise_optional(note),
+            _normalise_optional(bank),
         )
         log.info("account updated")
+
+    def bank_suggestions(self) -> list[str]:
+        """The banks the vault records, then ``KNOWN_BANKS``, each once by
+        ``fold_name`` (the stored spelling wins), sorted by ``fold_name``."""
+        by_key: dict[str, str] = {}
+        for bank in [*self._accounts().banks(), *KNOWN_BANKS]:
+            by_key.setdefault(fold_name(bank), bank)
+        return [by_key[key] for key in sorted(by_key)]
 
     def delete_account(self, account_id: int) -> None:
         repo = self._accounts()
