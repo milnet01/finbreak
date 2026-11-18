@@ -85,6 +85,13 @@ signaling per
     typed "Home loan", or with a version before 0.1.18. If a loan
     statement's amounts look the wrong way round after upgrading,
     delete that statement under Statements and import it again.
+- **Importing a folder of statements no longer offers to create an
+  account it should not** (FIBR-0474). The account chooser on the review
+  screen offered "Create a new account…" on every statement that printed
+  an account number. That included a partly hidden number, which was
+  then saved as the account's number, and a number you already have,
+  which made a second account. Now it offers to create one only when no
+  account has that number, or only an account at another bank does.
 
 ## [1.0.4] - 2026-11-08
 

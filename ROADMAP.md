@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=481 -->
+<!-- ants-roadmap-id-high-water: FIBR=482 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5388,7 +5388,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: review-code-FIBR-0471-2026-11-15.
 
-- 📋 [FIBR-0474] **Batch review offers Create on every row with a hint, masked or already matched.**
+- ✅ [FIBR-0474] **Batch review offers Create on every row with a hint, masked or already matched.**
   MEDIUM, lane 04. ui/import_batch.py passes record.hint to the
   account picker whatever match_account returned, and the picker shows
   Create whenever hint is not None. So a masked OFX id (outcome
@@ -5401,6 +5401,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   reaches the form) and FIBR-0085 §3 decision 6 ("An unmatched row's
   picker"). Fix: record the match outcome on BatchFile in
   _settle_parse; pass hint only for no_match / wrong_bank.
+  Shipped 2026-11-18: test d06dd97 (red first), fix d1abb87.
+  _settle_parse keeps record.hint only on no_match / wrong_bank, as the
+  wizard's _pending_hint does; the FIBR-0085 service spec amended in the
+  same commit. A wrong_bank leg was added at service level (OFX names no
+  bank). mutation_probe 4/4 killed. Left open as FIBR-0482: after
+  Create, the same row and same-number sibling rows still offer Create.
   **Layman:** The batch import screen can offer to create an account from a hidden (masked) number, or a duplicate of one you already have, and then say it worked.
   Kind: review-fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
@@ -5501,6 +5507,24 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui.
+
+- 📋 [FIBR-0482] **After batch Create, rows on the same number still offer Create again.**
+  Found while fixing FIBR-0474 (code reading, not yet reproduced).
+  _settle_parse runs match_account once per file (FIBR-0085 INV-5),
+  and record.hint is never cleared. So after the user creates an
+  account from one no_match row, reopening that row's picker still
+  offers Create, and so does every other row in the batch printing
+  the same number: each makes another account on that number, and
+  the vault has no duplicate-number guard (AccountService.add_account).
+  Every later statement on that number is then ambiguous.
+  Likely fix: after _created, re-run match_account for the
+  needs_account rows and drop the hint where it now matches; check
+  whether FIBR-0085 INV-5 needs amending. Whether the single-file
+  wizard keeps its Create button after a create is unverified.
+  **Layman:** After you create an account during a folder import, finbreak can still offer to create it again for the same or other statements.
+  Kind: fix.
+  Source: FIBR-0474 fix, 2026-11-18.
+  Lanes: ui, services.
 
 ## v1.1.0 — Localisation
 
