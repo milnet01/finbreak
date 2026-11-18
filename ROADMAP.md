@@ -6420,6 +6420,8 @@ always keeps the password slot, so no earlier vault becomes unopenable.
   than pulling it into 1.0.
   User decision (2026-10-07): the remainder stays in v1.6.0 as the
   first-run launcher feature, not 1.0.
+  User reconfirmed (2026-11-18): stays in v1.6.0; the language
+  work (v1.1.0) goes first.
 
 - 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
   Reported by the user 2026-08-03. VERIFIED against source; the current
