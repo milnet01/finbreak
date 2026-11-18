@@ -24,6 +24,7 @@ from finbreak.importers.standard_bank import (
     _MONEY,
     Family,
     StandardBankImporter,
+    _capture_closing,
     _cc_opening,
     _detect_number_format,
     _infer_years,
@@ -362,6 +363,21 @@ def test_row20_b_a_terminator_phrase_inside_a_row_does_not_end_the_region():
     assert region == page[1:3]
     assert not _is_terminator("CLOSING BALANCE TRANSFER 05 03 100.00 05 03 1,100.00")
     assert _is_terminator("Closing balance 1,968.77")
+
+
+@pytest.mark.parametrize(
+    ("family", "row"),
+    [
+        (Family.B, "2026-03-05 CLOSING BALANCE TRANSFER 100.00 1,100.00"),
+        (Family.C, "20 Oct 25 CLOSING BALANCE TRANSFER 100.00"),
+    ],
+)
+def test_FIBR0475_closing_marker_inside_a_row_is_not_the_closing(family, row):
+    """The closing capture took the first line carrying the family's marker, so a
+    transaction described "CLOSING BALANCE TRANSFER" became the statement's closing
+    figure — refusing a valid statement, or passing one whose tail rows were lost."""
+    text = "\n".join(["Brought forward 1,000.00", row, "Closing balance 1,968.77"])
+    assert _capture_closing(text, family, "us") == Decimal("1968.77")
 
 
 def test_row20_c_a_row_mentioning_a_po_box_is_kept_not_dropped_as_letterhead():
