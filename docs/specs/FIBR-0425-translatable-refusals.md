@@ -1,7 +1,9 @@
 <!-- ants-spec-format: 1 -->
 # FIBR-0425 — every refusal reaches the screen through Qt's translation system
 
-**Status:** spec draft (2026-11-18).
+**Status:** accepted (2026-11-18). No contract review: the spec is owed for a
+design choice and three subsystems, and nothing it pins is stored or bound
+by other tooling (rule 14).
 **Kind:** fix.
 **Source:** ROADMAP FIBR-0425 (full-audit-2026-09-27 code lanes 5 and 6).
 **Pairs with:** FIBR-0434, which is the services half of the same work. It has
@@ -32,7 +34,7 @@ users see the same words as today.
 2. **Two reason fields carry English to a cell.** `RowError.reason`
    (`importers/base.py`) fills the preview table's reason column.
    `BatchFile.reason` (`services/batch_import.py`) fills the batch status cell.
-   `ImportBatchStep._translated` translates the seven batch constants by string
+   `BatchReviewWidget._translated` translates the seven batch constants by string
    equality and passes any other reason through untranslated. `_fail` and
    the commit pass write `str(exc)` into that field.
 3. **No exception carries anything to translate by.** Every message is a
@@ -134,7 +136,7 @@ def user_text(source: BaseException | UserMessage) -> str
    `_digits` does; a `str` as given.
 4. Substitute with `str.format`, after translating.
 
-Every sink in §2.1 and §2.2 calls `user_text`. `ImportBatchStep._translated`
+Every sink in §2.1 and §2.2 calls `user_text`. `BatchReviewWidget._translated`
 is deleted, and its callers call `user_text`.
 
 ## 5. Invariants
@@ -222,7 +224,9 @@ is deleted, and its callers call `user_text`.
 ## 7. Tests
 
 INV-1, INV-2, INV-3 and INV-5 to INV-8 live in
-`tests/features/i18n/test_user_text.py`. INV-4 is the existing suites. Each
+`tests/features/i18n/test_user_text.py`. INV-4 is the existing suites. INV-5
+needs FIBR-0017's `pseudo` fixture, which `test_language.py` defines, so it
+moves to `tests/features/i18n/conftest.py` for both files to use. Each
 new test is seen to fail before its code exists: INV-1 against today's
 `setText(str(exc))` lines, INV-5 against today's English. The AST walks each
 carry a planted-offence leg, as `test_translatable_strings.py` does, so a walk
@@ -245,11 +249,11 @@ here does.
   pattern). That works for a handful. Here it would mean a class per message,
   and the mapping is the same two-copy problem.
 - **Let the importers and services call `QCoreApplication.translate`.** That
-  breaks their Qt-free contract (`services/batch_import.py` § 4.1 of FIBR-0085;
-  the importers run headless), and the text would be frozen in the language
+  breaks their Qt-free contract (`FIBR-0085-batch-import-service.md`: "This
+  is the Qt-free half"; the importers run headless), and the text would be frozen in the language
   that was active when it was raised.
 - **Qt's `%1` placeholders.** finbreak's existing `tr()` templates use
-  `{name}` with `str.format` (`ImportBatchStep`'s `{why}`), and named
+  `{name}` with `str.format` (`BatchReviewWidget`'s `{why}`), and named
   placeholders tell a translator what each value is.
 
 ## 9. Out of scope
