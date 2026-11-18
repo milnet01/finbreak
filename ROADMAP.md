@@ -5437,7 +5437,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: importers.
 
-- 🚧 [FIBR-0476] **Two Standard Bank row patterns take quadratic time on one very long line.**
+- ✅ [FIBR-0476] **Two Standard Bank row patterns take quadratic time on one very long line.**
   MEDIUM, lane 02; timed by the orchestrator with python3 -I. The
   Family A row pattern in importers/standard_bank.py (the re.search
   with a lazy (.*?) head) took 64 / 1,092 / 18,248 ms and
@@ -5447,6 +5447,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   emits a line that long. Fix: refuse any region or page-1 line over a
   fixed length before the family patterns run, or anchor A's pattern
   to peel the tail from the right.
+  Shipped 2026-11-18: test 313edd5, fix 7e9f59a. Premise checked: a
+  crafted PDF's single Tj came back from pdfplumber as one
+  64,000-character line. Fixed at the two sites, not with a length cap:
+  the cap would still have left each capped line quadratic across the
+  row limit, and would have added a refusal. Family A re.search ->
+  re.match (same answers); Family C's amount-ending check is now
+  _ends_in_amount, which reads back only over the trailing digits.
+  Whitespace runs, which would slow the other row patterns, do not
+  survive extraction: pdfplumber collapses them to one space.
   **Layman:** A deliberately crafted PDF with one enormous line could keep the import busy for a long time.
   Kind: review-fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).

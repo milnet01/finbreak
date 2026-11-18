@@ -100,6 +100,14 @@ signaling per
   or let a home-loan statement with missing rows at the end through the
   check. It now ignores transaction lines when looking for the figure.
 
+### Security
+
+- **A crafted Standard Bank PDF can no longer stall an import with one
+  very long line** (FIBR-0476). Two checks re-read such a line once for
+  every character in it, so a line of tens of thousands of characters
+  kept the import busy for many seconds. Both now read it once. What
+  they accept is unchanged.
+
 ## [1.0.4] - 2026-11-08
 
 **Theme:** Remembered statement passwords follow the right account, and are saved more safely.
