@@ -38,6 +38,7 @@ from finbreak.crypto import (
     write_sidecar_v2,
 )
 from finbreak.errors import (
+    VAULT_LOCKED,
     KdfPolicyError,
     KeyUnwrapError,
     PasswordEmptyError,
@@ -390,7 +391,7 @@ class AuthService:
         second route, and the UI says so plainly before calling this.
         """
         if self._key is None:
-            raise VaultLockedError("the vault is locked")
+            raise VaultLockedError(VAULT_LOCKED)
         write_sidecar_v2(
             self._sidecar_path, self.read_sidecar().without_slot(SLOT_RECOVERY)
         )
@@ -420,7 +421,7 @@ class AuthService:
         """
         try:
             if self._key is None:
-                raise VaultLockedError("the vault is locked")
+                raise VaultLockedError(VAULT_LOCKED)
             sidecar = self.read_sidecar()
             # The new slot inherits this vault's recorded costs, not today's
             # pin: a migrated vault's slots must stay derivable under one
@@ -704,7 +705,7 @@ class AuthService:
         again in a ``finally``; the derived key copied here is wiped in place.
         """
         if self._key is None:
-            raise VaultLockedError("the vault is locked")
+            raise VaultLockedError(VAULT_LOCKED)
         params = self.load_params()
         raw = bytearray(derive_raw(password, params))
         try:

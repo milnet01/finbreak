@@ -78,8 +78,9 @@ here.
 | FIBR-0425 INV-3 | `test_INV3_placeholders_match_values` | Each template's placeholder names equal its call's keyword names |
 | FIBR-0425 INV-5 | `test_INV5_*` | Under the pseudo catalog the Accounts error label, a batch status cell and a preview reason cell show the refusal translated, values filled in after |
 | FIBR-0425 INV-6 | `test_INV6_int_values_use_locale_digits` | An `int` value reads in the locale's digits |
-| FIBR-0425 INV-7 | `test_INV7_bad_translation_falls_back` | A translation whose placeholders do not fit shows the English sentence and logs the template, not the values |
+| FIBR-0425 INV-7 | `test_INV7_bad_translation_falls_back`, `test_the_fallback_cannot_raise_on_an_int_format_spec` | A translation whose placeholders do not fit (unknown name, attribute, index, format spec, lone brace) shows the English sentence and logs the template, not the values |
 | FIBR-0425 INV-8 | `test_INV8_bare_exception_shows_a_fixed_sentence` | An exception with no `UserMessage` shows a fixed sentence, and its text reaches neither the screen nor the log |
+| Review fix | `test_a_vault_lock_keeps_its_sentence`, `test_a_message_is_immutable_and_hashable` | A locked vault's refusal keeps its sentence; a message's values are read-only and it hashes |
 
 ## Why an AST walk rather than running lupdate
 

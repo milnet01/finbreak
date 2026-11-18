@@ -57,6 +57,10 @@ signaling per
   (FIBR-0470). finbreak used to read the file's pages twice: once to check
   for a Standard Bank statement, and again to find its table. It now reads
   them once.
+- **Error messages are ready to be translated** (FIBR-0425, FIBR-0434).
+  They read as before in English, with two exceptions. A file finbreak
+  cannot open says "couldn't read this file" rather than the system's own
+  wording. A large number in a message is grouped, as in 100,000.
 
 ### Fixed
 

@@ -19,7 +19,8 @@ language you chose, not always in English. In English nothing changes.
 After this ships, a catalog translates every message that explains a refusal.
 The importers and services stay free of Qt. Each refusal's English sentence is
 written once, at the line that raises it, and the screen translates it. English
-users see the same words as today.
+users see the same words as today. A number in one now carries the locale's
+grouping (`100,000`), as INV-6 requires.
 
 ## 2. Problem
 
@@ -76,7 +77,7 @@ def QT_TRANSLATE_NOOP(context: str, text: str) -> str:  # lupdate extracts the c
 @dataclass(frozen=True)
 class UserMessage:
     template: str                      # English, with {name} placeholders
-    values: dict[str, str | int]       # filled in after translation
+    values: Mapping[str, str | int]    # read-only; filled in after translation
     def __init__(self, template: str, /, **values: str | int) -> None: ...
     def __str__(self) -> str:          # template.format(**values): today's English
 ```
@@ -132,9 +133,13 @@ def user_text(source: BaseException | UserMessage) -> str
    This is the one `translate` call whose text argument is not a literal. The
    i18n guard names this function as its only exception, and §5 INV-2 is
    what keeps every template it can receive a marked literal.
-3. Format values: an `int` through `QLocale().toString`, as the batch report's
+3. Check the translation: every placeholder must be a bare name the message
+   carries, with no format spec. A catalog is data, and `{name.attr}` would
+   print an object rather than raise. A translation that fails the check
+   gives `str(message)`, the English sentence (INV-7).
+4. Format values: an `int` through `QLocale().toString`, as the batch report's
    `_digits` does; a `str` as given.
-4. Substitute with `str.format`, after translating.
+5. Substitute with `str.format`, after translating.
 
 Every sink in §2.1 and §2.2 calls `user_text`. `BatchReviewWidget._translated`
 is deleted, and its callers call `user_text`.
@@ -207,10 +212,13 @@ is deleted, and its callers call `user_text`.
 
 ## 6. Failure modes
 
-- **A stdlib error reaches a sink.** `UnicodeDecodeError`, `csv.Error` text,
-  an `OSError` with a path: the user now sees one of `message_of`'s two fixed
-  sentences instead of Python's wording. Detail is lost. Those messages were
-  never translatable, and an `OSError` names a path.
+- **A stdlib error reaches a sink.** `UnicodeDecodeError`, an `OSError` with
+  a path: the user now sees one of `message_of`'s two fixed sentences instead
+  of Python's wording. Detail is lost. Those messages were never translatable,
+  and an `OSError` names a path.
+- **Two values stay English under a catalog.** `csv.Error`'s text fills
+  *"the file is not valid CSV: {detail}"*, and the missing-columns refusal
+  shows a Python list. INV-4 keeps both byte-identical.
 - **A row error built from a stdlib `ValueError`.** Its reason cell reads
   *"something unexpected went wrong"* rather than, for example, strptime's
   text. FIBR-0146 already replaced the common date case with its own message.
@@ -292,7 +300,8 @@ here does.
   `user_text(exc)` (FIBR-0434's amendment).
 - `tests/features/i18n/test_translatable_strings.py`: `user_text` is its one
   named exception.
-- `CHANGELOG.md`: none. Nothing changes for a user until a catalog ships.
+- `CHANGELOG.md`: one *Changed* entry. English reads as before except an
+  unreadable file's sentence and a grouped number.
 
 ## 12. Cold-eyes loop log
 

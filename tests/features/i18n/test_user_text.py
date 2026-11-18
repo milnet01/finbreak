@@ -214,8 +214,14 @@ def test_INV2_every_message_is_marked(tmp_path: Path) -> None:
 
 
 def test_INV2_lupdate_extracts_refusals(pseudo) -> None:
-    """An imported marker is extracted, not only one defined in the same file."""
+    """An imported marker is extracted, not only one defined in the same file,
+    and a template split over several literals is extracted joined."""
     assert ("Refusal", "an account named {name!r} already exists") in pseudo.messages
+    assert (
+        "Refusal",
+        "this PDF expands to far more data than a bank statement — "
+        "try your bank's CSV or OFX export",
+    ) in pseudo.messages
 
 
 def test_INV3_placeholders_match_values(tmp_path: Path) -> None:
@@ -340,9 +346,12 @@ def test_INV6_int_values_use_locale_digits(qapp) -> None:
 # --------------------------------------------------------------------------- #
 # INV-7 — a translation whose placeholders do not fit falls back to English
 # --------------------------------------------------------------------------- #
-def test_INV7_bad_translation_falls_back(translate_one, caplog) -> None:
+@pytest.mark.parametrize(
+    "bad", ["{nope}", "{raw.upper}", "{raw[x]}", "{raw:d}", "a lone {"]
+)
+def test_INV7_bad_translation_falls_back(translate_one, caplog, bad) -> None:
     template = 'could not read the amount "{raw}"'
-    translate_one("Refusal", template, "{nope}")
+    translate_one("Refusal", template, bad)
     message = UserMessage(QT_TRANSLATE_NOOP("Refusal", template), raw="SENTINEL-7")
     with caplog.at_level(logging.WARNING, logger="finbreak"):
         shown = user_text(message)
@@ -369,3 +378,33 @@ def test_INV8_bare_exception_shows_a_fixed_sentence(qapp, caplog, exc, expected)
     assert shown == expected
     assert caplog.records, "precondition: the fallback logs, so the log leg can fail"
     assert "SENTINEL-8" not in caplog.text, "only the exception's type is logged"
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes (2026-11-18 cold review of FIBR-0425)
+# --------------------------------------------------------------------------- #
+def test_the_fallback_cannot_raise_on_an_int_format_spec(qapp, caplog) -> None:
+    """An English template's own format spec still formats: the fallback uses
+    the raw values, not the locale strings the translated path was given."""
+    message = UserMessage(
+        QT_TRANSLATE_NOOP("Refusal", "more than {limit:d} rows"), limit=5
+    )
+    with caplog.at_level(logging.WARNING, logger="finbreak"):
+        assert user_text(message) == "more than 5 rows"
+
+
+def test_a_vault_lock_keeps_its_sentence(paths) -> None:
+    from finbreak.errors import VaultLockedError
+    from finbreak.vault import Vault
+
+    with pytest.raises(VaultLockedError) as excinfo:
+        Vault(*paths).connection  # noqa: B018 — the property raises
+    assert user_text(excinfo.value) == "the vault is locked"
+
+
+def test_a_message_is_immutable_and_hashable() -> None:
+    message = UserMessage(QT_TRANSLATE_NOOP("Refusal", "read {raw!r}"), raw="x")
+    twin = UserMessage(QT_TRANSLATE_NOOP("Refusal", "read {raw!r}"), raw="x")
+    assert message == twin and hash(message) == hash(twin)
+    with pytest.raises(TypeError):
+        message.values["raw"] = "y"  # type: ignore[index]

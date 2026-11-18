@@ -182,7 +182,9 @@ class BatchFile:
     # The Create prefill; see _settle_parse.
     hint: SourceAccountHint | None = field(default=None, repr=False)
     account_id: int | None = None  # the destination, once settled
-    reason: UserMessage | None = None  # why it failed, was skipped or not attempted
+    # Why it failed, was skipped or not attempted; its values can hold a
+    # statement's text, so it stays out of the repr (FIBR-0483).
+    reason: UserMessage | None = field(default=None, repr=False)
     # § 4.4 — held, not yet written. Out of the repr: never logged (FIBR-0479).
     pending_password: str | None = field(default=None, repr=False)
     remember_password: bool = False  # § 4.4 — the dialog's tick

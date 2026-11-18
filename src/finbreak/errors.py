@@ -7,7 +7,9 @@ exception, not a bare ``Exception``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 log = logging.getLogger(__name__)
 
@@ -26,11 +28,15 @@ class UserMessage:
     (FIBR-0425 § 4.1)."""
 
     template: str
-    values: dict[str, str | int]
+    values: Mapping[str, str | int]
 
     def __init__(self, template: str, /, **values: str | int) -> None:
         object.__setattr__(self, "template", template)
-        object.__setattr__(self, "values", values)
+        # Read-only: module constants such as the batch reasons are shared.
+        object.__setattr__(self, "values", MappingProxyType(values))
+
+    def __hash__(self) -> int:
+        return hash((self.template, tuple(sorted(self.values.items()))))
 
     def __str__(self) -> str:
         return self.template.format(**self.values)
@@ -121,6 +127,9 @@ class RollbackAvailableError(VaultStateError):
 class VaultLockedError(FinbreakError):
     """An operation needing the vault was attempted while it is locked
     (FIBR-0004 INV-3)."""
+
+
+VAULT_LOCKED = UserMessage(QT_TRANSLATE_NOOP("Refusal", "the vault is locked"))
 
 
 class AccountInUseError(FinbreakError):

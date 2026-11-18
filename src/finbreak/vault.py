@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlcipher3 import dbapi2
 
 from finbreak.crypto import write_sidecar_json
-from finbreak.errors import VaultLockedError, VaultStateError
+from finbreak.errors import VAULT_LOCKED, VaultLockedError, VaultStateError
 from finbreak.migrations import run_migrations
 from finbreak.models import KdfParams
 
@@ -134,7 +134,7 @@ class Vault:
     @property
     def connection(self) -> dbapi2.Connection:
         if self._conn is None:
-            raise VaultLockedError("the vault is locked")
+            raise VaultLockedError(VAULT_LOCKED)
         return self._conn
 
     @property
