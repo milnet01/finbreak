@@ -92,6 +92,13 @@ signaling per
   then saved as the account's number, and a number you already have,
   which made a second account. Now it offers to create one only when no
   account has that number, or only an account at another bank does.
+- **A Standard Bank transaction described like "closing balance
+  transfer" no longer stands in for the statement's closing balance**
+  (FIBR-0475). finbreak checks each statement against the closing balance
+  printed on it, and it read that figure from the first line mentioning a
+  closing balance, even a transaction. That could refuse a good statement,
+  or let a home-loan statement with missing rows at the end through the
+  check. It now ignores transaction lines when looking for the figure.
 
 ## [1.0.4] - 2026-11-08
 

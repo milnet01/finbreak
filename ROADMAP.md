@@ -4252,8 +4252,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   (needs the user's password), then run gdb -batch -ex py-bt on the kept
   core, which names the Python frame. Test left unchanged: making its
   stub reject on a later turn might hide a crash users can also hit.
-  Waiting-on: user (approve the debuginfo install for py-bt;
+  Answered by the user 2026-11-18 (approve the debuginfo install for py-bt;
   recommendation yes, it is read-only tooling; 2026-11-15)
+  User decision 2026-11-18: install python313 debuginfo (via the
+  labelled ksshaskpass prompt) so py-bt can show the crashing frame.
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
@@ -5412,7 +5414,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui, services.
 
-- 📋 [FIBR-0475] **A transaction row naming "closing balance" can be taken as the statement's closing figure.**
+- ✅ [FIBR-0475] **A transaction row naming "closing balance" can be taken as the statement's closing figure.**
   MEDIUM, lane 02. importers/standard_bank.py _capture_closing
   matches the family's closing marker over the whole text with no row
   check, first match wins. _is_terminator was fixed for the same case
@@ -5424,6 +5426,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   FIBR-0050 INV-11 exists to catch. Family C has the same marker.
   Fix: skip row-shaped lines in _capture_closing, as _is_terminator
   does. Amend FIBR-0050 INV-11 in the same commit if behaviour moves.
+  Shipped 2026-11-18: red test 41b20e8, fix 816c67e.
+  _capture_closing skips _looks_like_row(dmy_lead=True) lines, as
+  _is_terminator does. The five real closing lines transcribed in
+  FIBR-0050 and every fixture's closing line read as not row-shaped.
+  FIBR-0050 Deliverable 1 amended in place (impl log row); the
+  journal's "fail-safe" accepted limitation marked fixed.
   **Layman:** A Standard Bank statement with a transaction described like 'closing balance transfer' could be wrongly refused, or a cut-short statement could pass its completeness check.
   Kind: review-fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
@@ -5548,7 +5556,7 @@ on the § 2 surface.
   with no stored preference — FIBR-0209 pins that (system locale, full
   `pt_BR` then bare `pt`, else English) and the silent-fallback rule.
   Fold FIBR-0209 in if this is specced first; otherwise ship it after.
-  Waiting-on: user (who writes the five non-English catalogs, and may
+  Answered by the user 2026-11-18 (who writes the five non-English catalogs, and may
   they ship before a native speaker has read them? Recommendation:
   build the pipeline now (lupdate -> .ts -> lrelease -> .qm, QTranslator
   at startup and on switch, FIBR-0129's picker, FIBR-0209's system-
@@ -5569,6 +5577,10 @@ on the § 2 surface.
   and month names from the chosen language. review-code --single ran and
   its 11 findings closed (8 fixed, 3 queued as FIBR-0473). Still open:
   the five catalogs, on the Waiting-on above.
+  User decision 2026-11-18: AI-drafted catalogs for the five
+  languages, each labelled machine-translated in the language picker
+  until a native speaker reviews it. Unblocks FIBR-0425, FIBR-0434
+  and FIBR-0473.
 
 - ✅ [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
   Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
