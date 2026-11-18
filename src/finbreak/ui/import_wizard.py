@@ -242,6 +242,8 @@ class ImportWizardWidget(QWidget):
 
         self._stack = QStackedLayout()
         self._error = QLabel()
+        # Exception text can quote a file's contents; show it as typed (FIBR-0480).
+        self._error.setTextFormat(Qt.TextFormat.PlainText)
         self._stack.addWidget(self._build_pick_step())
         self._stack.addWidget(self._build_map_step())
         self._stack.addWidget(self._build_preview_step())
@@ -482,6 +484,8 @@ class ImportWizardWidget(QWidget):
         self._account_match_label = QLabel()
         self._account_match_label.setObjectName("import_account_match")
         self._account_match_label.setWordWrap(True)
+        # It echoes a user-typed account name; show it as typed (FIBR-0480).
+        self._account_match_label.setTextFormat(Qt.TextFormat.PlainText)
         self._account_match_label.hide()
         # Offered ONLY on no_match (FIBR-0086 §4.6). Not on no_number: a masked or
         # absent number must never become a permanently-stored account number.
