@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-18
+
+**Theme:** Localisation.
+
 ### Added
 
 - **A Language choice in Settings** (FIBR-0017, FIBR-0129, FIBR-0209).

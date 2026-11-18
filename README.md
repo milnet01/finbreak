@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **1.0.4**. **[⬇ Download the latest
+Current version: **1.1.0**. **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -55,6 +55,8 @@ does:
   file — where each is going, how many transactions are new, how many are
   duplicates you already have, and how many lines it couldn't read — with
   nothing written until you press Import all,
+- **a warning before you import the same file twice** — finbreak says when you
+  imported it and into which account, and asks before it reads anything,
 - **statements that file themselves** — finbreak reads the account number
   printed on a statement and pre-selects the matching account, saying why it
   chose it, and offers to create the account if it's one it hasn't seen; where
@@ -134,6 +136,12 @@ does:
   now the code unlocks the vault and asks you to choose a new password. You
   can decline it, replace it, or remove it later from **Settings**, and an
   existing vault is upgraded automatically the next time you unlock it,
+- **your own language** — finbreak comes in English, Arabic, Chinese
+  (Simplified), French, Hindi and Spanish, and opens in your computer's
+  language when it has it; change it in **Settings** and every screen switches
+  at once. The five non-English translations were made by AI and are marked
+  "machine-translated" until a native speaker has checked them. Arabic reads
+  right to left,
 - everyday **conveniences and safety** — an optional password hint on the unlock
   screen, amounts and descriptions you copy are cleared from the clipboard after a
   short while, repeated wrong unlock attempts are slowed down, you can set

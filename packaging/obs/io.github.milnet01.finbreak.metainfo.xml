@@ -90,6 +90,43 @@
   </screenshots>
 
   <releases>
+    <release version="1.1.0" date="2026-11-18">
+      <description>
+        <p>Localisation.</p>
+        <p>Added:</p>
+        <ul>
+          <li>A Language choice in Settings. finbreak opens in your computer's language when it has a translation for it, and in English otherwise. Choosing a language in Settings changes every screen at once, with no restart. finbreak comes in Arabic, Chinese (Simplified), French, Hindi and Spanish as well as English. These five were translated by AI, and the list marks each one "machine-translated" until a native speaker has checked it. In Arabic the screens read right to left.</li>
+          <li>A warning when you pick a statement file you've already imported. finbreak says when you imported it, into which account and for which period, and asks whether to import it again, before it reads the file or asks for a PDF's password. For an OFX file holding several accounts' statements, it says how many of them you have imported so far. Importing it again adds nothing you already have. A renamed copy is still recognised; files imported before this version are not.</li>
+          <li>Hints when you add a transaction by hand. Under Amount: money in is a plain number, and money out starts with a minus sign. Under Description: what it was for, the shop, the bill, or who paid you.</li>
+          <li>A Bank box on each account. Type the bank an account is at, or pick one finbreak suggests. The Accounts screen shows it in its own column, and the import account choosers and a PDF report's account names show it in brackets after the name, so accounts at two banks are easy to tell apart. It is optional: accounts you already have start with no bank.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>Importing a Standard Bank statement checks the account's bank too. An account you recorded at a different bank is no longer picked just because its number matches. If only another bank's accounts carry the number, finbreak says so, picks nothing, and offers to create the account with Standard Bank already filled in. Accounts with no bank recorded keep matching as before.</li>
+          <li>While you import a statement, the buttons that would leave it are greyed out. The other screens and Settings come back when the import ends, so the file and the column choices you made cannot be thrown away by accident. Lock still works.</li>
+          <li>An unexpected error no longer says finbreak cannot continue. Some errors, such as one that stops a batch import, leave finbreak working. The message now names the error and says to close and reopen finbreak if it stops working.</li>
+          <li>Importing a large PDF statement no longer freezes the window. The statement is read in the background while a "Reading the statement…" bar shows. Importing several files at once reads each PDF in the background too.</li>
+          <li>A PDF statement from a bank other than Standard Bank imports faster. finbreak used to read the file's pages twice: once to check for a Standard Bank statement, and again to find its table. It now reads them once.</li>
+          <li>Error messages are ready to be translated. They read as before in English, with two exceptions. A file finbreak cannot open says "couldn't read this file" rather than the system's own wording. A large number in a message is grouped, as in 100,000.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>A failed "Start over" no longer suggests nothing changed. The message said "nothing has changed for certain", which reads as a promise that the vault is untouched. It can be partly erased, so the message now says so.</li>
+          <li>A failed update on Windows no longer deletes finbreak. If another program, such as a virus scanner, held the downloaded update open, the update could delete the old program and then the new one. Now the old program stays in place when the swap fails. The installed copy runs the swap, so this protects updates made from this version onward.</li>
+          <li>A Standard Bank home-loan repayment now shows as money in. A home-loan PDF statement used to import a repayment as money out and a fee as money in. So finbreak never offered to link a repayment to the payment from your current account, and counted it as spending twice. Repayments now import as money in and fees as money out. Loan rows already in your vault are corrected once, the first time you unlock it after upgrading. Your totals change: a repayment stops counting as spending on the loan account, and loan fees and interest now count as spending. Once you link a repayment as a transfer, it leaves the totals. A transfer you already linked to a corrected loan row is unlinked, because its two sides no longer match. finbreak suggests it again. A repeating loan payment you already decided on shows once more under Suggested. The correction finds a home-loan statement by its account's type, so it can miss one: for example, one imported into an account not typed "Home loan", or with a version before 0.1.18. If a loan statement's amounts look the wrong way round after upgrading, delete that statement under Statements and import it again.</li>
+          <li>Importing a folder of statements no longer offers to create an account it should not. The account chooser on the review screen offered "Create a new account…" on every statement that printed an account number. That included a partly hidden number, which was then saved as the account's number, and a number you already have, which made a second account. Now it offers to create one only when no account has that number, or only an account at another bank does.</li>
+          <li>Creating an account during a folder import files the other statements for it. After you created an account from one statement, the others printing the same number still offered to create it again, and each would have made another account on that number. They now go to the new account.</li>
+          <li>A Standard Bank transaction described like "closing balance transfer" no longer stands in for the statement's closing balance. finbreak checks each statement against the closing balance printed on it, and it read that figure from the first line mentioning a closing balance, even a transaction. That could refuse a good statement, or let a home-loan statement with missing rows at the end through the check. It now ignores transaction lines when looking for the figure.</li>
+          <li>A failed preview of the second statement in an OFX file no longer leaves the first one ready to import. The account had already switched to the second statement's, so Import would have put the first statement's rows there. Import now stays off until a preview succeeds.</li>
+          <li>An account name is shown as typed on the import screen. A name containing text such as &lt;b&gt; was displayed as formatting after you created the account during an import. Error messages there are shown as plain text too.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>A crafted Standard Bank PDF can no longer stall an import with one very long line. Two checks re-read such a line once for every character in it, so a line of tens of thousands of characters kept the import busy for many seconds. Both now read it once. What they accept is unchanged.</li>
+          <li>Locking while the import file picker is open no longer reads the chosen file. If finbreak locked itself while you were choosing a statement, closing the picker still loaded that file into the import screen the lock had just cleared. It now stops there.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.4" date="2026-11-08">
       <description>
         <p>Remembered statement passwords follow the right account, and are saved more safely.</p>

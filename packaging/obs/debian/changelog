@@ -1,3 +1,36 @@
+finbreak (1.1.0) unstable; urgency=medium
+
+  * A Language choice in Settings. finbreak now also comes in Arabic,
+    Chinese (Simplified), French, Hindi and Spanish, machine-translated.
+  * A warning when you pick a statement file you've already imported.
+  * Hints when you add a transaction by hand.
+  * A Bank box on each account.
+  * Importing a Standard Bank statement checks the account's bank too.
+  * While you import a statement, the buttons that would leave it are
+    greyed out.
+  * An unexpected error no longer says finbreak cannot continue.
+  * Importing a large PDF statement no longer freezes the window.
+  * A PDF statement from a bank other than Standard Bank imports faster.
+  * Error messages are ready to be translated.
+  * A failed "Start over" no longer suggests nothing changed.
+  * A failed update on Windows no longer deletes finbreak.
+  * A Standard Bank home-loan repayment now shows as money in.
+  * Importing a folder of statements no longer offers to create an
+    account it should not.
+  * Creating an account during a folder import files the other
+    statements for it.
+  * A Standard Bank transaction described like "closing balance
+    transfer" no longer stands in for the statement's closing balance.
+  * A failed preview of the second statement in an OFX file no longer
+    leaves the first one ready to import.
+  * An account name is shown as typed on the import screen.
+  * A crafted Standard Bank PDF can no longer stall an import with one
+    very long line.
+  * Locking while the import file picker is open no longer reads the
+    chosen file.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 18 Nov 2026 22:20:40 +0200
+
 finbreak (1.0.4) unstable; urgency=medium
 
   * A remembered statement password works whichever account you pick.
