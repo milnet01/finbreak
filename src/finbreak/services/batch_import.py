@@ -155,9 +155,14 @@ class BatchFile:
     path: str  # full path; basename for display
     outcome: Outcome = "waiting"
     statement_index: int | None = None  # OFX fan-out; None for every other format
-    parsed: ParseResult | None = None  # kept: the account may be set later
-    preview: ImportPreview | None = None  # None until an account is known
-    hint: SourceAccountHint | None = None  # the Create prefill; see _settle_parse
+    # The statement's rows and its printed account number; out of the repr, like
+    # source_text and pending_password, so a log line cannot print them (FIBR-0483).
+    # Kept: the account may be set later.
+    parsed: ParseResult | None = field(default=None, repr=False)
+    # None until an account is known.
+    preview: ImportPreview | None = field(default=None, repr=False)
+    # The Create prefill; see _settle_parse.
+    hint: SourceAccountHint | None = field(default=None, repr=False)
     account_id: int | None = None  # the destination, once settled
     reason: str = ""  # user-facing text for failed/skipped/not_attempted
     # § 4.4 — held, not yet written. Out of the repr: never logged (FIBR-0479).
@@ -174,7 +179,8 @@ class BatchFile:
     # `pending_password` carries the first; these two carry the second, and the
     # already-read text besides — so answering a mapping does not re-read the
     # file (nor re-extract a PDF's table).
-    source_text: str | None = None  # CSV text, or a PDF table serialised to CSV
+    # CSV text, or a PDF table serialised to CSV. Out of the repr (FIBR-0483).
+    source_text: str | None = field(default=None, repr=False)
     mapping: ColumnMapping | None = None  # the mapping ASK supplied
     # INV-9: each distinct password is tried once per file. A re-scan after an
     # answer skips every password this file has already been tried with, so it
