@@ -92,28 +92,6 @@ skills clean, the `review-` skills run, every finding given a disposition, and
 the record true. `/close-phase` and its `<ID>-complete` tags belonged to the
 retired phase loop and are no longer run here.
 
-## Cold-eyes review cadence (project override)
-
-finbreak is **correctness-critical** — it handles people's money, and a
-wrong-day / wrong-zone / wrong-total bug is exactly the class of error users
-won't forgive. So a spec gets one loop more than the skill would give it: run
-**`review-contract <path> --max-loops 3`** for this project, on **every**
-genre. The skill's own default is 2 for a spec or plan and 3 for a standard or
-an ADR, so this raises the spec/plan cap by one and leaves a standard's where
-it already was.
-
-A spec reaching its cap is a **normal exit**, not a failure — the build is the
-next reviewer. The cap was higher until 2026-08-19 and came down on measurement:
-[`docs/history/claude-md.md`](docs/history/claude-md.md).
-
-**Convergence is the skill's, not a local definition**: a loop whose verified
-findings answer none of its four questions. Do not hold a spec to the older
-"no *substantive* structural / mechanical / architectural findings" bar —
-`review-contract` retired those dimensions and puts wording, structure and
-duplication outside the gate entirely, so looping on them buys nothing. And at
-the cap it **files the remaining findings and exits** rather than pausing to
-ask how to proceed; reaching the cap on a spec is a normal exit, not a failure.
-
 ## Tech stack
 
 Chosen in Phase A (see [`docs/discovery.md`](docs/discovery.md)

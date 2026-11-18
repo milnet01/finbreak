@@ -36,6 +36,12 @@ The measurement was this file's own 2026-08-18 gate: three loops, nineteen
 verified findings, and by loop 3 half of them were the review's own collateral —
 so a fourth loop would mostly repair the third's repairs.
 
+**The section was deleted on 2026-11-18, by user decision.** The global rules
+had since capped a new spec at two review loops for its whole life, and they
+let a project file cancel that gate but never redefine it. So the
+`--max-loops 3` override contradicted them. The section's other paragraphs
+only restated `review-contract`.
+
 ---
 
 ## Build and test
