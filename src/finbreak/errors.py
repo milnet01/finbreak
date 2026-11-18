@@ -6,6 +6,52 @@ exception, not a bare ``Exception``.
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
+
+
+# Qt's own name, because lupdate extracts the call by it.
+def QT_TRANSLATE_NOOP(context: str, text: str) -> str:
+    """Mark ``text`` for the catalog under ``context``, without Qt (FIBR-0425)."""
+    return text
+
+
+@dataclass(frozen=True, init=False)
+class UserMessage:
+    """A refusal the user reads: an English template with ``{name}`` placeholders
+    and the values that fill them. ``str()`` is the English sentence;
+    ``ui/user_text.py`` translates the template first and substitutes after
+    (FIBR-0425 § 4.1)."""
+
+    template: str
+    values: dict[str, str | int]
+
+    def __init__(self, template: str, /, **values: str | int) -> None:
+        object.__setattr__(self, "template", template)
+        object.__setattr__(self, "values", values)
+
+    def __str__(self) -> str:
+        return self.template.format(**self.values)
+
+
+_READ_FAILED = UserMessage(QT_TRANSLATE_NOOP("Refusal", "couldn't read this file"))
+_UNEXPECTED = UserMessage(
+    QT_TRANSLATE_NOOP("Refusal", "something unexpected went wrong")
+)
+
+
+def message_of(exc: BaseException) -> UserMessage:
+    """The exception's own message, or a fixed one where it carries none
+    (FIBR-0425 § 4.2)."""
+    if exc.args and isinstance(exc.args[0], UserMessage):
+        return exc.args[0]
+    # The TYPE only: the text can carry a path or the statement's own words
+    # (security-model INV-9, FIBR-0425 INV-8).
+    log.warning("a refusal carried no message of its own (%s)", type(exc).__name__)
+    return _READ_FAILED if isinstance(exc, OSError) else _UNEXPECTED
+
 
 class FinbreakError(Exception):
     """Base for finbreak's own errors."""

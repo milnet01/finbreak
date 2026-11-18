@@ -52,6 +52,10 @@ _SRC = Path(__file__).resolve().parents[3] / "src" / "finbreak"
 # `translate(context, text)`.
 _LITERAL_ARGS: dict[str, tuple[int, ...]] = {"tr": (0,), "translate": (0, 1)}
 
+# The one call allowed a non-literal text: ``user_text`` translates a refusal's
+# template, which FIBR-0425 INV-2 holds to a marked literal where it is raised.
+_NAMED_EXCEPTION = ("user_text.py", "message.template")
+
 
 def _is_literal_str(node: ast.expr) -> bool:
     """A plain string literal, or the implicit concatenation of several -- which
@@ -88,6 +92,8 @@ def _offences(path: Path) -> list[str]:
             )
             continue
         for index in wanted:
+            if (path.name, ast.unparse(node.args[index])) == _NAMED_EXCEPTION:
+                continue
             if not _is_literal_str(node.args[index]):
                 found.append(
                     f"{path.name}:{node.lineno}: "

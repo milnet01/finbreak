@@ -591,6 +591,7 @@ def _tracked(root: Path, *patterns: str) -> list[str]:
 class Pseudo:
     directory: Path
     sources: frozenset[str]
+    messages: frozenset[tuple[str, str]]  # (context, source)
 
 
 @pytest.fixture(scope="session")
@@ -608,6 +609,12 @@ def pseudo(tmp_path_factory) -> Pseudo:
     tree = ET.parse(ts)
     root = tree.getroot()
     sources: set[str] = set()
+    messages: set[tuple[str, str]] = set()
+    for context in root.iter("context"):
+        for message in context.iter("message"):
+            messages.add(
+                (context.findtext("name") or "", message.findtext("source") or "")
+            )
     for message in root.iter("message"):
         source = message.findtext("source") or ""
         sources.add(source)
@@ -639,7 +646,7 @@ def pseudo(tmp_path_factory) -> Pseudo:
             capture_output=True,
         )
     assert len(sources) > 100, "lupdate found the tree's strings"
-    return Pseudo(catalogs, frozenset(sources))
+    return Pseudo(catalogs, frozenset(sources), frozenset(messages))
 
 
 @pytest.fixture
