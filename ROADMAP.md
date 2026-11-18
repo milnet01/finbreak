@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=482 -->
+<!-- ants-roadmap-id-high-water: FIBR=483 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5500,13 +5500,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui.
 
-- 📋 [FIBR-0479] **A held PDF password appears in the batch record's printed form.**
+- ✅ [FIBR-0479] **A held PDF password appears in the batch record's printed form.**
   LOW, latent; lane 04. services/batch_import.py BatchFile declares
   pending_password without repr=False, so any repr of a record (a log
   line, an assertion diff, a debugger) prints it in plain text. Its
   neighbours tried_passwords and source_sha256 are already kept out.
   No current call site logs a record. Fix:
   field(default=None, repr=False).
+  2026-11-18 — test b1e43bf (red: the repr printed the password), fix
+  886782f: pending_password is now field(default=None, repr=False). No
+  CHANGELOG entry: nothing prints a record, so no user can see it. The
+  record's statement text and rows are still in the repr: filed as
+  FIBR-0483.
   **Layman:** A statement's password could show up in a debug printout of the batch import's internal records. Nothing prints one today.
   Kind: security.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
@@ -5553,6 +5558,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: FIBR-0474 fix, 2026-11-18.
   Lanes: ui, services.
+
+- 📋 [FIBR-0483] **A batch record's printed form carries the statement's decrypted text and rows.**
+  LOW, latent. Found while fixing FIBR-0479. services/batch_import.py
+  BatchFile keeps plaintext (the decrypted PDF bytes) out of its repr,
+  but source_text (that PDF's table serialised to CSV, or a CSV's text),
+  parsed (ParseResult drafts) and preview (ImportPreview) stay in it, so
+  any repr of a record prints the statement's transactions. No current
+  call site logs a record. Fix: repr=False on the three, with a test
+  that a marker in each is absent from repr(record).
+  **Layman:** A debug printout of the batch import's internal records could show statement contents. Nothing prints one today.
+  Kind: security.
+  Source: FIBR-0479 fix, 2026-11-18.
+  Lanes: services.
 
 ## v1.1.0 — Localisation
 
