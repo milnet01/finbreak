@@ -811,9 +811,10 @@ class ImportWizardWidget(QWidget):
         user would approve a screen reading "Matched account number …" and the
         transactions would land somewhere else.
 
-        Only ``matched`` ever changes the selection. ``no_match`` and ``ambiguous``
-        explain themselves and leave the pick step's choice alone; ``no_number``
-        shows nothing at all, which is the whole of today's behaviour.
+        Only ``matched`` ever changes the selection. ``no_match``, ``wrong_bank``
+        and ``ambiguous`` explain themselves and leave the pick step's choice
+        alone; ``no_number`` shows nothing at all, which is the whole of today's
+        behaviour.
         """
         match = match_account(result.source_account, self._accounts.list_accounts())
         # As printed, never the normalised key: the number on screen is the one the
@@ -848,15 +849,25 @@ class ImportWizardWidget(QWidget):
             )
         elif match.outcome == "no_match":
             text = self.tr("No account has number {number}.").format(number=printed)
+        elif match.outcome == "wrong_bank":
+            # wrong_bank implies a hint naming a bank; the guard is for mypy.
+            bank = result.source_account.bank if result.source_account else ""
+            text = self.tr(
+                "Every account numbered {number} is at a different bank from this "
+                "statement ({bank}). Pick one, or create it."
+            ).format(number=printed, bank=bank)
         else:
             text = ""
 
         self._account_match_label.setText(text)
         self._account_match_label.setVisible(bool(text))
-        # Creation is reachable from no_match ONLY. no_number covers a masked or
-        # unreadable number, which must never be stored as an account's number.
+        # Creation is reachable from no_match and wrong_bank ONLY. no_number covers
+        # a masked or unreadable number, which must never be stored as an
+        # account's number.
         self._pending_hint = (
-            result.source_account if match.outcome == "no_match" else None
+            result.source_account
+            if match.outcome in ("no_match", "wrong_bank")
+            else None
         )
         self._create_account_button.setVisible(self._pending_hint is not None)
 
@@ -877,6 +888,7 @@ class ImportWizardWidget(QWidget):
             number=self._pending_hint.number,
             name=self._pending_hint.name,
             family=self._pending_hint.family,
+            bank=self._pending_hint.bank,
             banks=banks,
             parent=self,
         )

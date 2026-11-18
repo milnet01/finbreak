@@ -1809,3 +1809,31 @@ def test_FIBR0468_a_lock_mid_read_lets_go_of_the_record_being_read(
     qtbot.wait(100)  # deliver anything the worker queued
     assert widget._batch_reading is None
     assert widget._batch_then is None
+
+
+def test_create_prefills_the_statements_bank(qtbot, service, monkeypatch):
+    """FIBR-0086 INV-16, the batch half (FIBR-0284). The review screen's Create
+    opens with the statement's bank filled in, and accepting it untouched
+    stores that bank."""
+    from finbreak.importers.base import SourceAccountHint
+
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+    monkeypatch.setattr(review, "_settle", lambda _record, _account_id: None)
+    record = BatchFile(path="/home/a/x.pdf")
+    record.hint = SourceAccountHint(number="447556667", bank="Standard Bank")
+
+    review._create_account(record)
+    dialog = review.findChild(CreateAccountDialog)
+    assert dialog is not None, "Create did not open the dialog"
+    assert dialog.entered_bank() == "Standard Bank"
+    dialog._name.setText("Home loan")
+    dialog._type.setCurrentIndex(dialog._type.findData("home_loan"))
+    dialog.accept()
+
+    created = next(
+        a
+        for a in AccountService(service.vault).list_accounts()
+        if a.name == "Home loan"
+    )
+    assert created.bank == "Standard Bank"

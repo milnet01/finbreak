@@ -158,6 +158,25 @@ def test_capture_stops_at_column_gap() -> None:
     assert hint.number == "44 555 666 7"
 
 
+# --- FIBR-0284: the reader names its bank (INV-14) --------------------------
+
+
+def test_a_standard_bank_hint_names_its_bank() -> None:
+    """INV-14. Without the bank on the hint, the ladder's bank rule never fires
+    and FIBR-0284 is silently off. The constant is the suggestion list's own, so
+    the hint and the Accounts screen cannot spell the bank differently."""
+    from finbreak.services.accounts import KNOWN_BANKS, STANDARD_BANK
+
+    hint = extract_account_number(
+        _family_a_page("PRESTIGE CURRENT ACCOUNT Account Number 11 222 333 4"),
+        Family.A,
+    )
+
+    assert hint is not None
+    assert hint.bank == STANDARD_BANK
+    assert STANDARD_BANK in KNOWN_BANKS
+
+
 # --- families that print no name --------------------------------------------
 
 

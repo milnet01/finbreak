@@ -487,6 +487,7 @@ class BatchReviewWidget(QWidget):
             number=record.hint.number,
             name=record.hint.name,
             family=record.hint.family,
+            bank=record.hint.bank,
             banks=banks,
             parent=self,
         )

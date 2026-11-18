@@ -2,7 +2,8 @@
 
 Pure functions over value objects — no vault, no Qt, no I/O. The wizard calls
 ``match_account`` once per parsed statement and uses the outcome to decide whether
-to change its destination pre-selection.
+to change its destination pre-selection. Where the statement names its bank, an
+account recorded at a different bank is never a candidate (FIBR-0284).
 
 The design rule the whole module protects: **ambiguity degrades to manual, never
 to a guess.** Only an unambiguous single match ever changes what the user sees
@@ -18,6 +19,7 @@ from typing import Literal
 
 from finbreak.importers.base import SourceAccountHint
 from finbreak.models import Account
+from finbreak.text import fold_name
 
 # A masked identifier — a statement showing only a tail (``xxxx1234``,
 # ``1234 **** **** 5678``). Matching on a masked tail is deliberately not built
@@ -73,10 +75,24 @@ class AccountMatch:
     """Why the wizard selected (or did not select) an account."""
 
     account_id: int | None  # None unless exactly one candidate matched
-    outcome: Literal["matched", "no_number", "no_match", "ambiguous"]
+    outcome: Literal["matched", "no_number", "no_match", "ambiguous", "wrong_bank"]
     normalised: str  # the MATCH KEY only ("" when no_number). No prefill reads
     # this — creation prefills from hint.number, as printed.
-    candidates: tuple[int, ...]  # every id that matched; len != 1 => no select
+    # The ids left after the bank rule; for wrong_bank, the ids it dropped.
+    # len != 1 => no select.
+    candidates: tuple[int, ...]
+
+
+def _at_another_bank(account: Account, bank: str | None) -> bool:
+    """Is this account recorded at a bank other than the statement's? (FIBR-0284)
+
+    A bank missing or blank on EITHER side is unknown, never different: an
+    account recorded before FIBR-0283 has none, and must keep matching. Banks
+    are free text, so they compare folded — "standard  BANK" is Standard Bank.
+    """
+    statement_bank = fold_name(bank or "")
+    account_bank = fold_name(account.bank or "")
+    return bool(statement_bank and account_bank) and statement_bank != account_bank
 
 
 def match_account(
@@ -100,8 +116,8 @@ def match_account(
 
     # An account with no stored number matches nothing — otherwise "" == "" files
     # every statement under every unnumbered account.
-    candidates = tuple(
-        account.id
+    numbered = [
+        account
         for account in accounts
         if account.account_number
         # A STORED number can be masked too — nothing stops the user typing the
@@ -111,10 +127,19 @@ def match_account(
         # it only closes the half the statement controls.
         and not _is_masked(account.account_number)
         and normalise_account_number(account.account_number) == key
-    )
+    ]
+    if not numbered:
+        return AccountMatch(None, "no_match", key, ())
 
+    # Another bank's account on the same number is a collision, not a match. Only
+    # a contradiction drops a candidate: one at the statement's bank does not
+    # outrank one with no bank recorded, since either may be the statement's.
+    candidates = tuple(
+        account.id for account in numbered if not _at_another_bank(account, hint.bank)
+    )
+    if not candidates:
+        dropped = tuple(account.id for account in numbered)
+        return AccountMatch(None, "wrong_bank", key, dropped)
     if len(candidates) == 1:
         return AccountMatch(candidates[0], "matched", key, candidates)
-    if not candidates:
-        return AccountMatch(None, "no_match", key, candidates)
     return AccountMatch(None, "ambiguous", key, candidates)

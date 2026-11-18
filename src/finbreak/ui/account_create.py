@@ -1,10 +1,10 @@
 """CreateAccountDialog — make an account from what a statement printed (FIBR-0086).
 
 A small ``QDialog`` (one dialog per file, like ``ui/account_picker``): name, type,
-account number and bank, the first three prefilled from the statement's own
-header and every field still editable. The import wizard opens it from the
-``no_match`` outcome, where the statement carries a number no configured account
-has.
+account number and bank, each prefilled where the statement's own header says it,
+and every field still editable. The import wizard opens it from the ``no_match``
+outcome, where the statement carries a number no configured account has, and from
+``wrong_bank``, where only another bank's accounts carry it (FIBR-0284).
 
 The dialog is "dumb" — it takes prefill strings and hands back the entered values;
 the caller owns the ``AccountService`` write. All strings go through ``tr()`` and
@@ -46,6 +46,7 @@ class CreateAccountDialog(QDialog):
         number: str,
         name: str | None = None,
         family: str | None = None,
+        bank: str | None = None,
         banks: Sequence[str] = (),
         parent: QWidget | None = None,
     ):
@@ -65,8 +66,8 @@ class CreateAccountDialog(QDialog):
         self._name = QLineEdit(name or "")
         self._name.setAccessibleName(self.tr("Account name"))
 
-        # Starts empty: pre-filling it from the statement is FIBR-0284.
-        self._bank = QLineEdit()
+        # The bank the statement's reader named, where it named one (FIBR-0284).
+        self._bank = QLineEdit(bank or "")
         self._bank.setAccessibleName(self.tr("Bank"))
         self._bank.setPlaceholderText(self.tr("Optional"))
         completer = QCompleter(list(banks), self)

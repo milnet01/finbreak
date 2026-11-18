@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
 from finbreak.importers.pdf_importer import _MAX_PDF_ROWS, open_pdf, read_untrusted
 from finbreak.models import TransactionDraft
+from finbreak.services.accounts import STANDARD_BANK
 from finbreak.services.transactions import (
     parse_transaction,
     to_minor,
@@ -368,6 +369,9 @@ def extract_account_number(
             number=number,
             name=line[: found.start()].strip() or None,
             family=str(family),
+            # The layout is the evidence: ``family`` is one of this bank's own
+            # (FIBR-0086 § 4.1, FIBR-0284).
+            bank=STANDARD_BANK,
         )
     return None
 

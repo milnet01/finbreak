@@ -1,4 +1,5 @@
-"""FIBR-0086 — normalisation + the matching ladder (INV-3, INV-4, INV-5, INV-9).
+"""FIBR-0086 — normalisation + the matching ladder (INV-3, INV-4, INV-5, INV-9,
+and FIBR-0284's bank rule, INV-10 to INV-13).
 
 Pure functions over invented numbers; no vault, no Qt. Every value here is a
 synthetic stand-in (INV-8) — see spec.md.
@@ -11,14 +12,86 @@ from finbreak.models import Account, AccountType
 from finbreak.services.account_match import match_account, normalise_account_number
 
 
-def _account(account_id: int, number: str | None) -> Account:
+def _account(account_id: int, number: str | None, bank: str | None = None) -> Account:
     return Account(
         id=account_id,
         name=f"Account {account_id}",
         type=AccountType.CURRENT,
         created_at="2026-01-01T00:00:00",
         account_number=number,
+        bank=bank,
     )
+
+
+def _sb_hint(number: str) -> SourceAccountHint:
+    """A hint as the Standard Bank reader returns it: it names its bank."""
+    return SourceAccountHint(number, bank="Standard Bank")
+
+
+# --- FIBR-0284: the account's bank as a second signal (INV-10 to INV-13) -----
+
+
+def test_a_bankless_hint_ignores_stored_banks() -> None:
+    """INV-10. OFX and CSV hints carry no bank; matching for them must be exactly
+    what it was before FIBR-0284, whatever banks the accounts record."""
+    accounts = [
+        _account(1, "11 222 333 4", bank="Standard Bank"),
+        _account(2, "112223334", bank="Other Bank"),
+    ]
+
+    match = match_account(SourceAccountHint("112223334"), accounts)
+
+    assert match.outcome == "ambiguous"
+    assert match.account_id is None
+    assert match.candidates == (1, 2)
+
+
+def test_another_banks_account_is_never_selected() -> None:
+    """INV-11. The other bank's same-number account drops out, so the pair is no
+    longer ambiguous; alone, it is a collision, and nothing is selected."""
+    other = _account(1, "11 222 333 4", bank="Other Bank")
+    same = _account(2, "112223334", bank="Standard Bank")
+
+    pair = match_account(_sb_hint("112223334"), [other, same])
+    assert pair.outcome == "matched"
+    assert pair.account_id == 2
+    assert pair.candidates == (2,)
+
+    alone = match_account(_sb_hint("112223334"), [other])
+    assert alone.outcome == "wrong_bank"
+    assert alone.account_id is None
+    assert alone.candidates == (1,)
+
+
+def test_an_unrecorded_bank_stays_a_candidate() -> None:
+    """INV-12. No bank recorded is unknown, not different — so every vault that
+    predates FIBR-0283 keeps matching. And it is not outranked by an account at
+    the statement's bank: either may be the statement's account."""
+    unknown = _account(1, "11 222 333 4")
+    blank = _account(3, "11 222 333 4", bank="  ")
+    same = _account(2, "112223334", bank="Standard Bank")
+
+    alone = match_account(_sb_hint("112223334"), [unknown])
+    assert alone.outcome == "matched"
+    assert alone.account_id == 1
+
+    blank_alone = match_account(_sb_hint("112223334"), [blank])
+    assert blank_alone.outcome == "matched", "a blank bank counts as none"
+
+    both = match_account(_sb_hint("112223334"), [unknown, same])
+    assert both.outcome == "ambiguous"
+    assert both.candidates == (1, 2)
+
+
+def test_bank_comparison_folds_case_and_spacing() -> None:
+    """INV-13. Banks are free text (FIBR-0283), so the user's spelling of the
+    same bank must still compare equal — under ``text.fold_name``."""
+    typed = _account(1, "112223334", bank="standard  BANK")
+
+    match = match_account(_sb_hint("112223334"), [typed])
+
+    assert match.outcome == "matched"
+    assert match.account_id == 1
 
 
 # --- INV-5: normalisation ignores grouping and padding ----------------------

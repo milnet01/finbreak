@@ -20,9 +20,13 @@ from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
 
+# The bank the Standard Bank reader names on every hint it returns (FIBR-0284).
+# One spelling for the hint and the suggestion, so they cannot drift apart.
+STANDARD_BANK = "Standard Bank"
+
 # Banks whose statements finbreak can read (FIBR-0050), offered as bank
 # suggestions before the vault records any (FIBR-0283 § 3).
-KNOWN_BANKS: tuple[str, ...] = ("Standard Bank",)
+KNOWN_BANKS: tuple[str, ...] = (STANDARD_BANK,)
 
 
 def _normalise_optional(value: str | None) -> str | None:

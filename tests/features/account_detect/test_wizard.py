@@ -562,3 +562,69 @@ def test_FIBR0408_create_it_shows_its_confirmation(
     assert not label.isHidden(), f"hidden: {label.text()!r}"
     expected = "99 888 777 6" if keep_number else "no account number"
     assert expected in label.text(), label.text()
+
+
+# --- FIBR-0284: the account's bank (INV-15, INV-16) --------------------------
+
+
+def _ofx_names_standard_bank(monkeypatch) -> None:
+    """Make the OFX reader name a bank on its hint, as the Standard Bank reader
+    does. OFX itself reads no bank (FIBR-0086 § 4.1), and the committed Standard
+    Bank PDF fixtures print an all-zeros number that cannot match, so this is the
+    one route that reaches the wizard with a matchable number AND a bank."""
+    import functools
+
+    from finbreak.importers import ofx_importer
+    from finbreak.importers.base import SourceAccountHint
+
+    monkeypatch.setattr(
+        ofx_importer,
+        "SourceAccountHint",
+        functools.partial(SourceAccountHint, bank="Standard Bank"),
+    )
+
+
+def test_wrong_bank_keeps_the_pick_and_offers_create(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """INV-15. The only account on the statement's number is at another bank: a
+    collision, not a match. The destination stays where the pick step put it,
+    the label says why, and Create is offered."""
+    _ofx_names_standard_bank(monkeypatch)
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    svc.add_account(
+        "Savings", "savings", account_number="22 333 444 5", bank="Other Bank"
+    )
+
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("223334445")))
+
+    assert widget._confirm_account_combo.currentData() == seeded
+    assert widget._preview is not None
+    assert widget._preview.account_id == seeded
+    label = widget._account_match_label
+    assert not label.isHidden()
+    assert "different bank" in label.text(), label.text()
+    assert "Standard Bank" in label.text(), label.text()
+    assert not widget._create_account_button.isHidden()
+
+
+def test_create_prefills_the_statements_bank(qtbot, service, tmp_path, monkeypatch):
+    """INV-16, the wizard half. Accepting Create with the Bank box untouched
+    stores the bank the statement named."""
+    _ofx_names_standard_bank(monkeypatch)
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+
+    dialog = _open_create_dialog(widget)
+    assert dialog.entered_bank() == "Standard Bank"
+    dialog._name.setText("New Savings")
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
+    dialog.accept()
+
+    created = next(a for a in svc.list_accounts() if a.name == "New Savings")
+    assert created.bank == "Standard Bank"

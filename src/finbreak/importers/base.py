@@ -41,6 +41,9 @@ class SourceAccountHint:
     number: str  # as printed, grouping and padding intact
     name: str | None = None  # the product name, where the layout prints one
     family: str | None = None  # the Family value, as a str; None for non-SB
+    # The issuing bank's display name, where the reader knows it (FIBR-0284).
+    # Never inferred from the number's shape: that is the guess FIBR-0283 removed.
+    bank: str | None = None
 
 
 @dataclass
