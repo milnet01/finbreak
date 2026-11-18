@@ -533,6 +533,11 @@ class BatchReviewWidget(QWidget):
                     "will not file themselves."
                 ).format(name=account.name)
             )
+        try:
+            # Other rows may print the number just stored (FIBR-0482).
+            self._batch.rematch(self._files)
+        except VaultLockedError:
+            return
         self._settle(record, account.id)
 
     def _settle(self, record: BatchFile, account_id: int) -> None:

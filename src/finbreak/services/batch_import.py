@@ -573,7 +573,19 @@ class BatchImportService:
             record.outcome = "failed"
             record.reason = UNDATED
             return
-        match = match_account(parsed.source_account, self._accounts.list_accounts())
+        account_id = self._match(record, parsed, self._accounts.list_accounts())
+        if account_id is None:
+            record.outcome = "needs_account"  # settled on the review screen
+            return
+        self.set_account(record, account_id)
+
+    @staticmethod
+    def _match(
+        record: BatchFile, parsed: ParseResult, accounts: Sequence[Account]
+    ) -> int | None:
+        """Match the record's statement against ``accounts``, set its Create
+        prefill, and return the matched account's id, if one."""
+        match = match_account(parsed.source_account, accounts)
         # Creation is offered from no_match and wrong_bank ONLY (FIBR-0086 §4.6):
         # a masked number must never be stored, and a matched or ambiguous one
         # would become a second account on the same number.
@@ -582,10 +594,26 @@ class BatchImportService:
             if match.outcome in ("no_match", "wrong_bank")
             else None
         )
-        if match.account_id is None:
-            record.outcome = "needs_account"  # settled on the review screen
-            return
-        self.set_account(record, match.account_id)
+        return match.account_id
+
+    def rematch(self, files: Sequence[BatchFile]) -> None:
+        """Match again every record that still offers Create, after the user
+        created an account (FIBR-0482). The new account can be the one a row
+        prints: that row then files itself, as it would have at SCAN, and stops
+        offering a second account on the same number."""
+        accounts = self._accounts.list_accounts()
+        for record in files:
+            if record.hint is None or record.parsed is None:
+                continue
+            account_id = self._match(record, record.parsed, accounts)
+            if account_id is None or record.outcome != "needs_account":
+                continue
+            try:
+                self.set_account(record, account_id)
+            except (ValueError, FinbreakError):
+                # set_account moves nothing on a raise, so the row stays for the
+                # user to pick, where the picker shows the error.
+                continue
 
     # -- ASK ------------------------------------------------------------------
     def answer(
