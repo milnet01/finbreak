@@ -5786,7 +5786,7 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Source: user-request-2026-08-19.
   Lanes: ui, repositories, services.
 
-- 🚧 [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
+- ✅ [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
   BLOCKED ON FIBR-0283 (the `bank` field itself). File this now so the
   dependency is visible; there is nothing to build until that field
   exists.
@@ -5838,6 +5838,13 @@ automatic forward migration, which § 2's carve-out says is not a break.
   §4.4 rule 4, outcome wrong_bank, §4.5, §4.6, INV-10 to INV-16); no
   spec at this id. Amendment, so no review gate (rule 14). Next: build
   test-first.
+  2026-11-18: shipped — spec 8d6ec40, build de14bd3, review fixes
+  68a7240. check-code clean on the changed files; review-code (4 lanes,
+  0 CRITICAL, 0 HIGH): the two findings this item caused are fixed
+  (INV-17, INV-18), the eight older ones filed as FIBR-0474 to
+  FIBR-0481. review-tests was not run on the new tests; the new
+  bank-rule tests were mutation-checked instead (5 of 5 killed).
+  CHANGELOG [Unreleased] Changed entry added.
   **Layman:** Once accounts know which bank they belong to, statement auto-filing can use that too - so it picks the right account when two accounts look alike, and refuses rather than guessing when the statement is clearly from a different bank.
   Kind: feature.
   Source: user-request-2026-08-19 (adjacency raised while filing FIBR-0283).

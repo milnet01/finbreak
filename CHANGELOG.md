@@ -43,6 +43,12 @@ signaling per
 
 ### Changed
 
+- **Importing a Standard Bank statement checks the account's bank too**
+  (FIBR-0284). An account you recorded at a different bank is no longer
+  picked just because its number matches. If only another bank's accounts
+  carry the number, finbreak says so, picks nothing, and offers to create
+  the account with Standard Bank already filled in. Accounts with no bank
+  recorded keep matching as before.
 - **Importing a large PDF statement no longer freezes the window**
   (FIBR-0104, FIBR-0468). The statement is read in the background while
   a "Reading the statement…" bar shows. Importing several files at once
