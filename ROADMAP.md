@@ -5548,7 +5548,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui.
 
-- 📋 [FIBR-0482] **After batch Create, rows on the same number still offer Create again.**
+- ✅ [FIBR-0482] **After batch Create, rows on the same number still offer Create again.**
   Found while fixing FIBR-0474 (code reading, not yet reproduced).
   _settle_parse runs match_account once per file (FIBR-0085 INV-5),
   and record.hint is never cleared. So after the user creates an
@@ -5561,6 +5561,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   needs_account rows and drop the hint where it now matches; check
   whether FIBR-0085 INV-5 needs amending. Whether the single-file
   wizard keeps its Create button after a create is unverified.
+  2026-11-18 — test fbb4013 (red: the other row stayed unfiled),
+  fix 3c24f66: BatchImportService.rematch re-runs match_account for
+  every row still offering Create; a row that now matches files itself.
+  The review screen calls it after a Create. FIBR-0085 needed no
+  amendment. The single-file wizard already hides its Create button
+  after a Create (_create_account_from).
   **Layman:** After you create an account during a folder import, finbreak can still offer to create it again for the same or other statements.
   Kind: fix.
   Source: FIBR-0474 fix, 2026-11-18.

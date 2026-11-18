@@ -92,6 +92,11 @@ signaling per
   then saved as the account's number, and a number you already have,
   which made a second account. Now it offers to create one only when no
   account has that number, or only an account at another bank does.
+- **Creating an account during a folder import files the other
+  statements for it** (FIBR-0482). After you created an account from one
+  statement, the others printing the same number still offered to create
+  it again, and each would have made another account on that number.
+  They now go to the new account.
 - **A Standard Bank transaction described like "closing balance
   transfer" no longer stands in for the statement's closing balance**
   (FIBR-0475). finbreak checks each statement against the closing balance
