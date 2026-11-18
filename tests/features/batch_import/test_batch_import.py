@@ -32,6 +32,7 @@ from finbreak.services.auth import AuthService
 from finbreak.services.batch_import import (
     CANCELLED,
     CAP_REACHED,
+    BatchFile,
     BatchImportService,
     next_question,
     stored_passwords,
@@ -1406,3 +1407,11 @@ def test_FIBR0470_a_pdf_from_another_bank_is_opened_once(monkeypatch):
     monkeypatch.setattr(pdfplumber, "open", counted)
     assert read_pdf(plaintext, 2) == expected, "precondition: a generic table read"
     assert len(opens) == 1, f"the PDF was opened {len(opens)} times, not once"
+
+
+def test_FIBR0479_a_held_password_stays_out_of_the_record_s_printed_form():
+    """A record's repr reaches log lines, assertion diffs and debuggers; the
+    password held for it until commit must not appear there."""
+    record = BatchFile(path="/statements/june.pdf", pending_password="pw-FIBR0479")
+    assert record.pending_password == "pw-FIBR0479", "precondition: it is held"
+    assert "pw-FIBR0479" not in repr(record)
