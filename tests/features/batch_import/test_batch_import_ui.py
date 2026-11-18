@@ -1811,6 +1811,42 @@ def test_FIBR0468_a_lock_mid_read_lets_go_of_the_record_being_read(
     assert widget._batch_then is None
 
 
+@pytest.mark.parametrize(
+    ("acctid", "numbered", "offers_create"),
+    [
+        ("xxxx4567", 0, False),
+        ("447556667", 1, False),
+        ("447556667", 2, False),
+        ("447556667", 0, True),
+    ],
+    ids=["masked", "matched", "ambiguous", "no-match"],
+)
+def test_FIBR0474_picker_offers_create_only_where_matching_allows(
+    qtbot, service, tmp_path, acctid, numbered, offers_create
+):
+    """FIBR-0086 §4.6: creation is reachable from ``no_match`` and
+    ``wrong_bank`` only. The review screen offered it on every row whose
+    statement printed a number, so a masked number became an account's number,
+    and a matched or ambiguous one became a second account on the same number."""
+    accounts = AccountService(service.vault)
+    for n in range(numbered):
+        accounts.add_account(f"Cheque {n}", "current", account_number="447556667")
+    widget = _wizard(qtbot, service)
+    widget._select_files([_ofx(tmp_path, "a.ofx", acctid)])
+    qtbot.waitUntil(
+        lambda: widget._batch_phase == "review"
+        and widget._batch_files[0].outcome in ("needs_account", "ready"),
+        timeout=3000,
+    )
+    review = widget._batch_review
+    review._choose_account(0)
+
+    dialog = review.findChild(AccountPickerDialog)
+    assert dialog is not None, "the picker must open on a reviewable row"
+    create = dialog.findChild(QDialogButtonBox, "account_picker_create")
+    assert (create is not None) is offers_create
+
+
 def test_create_prefills_the_statements_bank(qtbot, service, monkeypatch):
     """FIBR-0086 INV-16, the batch half (FIBR-0284). The review screen's Create
     opens with the statement's bank filled in, and accepting it untouched
