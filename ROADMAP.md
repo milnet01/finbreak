@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=485 -->
+<!-- ants-roadmap-id-high-water: FIBR=486 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5789,6 +5789,19 @@ on the § 2 surface.
   Kind: fix.
   Source: translation-drafts-2026-11-18.
   Lanes: ui, i18n.
+
+- ✅ [FIBR-0486] **A FIBR-0468 batch test took the first file as the PDF, which holds only where the repo path sorts before /tmp.**
+  Found 2026-11-18 by cut-release Phase 2b: scripts/ci-docker.sh
+  puts the source under /work, so the fixture PDF sorted after the
+  tmp_path CSV and _batch_files[0] was plain.csv. Locally (/mnt) and on
+  GitHub (/__w) the PDF sorts first, so it passed. The batch sorts by full
+  path on purpose (BatchFile.sort_key). Fix: the test picks the PDF by
+  suffix. Red in ci-docker before; green after. No CHANGELOG entry:
+  tests only.
+  **Layman:** A test assumed a file order that depends on folder names, so it failed in CI's container; it now finds the file by type.
+  Kind: test.
+  Source: cut-release-1.1.0-ci-docker-2026-11-18.
+  Lanes: tests.
 
 ## v1.2.0 — Import breadth
 

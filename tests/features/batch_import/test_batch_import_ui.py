@@ -1719,8 +1719,10 @@ def test_FIBR0468_a_batch_reads_each_pdf_off_the_ui_thread(
         lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
         timeout=10_000,
     )
-    statement = widget._batch_files[0]
-    assert statement.path.endswith(".pdf") and statement.parsed is not None
+    # By suffix, not position: the batch sorts by full path, and whether the
+    # fixture PDF sorts before tmp_path's CSV depends on where each lives.
+    (statement,) = [f for f in widget._batch_files if f.path.endswith(".pdf")]
+    assert statement.parsed is not None
 
 
 def test_FIBR0468_cancel_mid_read_drops_the_result(
