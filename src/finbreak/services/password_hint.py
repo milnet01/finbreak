@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import unicodedata
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage
+
 MAX_HINT_LEN = 100
 
 
@@ -43,12 +45,27 @@ def validate_hint(hint: str, password: str) -> None:
     ``bytearray`` is used only by ``AuthService.verify_password`` (§ 3.5).
     """
     if len(hint) > MAX_HINT_LEN:
-        raise HintPolicyError(f"The hint must be {MAX_HINT_LEN} characters or fewer.")
+        raise HintPolicyError(
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal", "The hint must be {limit} characters or fewer."
+                ),
+                limit=MAX_HINT_LEN,
+            )
+        )
     normalized_hint = _norm(hint)
     normalized_password = _norm(password)
     # Equality is subsumed by containment (if H.strip() == P then P in H); it is
     # kept ONLY for the friendlier "may not BE your password" message (§ 3.4).
     if normalized_hint.strip() == normalized_password:
-        raise HintPolicyError("The hint may not be your password.")
+        raise HintPolicyError(
+            UserMessage(
+                QT_TRANSLATE_NOOP("Refusal", "The hint may not be your password.")
+            )
+        )
     if normalized_password in normalized_hint:
-        raise HintPolicyError("The hint may not contain your password.")
+        raise HintPolicyError(
+            UserMessage(
+                QT_TRANSLATE_NOOP("Refusal", "The hint may not contain your password.")
+            )
+        )

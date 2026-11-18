@@ -247,7 +247,7 @@ def test_csv_bad_date_yields_friendly_rowerror_no_parser_internals():
         _csv([["20/07/2026", "Coffee", "-10.00"]]), _single_mapping(), 2
     )
     assert len(result.errors) == 1
-    reason = result.errors[0].reason
+    reason = str(result.errors[0].reason)
     assert reason == 'could not read the date "20/07/2026"'
     assert "does not match format" not in reason
     # No parser format token leaks (a junk cell may embed a bare '%', so check
@@ -263,16 +263,16 @@ def test_csv_percent_in_junk_date_cell_still_no_token_leak():
     result = CsvImporter().parse(
         _csv([["50%", "Coffee", "-10.00"]]), _single_mapping(), 2
     )
-    assert result.errors[0].reason == 'could not read the date "50%"'
+    assert str(result.errors[0].reason) == 'could not read the date "50%"'
     for token in ("%Y", "%m", "%d"):
-        assert token not in result.errors[0].reason
+        assert token not in str(result.errors[0].reason)
 
 
 def test_csv_empty_date_cell_says_the_cell_is_empty():
     from finbreak.importers.csv_importer import CsvImporter
 
     result = CsvImporter().parse(_csv([["", "Coffee", "-10.00"]]), _single_mapping(), 2)
-    assert result.errors[0].reason == "the date cell is empty"
+    assert str(result.errors[0].reason) == "the date cell is empty"
 
 
 def test_csv_amount_error_text_unregressed():
@@ -289,7 +289,7 @@ def test_csv_amount_error_text_unregressed():
         _csv([["2026-07-20", "Coffee", "not-a-number"]]), _single_mapping(), 2
     )
     assert len(result.errors) == 1
-    reason = result.errors[0].reason
+    reason = str(result.errors[0].reason)
     assert "date" not in reason.lower()
     assert reason == 'could not read the amount "not-a-number"'
     for leak in ("decimal", "Decimal", "class ", "Traceback", "Syntax"):
@@ -304,7 +304,7 @@ def test_csv_empty_amount_cell_says_the_cell_is_empty():
     result = CsvImporter().parse(
         _csv([["2026-07-20", "Coffee", ""]]), _single_mapping(), 2
     )
-    assert result.errors[0].reason == "the amount cell is empty"
+    assert str(result.errors[0].reason) == "the amount cell is empty"
 
 
 def test_csv_debit_credit_junk_amount_is_friendly_too_INV3():
@@ -318,7 +318,7 @@ def test_csv_debit_credit_junk_amount_is_friendly_too_INV3():
     )
     text = "Date,Details,Debit,Credit\n2026-07-20,Coffee,not-a-number,\n"
     result = CsvImporter().parse(text, mapping, 2)
-    assert result.errors[0].reason == 'could not read the amount "not-a-number"'
+    assert str(result.errors[0].reason) == 'could not read the amount "not-a-number"'
 
 
 def test_csv_valid_row_still_parses_INV6():
@@ -426,6 +426,7 @@ from collections.abc import Iterator  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from conftest import _PW, _acct, wait_for_pdf_read  # noqa: E402
+from finbreak.errors import UserMessage  # noqa: E402
 from finbreak.models import ColumnMapping  # noqa: E402
 from finbreak.services.auth import AuthService  # noqa: E402
 
@@ -662,7 +663,9 @@ def test_whole_import_banner_D7(qtbot, service, tmp_path):
     widget = _wizard(qtbot, service, acct)
 
     # isHidden() reflects the setVisible intent without showing the preview page.
-    all_error = ImportPreview(acct, [], [RowError(1, "x")], 0, 0, None, None)
+    all_error = ImportPreview(
+        acct, [], [RowError(1, UserMessage("x"))], 0, 0, None, None
+    )
     widget._apply_preview_counts(all_error)
     assert not widget._preview_banner.isHidden(), "0 new · 0 dup · N error -> banner"
 
@@ -697,7 +700,9 @@ def test_FIBR0253_banner_remedy_follows_the_map_step(qtbot, service, tmp_path):
 
     acct = _acct(service)
     widget = _wizard(qtbot, service, acct)
-    all_error = ImportPreview(acct, [], [RowError(1, "x")], 0, 0, None, None)
+    all_error = ImportPreview(
+        acct, [], [RowError(1, UserMessage("x"))], 0, 0, None, None
+    )
 
     def banner_for(path: str) -> str:
         widget._select_file(path)

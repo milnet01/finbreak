@@ -14,7 +14,12 @@ import logging
 from typing import cast
 
 from finbreak.db import owned_transaction
-from finbreak.errors import CategoryHasChildrenError, ProtectedCategoryError
+from finbreak.errors import (
+    QT_TRANSLATE_NOOP,
+    CategoryHasChildrenError,
+    ProtectedCategoryError,
+    UserMessage,
+)
 from finbreak.models import Category
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.categorization_rules import CategorizationRuleRepository
@@ -57,7 +62,11 @@ class CategoryService:
         # editing a root raises even when the destination parent is also bad.
         if target is not None and target.parent_id is None:
             raise ProtectedCategoryError(
-                "a Type (Income / Expenditure) cannot be edited"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "a Type (Income / Expenditure) cannot be edited"
+                    )
+                )
             )
         parent = self._require_parent(parent_id, repo)
         self._reject_cycle(category_id, parent, repo)
@@ -77,11 +86,20 @@ class CategoryService:
         target = repo.get(category_id)
         if target is not None and target.parent_id is None:
             raise ProtectedCategoryError(
-                "a Type (Income / Expenditure) cannot be deleted"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "a Type (Income / Expenditure) cannot be deleted"
+                    )
+                )
             )
         if repo.children_of(category_id):
             raise CategoryHasChildrenError(
-                "this category still has sub-categories — remove them first"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this category still has sub-categories — remove them first",
+                    )
+                )
             )
         conn = self._vault.connection
         # The whole cascade is one owned unit; any failure rolls back to a
@@ -110,7 +128,11 @@ class CategoryService:
         """A category hangs under an existing parent; a ``None`` parent would
         mint a third root (roots are migration-only, INV-5)."""
         if parent_id is None:
-            raise ValueError("a category must have a parent Type")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", "a category must have a parent Type")
+                )
+            )
         parent = repo.get(parent_id)
         if parent is None:
             raise ValueError(f"no category with id {parent_id}")
@@ -131,8 +153,13 @@ class CategoryService:
         while node is not None:
             if node.id == category_id:
                 raise ValueError(
-                    "a category cannot be moved under itself or one of its "
-                    "sub-categories"
+                    UserMessage(
+                        QT_TRANSLATE_NOOP(
+                            "Refusal",
+                            "a category cannot be moved under itself or one of its "
+                            "sub-categories",
+                        )
+                    )
                 )
             if node.id in seen:
                 break  # unrelated pre-existing cycle — stay total, don't loop
@@ -150,11 +177,22 @@ class CategoryService:
         unique among siblings (same parent, case-insensitive)."""
         name = name.strip()
         if not name:
-            raise ValueError("category name must not be empty")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", "category name must not be empty")
+                )
+            )
         lowered = fold_name(name)
         for sibling in repo.children_of(parent_id):
             if sibling.id == exclude_id:
                 continue
             if fold_name(sibling.name) == lowered:
-                raise ValueError(f"a category named {name!r} already exists here")
+                raise ValueError(
+                    UserMessage(
+                        QT_TRANSLATE_NOOP(
+                            "Refusal", "a category named {name!r} already exists here"
+                        ),
+                        name=name,
+                    )
+                )
         return name

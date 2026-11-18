@@ -125,7 +125,7 @@ def test_INV4_unclosed_quote_mid_file_is_a_row_error_not_a_merged_draft() -> Non
         "the merged record is not imported as one transaction"
     )
     assert len(result.errors) == 1
-    assert "quote" in result.errors[0].reason
+    assert "quote" in str(result.errors[0].reason)
 
 
 # --------------------------------------------------------------------------- #

@@ -320,7 +320,7 @@ def test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement():
     assert [e.row_number for e in r.errors] == [1], (
         "the 0.00 row is reported, not fatal"
     )
-    assert "non-zero" in r.errors[0].reason
+    assert "non-zero" in str(r.errors[0].reason)
 
 
 # Audit 2026-09-27 row 20 — three ways a real row was lost with nothing to say so.
@@ -454,7 +454,7 @@ def test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades():
 
     assert [d.amount_minor for d in r.drafts] == [-10000]
     assert [e.row_number for e in r.errors] == [1]
-    assert "ISO-8601" in r.errors[0].reason, (
+    assert "ISO-8601" in str(r.errors[0].reason), (
         "rejected for its DATE, not for being zero — the case that separates "
         "an amount-keyed guard from a reason-keyed one"
     )
@@ -1109,7 +1109,7 @@ def test_FIBR0252_parse_propagates_row_errors():
     the fix (§ 11)."""
     r = _parse("family_a_zero_fee.pdf")
 
-    assert [(e.row_number, e.reason) for e in r.errors] == [
+    assert [(e.row_number, str(e.reason)) for e in r.errors] == [
         (2, "amount must be non-zero")
     ], "the printed 0.00 line is reported, not silently dropped"
     assert [d.row_number for d in r.drafts] == [1, 3], (

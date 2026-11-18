@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from finbreak.db import owned_transaction
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.models import ColumnMapping, ImportProfile, PriorImport, TransactionDraft
@@ -82,7 +83,12 @@ def signature_for(header: list[str]) -> str:
     significant. Raises ``ValueError`` on a duplicate column name (ambiguous)."""
     if len(set(header)) != len(header):
         raise ValueError(
-            "the header has duplicate column names — a mapping is ambiguous"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "the header has duplicate column names — a mapping is ambiguous",
+                )
+            )
         )
     return _SIGNATURE_DELIMITER.join(header)
 
@@ -211,7 +217,12 @@ class ImportService:
             # The codec's own text ("can't decode byte 0xe9 in position 34")
             # reached the wizard as-is (FIBR-0406).
             raise ValueError(
-                "the file is not UTF-8 text; save it as UTF-8 and try again"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "the file is not UTF-8 text; save it as UTF-8 and try again",
+                    )
+                )
             ) from exc
 
     def read_file_bytes(self, path: str) -> bytes:
@@ -238,9 +249,15 @@ class ImportService:
             with open(path, "rb") as handle:
                 data = handle.read(_MAX_IMPORT_BYTES + 1)
         except OSError as exc:
-            raise ValueError("this file could not be read") from exc
+            raise ValueError(
+                UserMessage(QT_TRANSLATE_NOOP("Refusal", "this file could not be read"))
+            ) from exc
         if len(data) > _MAX_IMPORT_BYTES:
-            raise ValueError("this file is too large to import")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", "this file is too large to import")
+                )
+            )
         return data
 
     def preview(
@@ -471,7 +488,9 @@ class ImportService:
         # import a phantom 1900 date rather than error. Reject it here (FIBR-0146
         # D4) so the format is never silently defaulted either.
         if not mapping.date_format.strip():
-            raise ValueError("choose a date format")
+            raise ValueError(
+                UserMessage(QT_TRANSLATE_NOOP("Refusal", "choose a date format"))
+            )
         # A format with no YEAR token is the same trap by another route
         # (FIBR-0273): strptime("20/07", "%d/%m") succeeds and returns
         # 1900-07-20, so a whole statement imports into 1900 with the live
@@ -480,8 +499,13 @@ class ImportService:
         # closes today's silent-wrong-year AND tomorrow's crash.
         if not _has_year_token(mapping.date_format):
             raise ValueError(
-                "this date format has no year in it — add %Y (or %y), or every "
-                "row will be dated 1900"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this date format has no year in it — add %Y (or %y), or every "
+                        "row will be dated 1900",
+                    )
+                )
             )
         has_amount = mapping.amount_column is not None
         has_debit = mapping.debit_column is not None
@@ -490,8 +514,14 @@ class ImportService:
         pair = has_debit and has_credit and not has_amount
         if not (single or pair):
             raise ValueError(
-                "a mapping needs exactly one amount style: a single amount column, "
-                "or a debit + credit pair"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "a mapping needs exactly one amount style: "
+                        "a single amount column, "
+                        "or a debit + credit pair",
+                    )
+                )
             )
         style_cols = (
             [mapping.amount_column]
@@ -502,14 +532,27 @@ class ImportService:
         mapped += [col for col in style_cols if col is not None]
         missing = [col for col in mapped if col not in header]
         if missing:
-            raise ValueError(f"mapped column(s) not in the file header: {missing}")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "mapped column(s) not in the file header: {columns}"
+                    ),
+                    columns=str(missing),
+                )
+            )
         # Each role must map to a *distinct* column — else the same cell is read
         # for two purposes (e.g. date == description), silently misrouting data
         # rather than erroring. (indie-review M-csv-cols)
         if len(set(mapped)) != len(mapped):
             raise ValueError(
-                "each field must map to a different column — a column is mapped "
-                "to more than one role"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "each field must map to a different column — "
+                        "a column is mapped "
+                        "to more than one role",
+                    )
+                )
             )
 
     @staticmethod
@@ -523,7 +566,19 @@ class ImportService:
             start = date.fromisoformat(period_start)
             end = date.fromisoformat(period_end)
         except (TypeError, ValueError) as exc:
-            raise ValueError("period endpoints must be valid ISO-8601 dates") from exc
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "period endpoints must be valid ISO-8601 dates"
+                    )
+                )
+            ) from exc
         if start > end:
-            raise ValueError("period_start must not be after period_end")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "period_start must not be after period_end"
+                    )
+                )
+            )
         return start.isoformat(), end.isoformat()

@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING
 
 import pikepdf
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage
+
 if TYPE_CHECKING:
     from pdfplumber.pdf import PDF
 
@@ -58,9 +60,12 @@ _MAX_DECODED_BYTES = 64 * 1024 * 1024
 # RunLength at most 128 bytes per 2; their output is bounded by input times
 # this, so a stream is refused only when that bound could pass the budget.
 _MAX_EXPANSION = {"/LZWDecode": 3641, "/LZW": 3641, "/RunLengthDecode": 64, "/RL": 64}
-_TOO_BIG = (
-    "this PDF expands to far more data than a bank statement — "
-    "try your bank's CSV or OFX export"
+_TOO_BIG = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal",
+        "this PDF expands to far more data than a bank statement — "
+        "try your bank's CSV or OFX export",
+    )
 )
 
 
@@ -199,13 +204,23 @@ class PdfImporter:
         for candidate in candidates:
             if len(candidate) - 1 > _MAX_PDF_ROWS:
                 raise ValueError(
-                    "a table in this PDF has too many rows to import — "
-                    "try your bank's CSV or OFX export"
+                    UserMessage(
+                        QT_TRANSLATE_NOOP(
+                            "Refusal",
+                            "a table in this PDF has too many rows to import — "
+                            "try your bank's CSV or OFX export",
+                        )
+                    )
                 )
         if not candidates:
             raise ValueError(
-                "couldn't read a table from this PDF — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "couldn't read a table from this PDF — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
         return candidates
 
@@ -232,8 +247,13 @@ def open_pdf(pdf_bytes: bytes, password: str | None = None) -> Iterator[PDF]:
     try:
         if read_untrusted(lambda: len(pdf.pages)) > _MAX_PDF_PAGES:
             raise PdfRefusal(
-                "this PDF has too many pages to import — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this PDF has too many pages to import — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
         yield pdf
     finally:
@@ -259,7 +279,12 @@ def read_untrusted[T](read: Callable[[], T]) -> T:
         raise
     except Exception as exc:
         raise ValueError(
-            "couldn't read this PDF — try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "couldn't read this PDF — try your bank's CSV or OFX export",
+                )
+            )
         ) from exc
 
 

@@ -294,6 +294,7 @@ def test_INV5_batch_status_cell_is_translated(
 def test_INV5_preview_reason_cell_is_translated(
     qtbot, service, catalogs, controller, tmp_path
 ):
+    from conftest import cell_text
     from finbreak.ui.import_wizard import ImportWizardWidget
 
     ImportService(service.vault).save_profile("layout", _HEADER, _MAPPING)
@@ -308,9 +309,7 @@ def test_INV5_preview_reason_cell_is_translated(
     widget.show()
     widget._select_file(str(path))
     table = widget._preview_table
-    reasons = [
-        table.item(r, 3).text() for r in range(table.rowCount()) if table.item(r, 3)
-    ]
+    reasons = [cell_text(table, r, 3) for r in range(table.rowCount())]
     assert "⟦the date cell is empty⟧" in reasons, (
         f"the row error must reach the preview translated; reason cells: {reasons!r}"
     )

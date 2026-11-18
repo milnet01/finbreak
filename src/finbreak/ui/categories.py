@@ -40,6 +40,7 @@ from finbreak.ui._widgets import (
     category_type_labels,
     select_combo_data,
 )
+from finbreak.ui.user_text import user_text
 
 # Per-item data roles: the category id, its parent_id, and its kind token (set
 # on the two roots only — a non-None kind marks a structural Type header).
@@ -162,7 +163,7 @@ class CategoriesWidget(QWidget):
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handler
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._name.clear()
         self._refresh()
@@ -184,7 +185,7 @@ class CategoriesWidget(QWidget):
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handler
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._refresh()
 
@@ -239,7 +240,7 @@ class CategoriesWidget(QWidget):
         except FinbreakError as exc:
             # ProtectedCategoryError / CategoryHasChildrenError — show the
             # message, remove nothing (INV-6 reflected through the UI).
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._refresh()
 

@@ -99,6 +99,7 @@ from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.import_batch import BatchReviewWidget
 from finbreak.ui.modal import show_modal
 from finbreak.ui.password_dialog import PasswordDialog
+from finbreak.ui.user_text import user_text
 
 # `_STEP_BATCH` is APPENDED after the existing three, so indices 0-2 keep their
 # meaning and the 24 absolute `_stack.currentIndex()` assertions across six
@@ -587,7 +588,7 @@ class ImportWizardWidget(QWidget):
             source = self._imports.read_source(path)
         except (ValueError, OSError, FinbreakError) as exc:
             self._text = None
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._source_sha256 = source.sha256
         prior = self._imports.prior_import(source.sha256)
@@ -763,7 +764,7 @@ class ImportWizardWidget(QWidget):
             # re-enter `_date_samples` on a file we just refused. `None` is the
             # honest state — no usable file is loaded.
             self._text = None
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
 
     def _select_ofx(
@@ -779,7 +780,7 @@ class ImportWizardWidget(QWidget):
             try:
                 statements = OfxImporter().parse(data, self._exponent)
             except (ValueError, OSError, FinbreakError) as exc:
-                self._error.setText(str(exc))
+                self._error.setText(user_text(exc))
                 return
         # Single reassignment displaces any prior file's list (the "reset").
         self._ofx_statements = statements
@@ -932,7 +933,7 @@ class ImportWizardWidget(QWidget):
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the other handlers
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
 
         # Both combos gain the new account, so the pick step lists it too.
@@ -985,7 +986,7 @@ class ImportWizardWidget(QWidget):
         try:
             preview = self._imports.preview_result(result, self._target_account_id())
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             # The destination has already moved to this statement's account, so
             # the previous statement's preview must not stay importable
             # (FIBR-0478).
@@ -1008,14 +1009,14 @@ class ImportWizardWidget(QWidget):
         """A corrupt/unreadable PDF raises ``PdfError`` whose ``str`` is raw pikepdf
         internals (e.g. "unable to find trailer dictionary while recovering damaged
         file") — show OUR friendly message for it, not the library text (FIBR-0064).
-        Our own ``ValueError`` / ``FinbreakError`` (size cap, format, …) already
-        carry friendly messages, so those pass through unchanged."""
+        Our own ``ValueError`` / ``FinbreakError`` (size cap, format, …) carry
+        their own messages, shown through ``user_text``."""
         if isinstance(exc, PdfError):
             self._error.setText(
                 self.tr("Couldn't read this PDF — try your bank's CSV or OFX export.")
             )
         else:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
 
     def _try_decrypt(
         self, data: bytes, password: str | None
@@ -1362,7 +1363,7 @@ class ImportWizardWidget(QWidget):
             try:
                 self._imports.save_profile(name, self._header, mapping)
             except (ValueError, FinbreakError) as exc:
-                self._error.setText(str(exc))
+                self._error.setText(user_text(exc))
                 return
         if self._batch_asking is not None:
             self._answer_batch_mapping(mapping)
@@ -1532,7 +1533,7 @@ class ImportWizardWidget(QWidget):
                 self._autodetect_date_format()
             self._update_date_preview()
         except ValueError as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             self._date_preview.clear()
 
     @Slot(int)
@@ -1559,7 +1560,7 @@ class ImportWizardWidget(QWidget):
         try:
             preview = self._imports.preview(text, mapping, self._target_account_id())
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._show_preview(preview)
 
@@ -1722,7 +1723,13 @@ class ImportWizardWidget(QWidget):
                 (
                     err.row_number,
                     True,
-                    [str(err.row_number), "", "", err.reason, self.tr("Error")],
+                    [
+                        str(err.row_number),
+                        "",
+                        "",
+                        user_text(err.reason),
+                        self.tr("Error"),
+                    ],
                 )
             )
         entries.sort(key=lambda entry: entry[0])
@@ -1763,7 +1770,7 @@ class ImportWizardWidget(QWidget):
                 self._source_sha256,
             )
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         # Before the warning below: it runs its own event loop, so an auto-lock
         # can fire while it is open.

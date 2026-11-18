@@ -705,6 +705,7 @@ def test_the_recovery_code_hint_refusal_is_translatable(
 
     _vault_path, sidecar_path = paths
     from finbreak.ui import _password_hint as hint_io
+    from finbreak.ui.user_text import user_text
 
     marker = "TRANSLATED: do not put the code in the hint"
 
@@ -717,7 +718,7 @@ def test_the_recovery_code_hint_refusal_is_translatable(
             n: int = -1,
         ) -> str:
             wanted = "The hint may not contain your recovery code."
-            if context == "PasswordHint" and source == wanted:
+            if context == "Refusal" and source == wanted:
                 return marker
             return ""
 
@@ -732,13 +733,14 @@ def test_the_recovery_code_hint_refusal_is_translatable(
             hint_io.validate_hint_with_recovery(
                 f"same as the one on the card: {code}", MASTER_PASSWORD.decode()
             )
+        shown = user_text(excinfo.value)
     finally:
         qapp.removeTranslator(catalog)
 
-    assert str(excinfo.value) == marker, (
+    assert shown == marker, (
         "coding.md § 5.2: the refusal the user reads is a bare literal, so it "
         "reaches no catalog and ships in English whatever language the app is "
         "running in.\n"
         f"  expected: {marker!r}\n"
-        f"  actual:   {str(excinfo.value)!r}"
+        f"  actual:   {shown!r}"
     )

@@ -19,11 +19,16 @@ from __future__ import annotations
 import logging
 
 from argon2.exceptions import HashingError
-from PySide6.QtCore import QCoreApplication, QSettings
+from PySide6.QtCore import QSettings
 
 from finbreak import paths
 from finbreak.crypto import derive_key, read_sidecar_v2, validate_slot
-from finbreak.errors import KdfPolicyError, KeyUnwrapError
+from finbreak.errors import (
+    QT_TRANSLATE_NOOP,
+    KdfPolicyError,
+    KeyUnwrapError,
+    UserMessage,
+)
 from finbreak.keywrap import SLOT_RECOVERY, unwrap_dek
 from finbreak.services.password_hint import HintPolicyError, validate_hint
 from finbreak.services.recovery_code import (
@@ -172,14 +177,13 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
             finally:
                 kek[:] = bytes(len(kek))
             dek[:] = bytes(len(dek))
-            # The message the user reads, so coding.md § 5.2 applies: this
-            # module is in ui/ and has no QObject to carry `self.tr`, hence the
-            # explicit context. The three sibling messages come from
-            # `services/password_hint.py`, which is Qt-free by contract and so
-            # cannot translate its own; that is FIBR-0017's to settle.
+            # Marked, not translated: the dialog shows it through user_text,
+            # like its three siblings in services/password_hint.py (FIBR-0425).
             raise HintPolicyError(
-                QCoreApplication.translate(
-                    "PasswordHint", "The hint may not contain your recovery code."
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "The hint may not contain your recovery code."
+                    )
                 )
             )
     except (KdfPolicyError, HashingError) as exc:

@@ -19,6 +19,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage, message_of
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import ColumnMapping, TransactionDraft
 from finbreak.services.transactions import parse_transaction
@@ -43,9 +44,16 @@ def read_header(text: str) -> list[str]:
         # a ``ValueError`` subclass, so the wizard's (ValueError, FinbreakError)
         # net would miss it and crash. Translate it to the friendly type so a
         # malformed file surfaces a message, never a crash (INV-4).
-        raise ValueError(f"the file is not valid CSV: {exc}") from exc
+        raise ValueError(
+            UserMessage(
+                QT_TRANSLATE_NOOP("Refusal", "the file is not valid CSV: {detail}"),
+                detail=str(exc),
+            )
+        ) from exc
     if fieldnames is None:
-        raise ValueError("the file has no header row")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "the file has no header row"))
+        )
     return list(fieldnames)
 
 
@@ -78,7 +86,12 @@ def read_rows(text: str) -> list[dict[str, Any]]:
         # field that swallowed every row after it (audit 2026-09-27 row 18).
         return list(csv.DictReader(io.StringIO(text), strict=True))
     except csv.Error as exc:
-        raise ValueError(f"the file is not valid CSV: {exc}") from exc
+        raise ValueError(
+            UserMessage(
+                QT_TRANSLATE_NOOP("Refusal", "the file is not valid CSV: {detail}"),
+                detail=str(exc),
+            )
+        ) from exc
 
 
 class CsvImporter:
@@ -108,7 +121,14 @@ class CsvImporter:
             # the catch below), so turn it into a RowError up-front (D5).
             if any(row.get(col) is None for col in needed):
                 errors.append(
-                    RowError(row_number, "row has fewer columns than the header")
+                    RowError(
+                        row_number,
+                        UserMessage(
+                            QT_TRANSLATE_NOOP(
+                                "Refusal", "row has fewer columns than the header"
+                            )
+                        ),
+                    )
                 )
                 continue
             # A mapped cell holding a line break is a quote that opened and was
@@ -119,8 +139,13 @@ class CsvImporter:
                 errors.append(
                     RowError(
                         row_number,
-                        "a quote in this row is not closed on the same line, so "
-                        "it swallowed the lines after it — check the file",
+                        UserMessage(
+                            QT_TRANSLATE_NOOP(
+                                "Refusal",
+                                "a quote in this row is not closed on the same line, "
+                                "so it swallowed the lines after it — check the file",
+                            )
+                        ),
                     )
                 )
                 continue
@@ -139,9 +164,12 @@ class CsvImporter:
                 )
             except ValueError:
                 reason = (
-                    "the date cell is empty"
+                    UserMessage(QT_TRANSLATE_NOOP("Refusal", "the date cell is empty"))
                     if raw_date == ""
-                    else f'could not read the date "{raw_date}"'
+                    else UserMessage(
+                        QT_TRANSLATE_NOOP("Refusal", 'could not read the date "{raw}"'),
+                        raw=raw_date,
+                    )
                 )
                 errors.append(RowError(row_number, reason))
                 continue
@@ -155,7 +183,7 @@ class CsvImporter:
                     occurred_on, amount, row[mapping.description_column], exponent
                 )
             except (ValueError, InvalidOperation) as exc:
-                errors.append(RowError(row_number, str(exc)))
+                errors.append(RowError(row_number, message_of(exc)))
                 continue
             drafts.append(
                 TransactionDraft(row_number, occurred_on, amount_minor, description)
@@ -180,11 +208,18 @@ class CsvImporter:
         branch above — the offending value, never the parser's internals.
         """
         if raw == "":
-            raise ValueError("the amount cell is empty")
+            raise ValueError(
+                UserMessage(QT_TRANSLATE_NOOP("Refusal", "the amount cell is empty"))
+            )
         try:
             return Decimal(raw)
         except InvalidOperation:
-            raise ValueError(f'could not read the amount "{raw}"') from None
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", 'could not read the amount "{raw}"'),
+                    raw=raw,
+                )
+            ) from None
 
     @staticmethod
     def _single_amount(row: dict[str, Any], mapping: ColumnMapping) -> Decimal:
@@ -203,8 +238,20 @@ class CsvImporter:
         debit = row[cast(str, mapping.debit_column)].strip()
         credit = row[cast(str, mapping.credit_column)].strip()
         if bool(debit) == bool(credit):
-            raise ValueError("exactly one of debit / credit must be populated")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "exactly one of debit / credit must be populated"
+                    )
+                )
+            )
         magnitude = CsvImporter._to_decimal(debit or credit)
         if magnitude < 0:
-            raise ValueError("a debit/credit amount must be an unsigned magnitude")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "a debit/credit amount must be an unsigned magnitude"
+                    )
+                )
+            )
         return -magnitude if debit else magnitude

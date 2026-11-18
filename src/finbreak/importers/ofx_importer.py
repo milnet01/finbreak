@@ -33,6 +33,7 @@ from typing import Any
 from ofxparse import OfxParser
 from ofxparse.ofxparse import AccountType
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage, message_of
 from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
 from finbreak.models import OfxAccountInfo, TransactionDraft
 from finbreak.services.transactions import parse_transaction, to_minor_storable
@@ -85,14 +86,24 @@ class OfxImporter:
             # DTPOSTED/DTEND keeps its as-posted local calendar date (FIBR-0042).
             ofx = _LocalDateOfxParser.parse(io.BytesIO(data))
         except Exception as exc:  # documented untrusted-input boundary (D7)
-            raise ValueError("this file could not be read as OFX") from exc
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", "this file could not be read as OFX")
+                )
+            ) from exc
 
         # A structurally-valid but statement-less envelope (empty ofx.accounts —
         # e.g. sign-on only) is not an ofxparse exception; guard it explicitly,
         # AFTER the boundary catch so its distinct message isn't collapsed (INV-4).
         accounts = ofx.accounts
         if not accounts:
-            raise ValueError("no statements were found in this OFX file")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "no statements were found in this OFX file"
+                    )
+                )
+            )
 
         # Investment/brokerage statements (<INVSTMTRS>) carry InvestmentTransaction
         # objects, which have no .payee/.date/.amount — feeding them to
@@ -107,8 +118,13 @@ class OfxImporter:
         ]
         if not accounts:
             raise ValueError(
-                "this OFX file has only investment/brokerage statements, which "
-                "aren't supported — pick a bank or credit-card statement"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this OFX file has only investment/brokerage statements, which "
+                        "aren't supported — pick a bank or credit-card statement",
+                    )
+                )
             )
 
         # Whole-file transaction-count cap (D13/INV-10) — after the boundary
@@ -116,7 +132,12 @@ class OfxImporter:
         total = sum(len(account.statement.transactions) for account in accounts)
         if total > _MAX_OFX_TRANSACTIONS:
             raise ValueError(
-                f"this OFX file has more than {_MAX_OFX_TRANSACTIONS} transactions"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "this OFX file has more than {limit} transactions"
+                    ),
+                    limit=_MAX_OFX_TRANSACTIONS,
+                )
             )
 
         return [
@@ -159,7 +180,14 @@ class OfxImporter:
             # escaping the Qt slot, and in a batch destroying the whole run
             # rather than one file. Same shape as `statement.balance` below.
             if tx.date is None:
-                errors.append(RowError(row_number, "this row has no usable date"))
+                errors.append(
+                    RowError(
+                        row_number,
+                        UserMessage(
+                            QT_TRANSLATE_NOOP("Refusal", "this row has no usable date")
+                        ),
+                    )
+                )
                 continue
             occurred_on = tx.date.date().isoformat()
             try:
@@ -167,7 +195,7 @@ class OfxImporter:
                     occurred_on, tx.amount, description, exponent
                 )
             except ValueError as exc:
-                errors.append(RowError(row_number, str(exc)))
+                errors.append(RowError(row_number, message_of(exc)))
                 continue
             drafts.append(
                 TransactionDraft(row_number, occurred_on, amount_minor, description)
@@ -194,7 +222,12 @@ class OfxImporter:
             )
         except ValueError as exc:
             raise ValueError(
-                "this OFX file's closing balance is not a usable amount"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this OFX file's closing balance is not a usable amount",
+                    )
+                )
             ) from exc
         return ParseResult(
             drafts,

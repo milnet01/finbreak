@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from conftest import _PW, _acct, wait_for_pdf_read
+from finbreak.errors import UserMessage
 from finbreak.models import ColumnMapping
 from finbreak.services.auth import AuthService
 from finbreak.ui.import_wizard import _STEP_MAP, _STEP_PREVIEW, ImportWizardWidget
@@ -116,7 +117,9 @@ def test_INV2_the_go_back_remedy_is_followable(qtbot, service, tmp_path):
     _fill_map_form(widget)
     widget._on_map_next()
 
-    all_error = ImportPreview(acct, [], [RowError(1, "x")], 0, 0, None, None)
+    all_error = ImportPreview(
+        acct, [], [RowError(1, UserMessage("x"))], 0, 0, None, None
+    )
     widget._apply_preview_counts(all_error)
     assert not widget._preview_banner.isHidden(), (
         "precondition: 0 new · 0 dup · N error fires the D7 banner"

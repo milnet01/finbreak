@@ -24,6 +24,7 @@ from typing import cast
 from PySide6.QtCore import QLocale
 from PySide6.QtGui import QColor
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage
 from finbreak.models import NegativeStyle
 from finbreak.services.auth import CURRENCY_SYMBOLS
 
@@ -169,7 +170,9 @@ def parse_amount_input(text: str) -> Decimal:
 
     survivor = c_value if c_value is not None else locale_value
     if survivor is None:
-        raise ValueError("amount is not a valid number")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount is not a valid number"))
+        )
 
     # Step 3 — exactly one candidate survived, so the losing convention did not
     # DISAGREE, it REJECTED: the string's shape is the only evidence left of the
@@ -245,7 +248,7 @@ def _guard_operand(text: str) -> str:
     return operand
 
 
-def _ambiguous(text: str, grouped: Decimal, point: Decimal) -> str:
+def _ambiguous(text: str, grouped: Decimal, point: Decimal) -> UserMessage:
     """The refusal, with both readings rendered in the USER's own convention.
 
     Rendering them in the C convention would show a de_DE user "reads as 1234 or
@@ -253,10 +256,15 @@ def _ambiguous(text: str, grouped: Decimal, point: Decimal) -> str:
     message would repeat the ambiguity it exists to resolve. One reading always
     renders back to what was typed, which is why the labels are part of it.
     """
-    return (
-        f'amount is ambiguous: "{text}" reads as {_render(grouped)} (grouped) or '
-        f"as {_render(point)} (decimal) — retype it using the format the app "
-        "displays"
+    return UserMessage(
+        QT_TRANSLATE_NOOP(
+            "Refusal",
+            'amount is ambiguous: "{text}" reads as {grouped} (grouped) or '
+            "as {point} (decimal) — retype it using the format the app displays",
+        ),
+        text=text,
+        grouped=_render(grouped),
+        point=_render(point),
     )
 
 

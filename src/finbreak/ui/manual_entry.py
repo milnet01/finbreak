@@ -31,6 +31,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui._amount import parse_amount_input
+from finbreak.ui.user_text import user_text
 
 
 class ManualEntryDialog(QDialog):
@@ -124,7 +125,7 @@ class ManualEntryDialog(QDialog):
             # crash the slot. Return silently, like every peer handler. (H2)
             return
         except ValueError as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self.committed.emit()
 

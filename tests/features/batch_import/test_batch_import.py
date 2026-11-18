@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from conftest import _PW, _acct
-from finbreak.errors import FinbreakError
+from finbreak.errors import FinbreakError, UserMessage
 from finbreak.importers.base import ParseResult, SourceAccountHint
 from finbreak.importers.pdf_importer import PasswordError
 from finbreak.models import AccountType, ColumnMapping, TransactionDraft
@@ -188,7 +188,7 @@ def test_INV1_failure_does_not_abort_batch(service, batch, tmp_path, monkeypatch
 
     def wedged(self, preview, period_start, period_end, source_filename, *rest):
         if Path(source_filename).name == "b.csv":
-            raise ValueError("this statement could not be committed")
+            raise ValueError(UserMessage("this statement could not be committed"))
         return real_commit(
             self, preview, period_start, period_end, source_filename, *rest
         )
@@ -205,7 +205,7 @@ def test_INV1_failure_does_not_abort_batch(service, batch, tmp_path, monkeypatch
     assert outcomes == ["committed", "failed", "committed"], (
         f"outcomes = {outcomes}, expected the middle file to fail alone"
     )
-    assert "could not be committed" in files[1].reason, (
+    assert "could not be committed" in str(files[1].reason), (
         f"the failed record's reason = {files[1].reason!r}, expected the "
         "commit's own message"
     )
@@ -536,7 +536,7 @@ def test_INV11_batch_caps(service, batch, tmp_path, monkeypatch):
     refused = batch.build(over)
     assert len(refused) == 201
     assert {record.outcome for record in refused} == {"not_attempted"}
-    assert "limit" in refused[0].reason, (
+    assert "limit" in str(refused[0].reason), (
         f"reason = {refused[0].reason!r}, expected it to name the size limit"
     )
     _scan_all(batch, refused)
@@ -574,7 +574,7 @@ def test_INV11_batch_caps(service, batch, tmp_path, monkeypatch):
         f"outcome = {files[2].outcome}, expected the scan to stop once the "
         "draft cap was reached"
     )
-    assert "limit" in files[2].reason
+    assert "limit" in str(files[2].reason)
     assert files[0].parsed is not None and files[1].parsed is not None, (
         "the files scanned before the cap keep their parse"
     )
@@ -702,7 +702,7 @@ def test_INV13_undated_file_fails_before_commit(service, batch, tmp_path, monkey
     assert files[0].outcome == "failed", (
         f"outcome = {files[0].outcome}, expected an undated file to fail at SCAN"
     )
-    assert "date" in files[0].reason.lower(), (
+    assert "date" in str(files[0].reason).lower(), (
         f"reason = {files[0].reason!r}, expected it to name the absent dates"
     )
 

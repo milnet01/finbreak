@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from finbreak.errors import UserMessage
 from finbreak.models import TransactionDraft
 
 
@@ -22,7 +23,7 @@ class RowError:
     is the 1-based source row, so the preview can flag it in file order."""
 
     row_number: int
-    reason: str
+    reason: UserMessage
 
 
 @dataclass(frozen=True)

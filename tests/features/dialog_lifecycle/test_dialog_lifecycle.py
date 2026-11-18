@@ -234,6 +234,10 @@ _NOT_CONTENT_WIDGETS: dict[str, str] = {
         "no QDialog and no pop-up: off-GUI-thread QThread workers for the "
         "update check/download."
     ),
+    "user_text.py": (
+        "no QDialog and no pop-up: turns a refusal into translated screen text "
+        "(FIBR-0425)."
+    ),
     "_widgets.py": (
         "no QDialog and no pop-up: a shared combo-preselect helper function."
     ),

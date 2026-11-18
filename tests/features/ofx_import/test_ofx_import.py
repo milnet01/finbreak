@@ -18,7 +18,7 @@ import pytest
 from PySide6.QtCore import Qt
 
 from conftest import _PW, _acct, import_again
-from finbreak.errors import FinbreakError
+from finbreak.errors import FinbreakError, UserMessage
 from finbreak.importers.base import ParseResult
 from finbreak.importers.ofx_importer import (
     _MAX_OFX_TRANSACTIONS,
@@ -503,7 +503,7 @@ def test_FIBR0478_a_failed_re_preview_imports_nothing(
     assert widget._import_button.isEnabled(), "precondition: statement 1 previewed"
 
     def fail(*_a, **_k):
-        raise FinbreakError("preview failed")
+        raise FinbreakError(UserMessage("preview failed"))
 
     monkeypatch.setattr(widget._imports, "preview_result", fail)
     widget._ofx_statement_combo.setCurrentIndex(1)
@@ -749,7 +749,7 @@ def test_INV4_null_dtposted_is_a_row_error_not_a_crash(service):
     ((_info, result),) = OfxImporter().parse(data, 2)
     assert [d.description for d in result.drafts] == ["Valid"]
     assert [e.row_number for e in result.errors] == [2]
-    assert "date" in result.errors[0].reason.lower()
+    assert "date" in str(result.errors[0].reason).lower()
 
 
 def test_FIBR0408_the_statement_chooser_labels_are_translatable(

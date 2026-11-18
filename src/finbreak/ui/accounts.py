@@ -57,6 +57,7 @@ from finbreak.ui._table_state import (
     tag_row,
 )
 from finbreak.ui._widgets import select_combo_data
+from finbreak.ui.user_text import user_text
 
 # Bank is appended as logical 5 and shown second (FIBR-0283 § 4.4): a saved
 # layout keys each column by its logical index, so inserting it at 1 would hand
@@ -353,7 +354,7 @@ class AccountsWidget(QWidget):
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         # Only the line edits. NOT the Type picker: QComboBox.clear()
         # removes its ITEMS, which would destroy the seven type entries and the
@@ -384,7 +385,7 @@ class AccountsWidget(QWidget):
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._refresh()
 
@@ -470,7 +471,7 @@ class AccountsWidget(QWidget):
         except FinbreakError as exc:
             # AccountInUseError / LastAccountError — show the message, remove
             # nothing (INV-6 reflected through the UI).
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._refresh()
 

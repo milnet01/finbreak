@@ -15,6 +15,7 @@ from typing import cast
 
 from sqlcipher3 import dbapi2
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage
 from finbreak.models import Transaction
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
@@ -65,7 +66,9 @@ def parse_transaction(
     """
     description = description.strip()
     if not description:
-        raise ValueError("description must not be empty")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "description must not be empty"))
+        )
     try:
         # CANONICALISED, not merely validated (FIBR-0216). `date.fromisoformat`
         # accepts more spellings of the same day than it looks like — "20260715" and
@@ -76,7 +79,13 @@ def parse_transaction(
         # it is cheapest to close.
         occurred_on = date.fromisoformat(occurred_on).isoformat()
     except (TypeError, ValueError) as exc:
-        raise ValueError("occurred_on must be a valid ISO-8601 date") from exc
+        raise ValueError(
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal", "occurred_on must be a valid ISO-8601 date"
+                )
+            )
+        ) from exc
 
     try:
         # `Decimal(...)` with nothing in front, deliberately (FIBR-0328). Measured:
@@ -92,9 +101,13 @@ def parse_transaction(
             else Decimal(str(raw_amount).strip())
         )
     except InvalidOperation as exc:
-        raise ValueError("amount is not a valid number") from exc
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount is not a valid number"))
+        ) from exc
     if not amount.is_finite():
-        raise ValueError("amount must be a finite decimal")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount must be a finite decimal"))
+        )
     # Count SIGNIFICANT fractional digits: trailing zeros are dropped, so
     # "12.340" (== 12.34) is accepted while "12.345" is still rejected. is_finite()
     # above guarantees the exponent is an int (never 'n'/'N'/'F').
@@ -106,11 +119,20 @@ def parse_transaction(
     # exponent it raised decimal.Overflow, not ValueError (FIBR-0216/FIBR-0252).
     # to_minor_storable below owns the too-large refusal.
     if -_significant_exponent(amount) > exponent:
-        raise ValueError("amount has more fractional digits than the currency allows")
+        raise ValueError(
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "amount has more fractional digits than the currency allows",
+                )
+            )
+        )
 
     amount_minor = to_minor_storable(amount, exponent)
     if amount_minor == 0:
-        raise ValueError("amount must be non-zero")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount must be non-zero"))
+        )
     return occurred_on, amount_minor, description
 
 
@@ -170,13 +192,19 @@ def to_minor_storable(amount: Decimal, exponent: int) -> int:
     # OverflowError or InvalidOperation, neither a ValueError — reject it first
     # (audit 2026-09-27 row 19).
     if not amount.is_finite():
-        raise ValueError("amount is not a finite number")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount is not a finite number"))
+        )
     try:
         amount_minor = to_minor(amount, exponent)
     except Overflow as exc:
-        raise ValueError("amount is too large to store") from exc
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount is too large to store"))
+        ) from exc
     if not -_MAX_AMOUNT_MINOR <= amount_minor <= _MAX_AMOUNT_MINOR:
-        raise ValueError("amount is too large to store")
+        raise ValueError(
+            UserMessage(QT_TRANSLATE_NOOP("Refusal", "amount is too large to store"))
+        )
     return amount_minor
 
 

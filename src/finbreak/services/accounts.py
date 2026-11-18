@@ -10,7 +10,12 @@ from __future__ import annotations
 import logging
 from typing import cast
 
-from finbreak.errors import AccountInUseError, LastAccountError
+from finbreak.errors import (
+    QT_TRANSLATE_NOOP,
+    AccountInUseError,
+    LastAccountError,
+    UserMessage,
+)
 from finbreak.models import Account, AccountType
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -114,7 +119,13 @@ class AccountService:
         in_account = TransactionRepository(conn).count_for_account(account_id)
         if in_account > 0:
             raise AccountInUseError(
-                "this account still has transactions — move or remove them first"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this account still has transactions — "
+                        "move or remove them first",
+                    )
+                )
             )
         # A statement period referencing this account also blocks deletion — a
         # quiet-month / all-duplicate import records a period with ZERO
@@ -125,12 +136,24 @@ class AccountService:
         # gives StatementPeriodRepository.list_for_account its first src caller)
         if StatementPeriodRepository(conn).list_for_account(account_id):
             raise AccountInUseError(
-                "this account still has imported statements — delete them first"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this account still has imported statements — "
+                        "delete them first",
+                    )
+                )
             )
         # "Last account" = the target actually exists AND is the only row; the
         # "exists" clause is what lets a missing id fall through to a no-op.
         if repo.get(account_id) is not None and repo.count() == 1:
-            raise LastAccountError("at least one account must always exist")
+            raise LastAccountError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "at least one account must always exist"
+                    )
+                )
+            )
         repo.delete(account_id)
         log.info("account deleted")
 
@@ -163,11 +186,22 @@ class AccountService:
             raise ValueError(f"unknown account type: {type!r}") from exc
         name = name.strip()
         if not name:
-            raise ValueError("account name must not be empty")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", "account name must not be empty")
+                )
+            )
         lowered = fold_name(name)
         for existing in self._accounts().list_all():
             if existing.id == exclude_id:
                 continue
             if fold_name(existing.name) == lowered:
-                raise ValueError(f"an account named {name!r} already exists")
+                raise ValueError(
+                    UserMessage(
+                        QT_TRANSLATE_NOOP(
+                            "Refusal", "an account named {name!r} already exists"
+                        ),
+                        name=name,
+                    )
+                )
         return name

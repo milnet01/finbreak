@@ -478,7 +478,7 @@ def test_FIBR0389_a_huge_amount_in_a_csv_is_one_row_error():
     parsed = CsvImporter().parse(text, _CSV_MAPPING, 2)
     assert [d.description for d in parsed.drafts] == ["Before", "After"]
     assert len(parsed.errors) == 1
-    assert "too large" in parsed.errors[0].reason
+    assert "too large" in str(parsed.errors[0].reason)
 
 
 def test_FIBR0222_huge_exponent_is_a_ValueError_not_a_decimal_Overflow():

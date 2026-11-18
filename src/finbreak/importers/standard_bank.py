@@ -40,6 +40,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage, message_of
 from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
 from finbreak.importers.pdf_importer import _MAX_PDF_ROWS, open_pdf, read_untrusted
 from finbreak.models import TransactionDraft
@@ -156,13 +157,21 @@ _CC_BROUGHT_FORWARD = re.compile(
 # the strict family grammar rejects is a **mis-parse**, not a droppable line — raising
 # (all-or-nothing) rather than silently skipping is what keeps a mis-extracted row on
 # a closing-less statement (Savings) from becoming a silent under-import (INV-11).
-_MISPARSE = "this statement didn't parse cleanly — try your bank's CSV or OFX export"
+_MISPARSE = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal",
+        "this statement didn't parse cleanly — try your bank's CSV or OFX export",
+    )
+)
 # D8: how far outside the printed period a Family A row may be dated. A chosen
 # slack, not a measurement (FIBR-0424).
 _YEAR_SLACK = timedelta(days=31)
-_UNPLACED_YEAR = (
-    "couldn't tell which year a transaction on this statement belongs to — "
-    "try your bank's CSV or OFX export"
+_UNPLACED_YEAR = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal",
+        "couldn't tell which year a transaction on this statement belongs to — "
+        "try your bank's CSV or OFX export",
+    )
 )
 
 
@@ -183,7 +192,13 @@ def _detect_number_format(region_text: str) -> Fmt:
         return "us"  # no money tokens (degenerate) — harmless default
     if len(votes) > 1:
         raise ValueError(
-            "this statement mixes number formats — try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "this statement mixes number formats — "
+                    "try your bank's CSV or OFX export",
+                )
+            )
         )
     return votes.pop()
 
@@ -203,7 +218,14 @@ def _parse_amount(token: str, fmt: Fmt) -> Decimal:
         return Decimal(t)
     except InvalidOperation as exc:
         raise ValueError(
-            f"couldn't read the amount {token!r} — try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "couldn't read the amount {token!r} — "
+                    "try your bank's CSV or OFX export",
+                ),
+                token=token,
+            )
         ) from exc
 
 
@@ -575,8 +597,13 @@ def _capture_opening(region_lines: list[str], fmt: Fmt) -> Decimal:
         if bal is not None:
             return bal
     raise ValueError(
-        "couldn't find the opening balance on this statement — "
-        "try your bank's CSV or OFX export"
+        UserMessage(
+            QT_TRANSLATE_NOOP(
+                "Refusal",
+                "couldn't find the opening balance on this statement — "
+                "try your bank's CSV or OFX export",
+            )
+        )
     )
 
 
@@ -621,8 +648,14 @@ def _storable(amount: Decimal, exponent: int) -> int:
         return to_minor_storable(amount, exponent)
     except ValueError as exc:
         raise ValueError(
-            "this statement's opening or closing balance is too large to store — "
-            "try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "this statement's opening or closing balance is too large to "
+                    "store — "
+                    "try your bank's CSV or OFX export",
+                )
+            )
         ) from exc
 
 
@@ -642,8 +675,14 @@ def _verify_checksum(
         if family in (Family.A, Family.E):
             return  # per-row gate covered correctness (E adds its own totals gate)
         raise ValueError(
-            "couldn't find the closing balance to check this statement against — "
-            "try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "couldn't find the closing balance to check this statement "
+                    "against — "
+                    "try your bank's CSV or OFX export",
+                )
+            )
         )
     total = sum(d.amount_minor for d in drafts)
     # Bounded BEFORE the comparison below, so an unstorable figure is reported as
@@ -678,8 +717,14 @@ def _verify_checksum(
         mismatch = reconciled != closing_m
     if mismatch:
         raise ValueError(
-            "this statement didn't add up — its running balance and transactions "
-            "disagree; try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "this statement didn't add up — its running balance and "
+                    "transactions "
+                    "disagree; try your bank's CSV or OFX export",
+                )
+            )
         )
 
 
@@ -692,9 +737,12 @@ _E_TOTAL = re.compile(rf"^\s*(Payments|Deposits)\s+-?R?({_MONEY.pattern})\s*$", 
 # message describes a *running balance* disagreement, which is factually wrong for
 # the case this gate exists to catch — a truncated tail, where every surviving row
 # still reconciles (FIBR-0190 D8/§4.5).
-_E_TOTALS_MISMATCH = (
-    "this statement didn't add up — its printed Payments/Deposits totals don't "
-    "match its transactions; try your bank's CSV or OFX export"
+_E_TOTALS_MISMATCH = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal",
+        "this statement didn't add up — its printed Payments/Deposits totals don't "
+        "match its transactions; try your bank's CSV or OFX export",
+    )
 )
 
 
@@ -888,9 +936,13 @@ def _anchor_balance(line: str, fmt: Fmt) -> Decimal | None:
 # dropped. What failed is storing one row, and telling the user their arithmetic
 # disagrees would misdiagnose the one failure they have the document for. Same
 # reasoning as `_E_TOTALS_MISMATCH`'s own sentence (FIBR-0190 D8).
-_UNREADABLE_MONEY_ROW = (
-    "couldn't read one of this statement's transactions, and it moved money — "
-    "importing it would give you the wrong totals; try your bank's CSV or OFX export"
+_UNREADABLE_MONEY_ROW = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal",
+        "couldn't read one of this statement's transactions, and it moved money — "
+        "importing it would give you the wrong totals; "
+        "try your bank's CSV or OFX export",
+    )
 )
 
 
@@ -933,7 +985,7 @@ def _draft(
     except ValueError as exc:
         if signed != 0:
             raise ValueError(_UNREADABLE_MONEY_ROW) from exc
-        return RowError(row, str(exc))
+        return RowError(row, message_of(exc))
     return TransactionDraft(row, occurred_on, amount_minor, description)
 
 
@@ -954,13 +1006,24 @@ def _verify_row(delta: Decimal, amt_tok: str, fmt: Fmt, *, check_sign: bool) -> 
     **direction**. A mismatch is a mis-parse -> the all-or-nothing ``ValueError``."""
     if abs(delta) != _parse_amount(amt_tok, fmt):
         raise ValueError(
-            "this statement didn't add up — a transaction's amount doesn't match "
-            "its balance change; try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "this statement didn't add up — a transaction's amount "
+                    "doesn't match "
+                    "its balance change; try your bank's CSV or OFX export",
+                )
+            )
         )
     if check_sign and _is_negative(amt_tok) != (delta < 0):
         raise ValueError(
-            "this statement didn't add up — a transaction's sign doesn't match "
-            "its balance change; try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "this statement didn't add up — a transaction's sign doesn't match "
+                    "its balance change; try your bank's CSV or OFX export",
+                )
+            )
         )
 
 
@@ -991,8 +1054,13 @@ def _parse_family_a(
         balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
-                "couldn't find the opening balance on this statement — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "couldn't find the opening balance on this statement — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
         delta = balance - prev_balance
         _verify_row(delta, amt_tok, fmt, check_sign=True)
@@ -1046,8 +1114,13 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
-                "couldn't find the opening balance on this statement — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "couldn't find the opening balance on this statement — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
         delta = balance - prev_balance
         _verify_row(delta, amt_tok, fmt, check_sign=False)  # B prints no amount sign
@@ -1081,8 +1154,13 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
-                "couldn't find the opening balance on this statement — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "couldn't find the opening balance on this statement — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
         delta = balance - prev_balance
         _verify_row(delta, amt_tok, fmt, check_sign=True)
@@ -1140,8 +1218,13 @@ def _parse_family_e(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
-                "couldn't find the opening balance on this statement — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "couldn't find the opening balance on this statement — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
         delta = balance - prev_balance
         _verify_row(delta, amt_tok, fmt, check_sign=True)
@@ -1221,7 +1304,14 @@ def _dmy_iso(date_s: str) -> str:
     month = _MON3.get(mon.lower())
     if month is None:  # defensive — the validated _CC_DATE regex should preclude it
         raise ValueError(
-            f"couldn't read the date {date_s!r} — try your bank's CSV or OFX export"
+            UserMessage(
+                QT_TRANSLATE_NOOP(
+                    "Refusal",
+                    "couldn't read the date {date!r} — "
+                    "try your bank's CSV or OFX export",
+                ),
+                date=date_s,
+            )
         )
     return _iso(2000 + int(yy), month, int(d))
 
@@ -1268,8 +1358,13 @@ class StandardBankImporter:
         # len(result.drafts) cap below still holds (FIBR-0050 Deliverable 1).
         if len(region_lines) > _MAX_PDF_ROWS:
             raise ValueError(
-                "this statement has too many transactions to import — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this statement has too many transactions to import — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
 
         # Detect the decimal convention from the **transaction region** only (D9 /
@@ -1302,8 +1397,13 @@ class StandardBankImporter:
 
         if len(result.drafts) > _MAX_PDF_ROWS:
             raise ValueError(
-                "this statement has too many transactions to import — "
-                "try your bank's CSV or OFX export"
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "this statement has too many transactions to import — "
+                        "try your bank's CSV or OFX export",
+                    )
+                )
             )
 
         closing = _capture_closing(full_text, family, fmt)
@@ -1365,8 +1465,13 @@ def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
             if toks:
                 return _signed_balance(toks[0], fmt)
     raise ValueError(
-        "couldn't find the opening balance on this statement — "
-        "try your bank's CSV or OFX export"
+        UserMessage(
+            QT_TRANSLATE_NOOP(
+                "Refusal",
+                "couldn't find the opening balance on this statement — "
+                "try your bank's CSV or OFX export",
+            )
+        )
     )
 
 

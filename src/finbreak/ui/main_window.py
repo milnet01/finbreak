@@ -160,6 +160,7 @@ from finbreak.ui.transactions import TransactionsView
 from finbreak.ui.transfers import TransfersWidget
 from finbreak.ui.unlock import UnlockDialog
 from finbreak.ui.update_dialog import UpdateDialog
+from finbreak.ui.user_text import user_text
 
 # The three .github/FUNDING.yml donate URLs (D6/INV-8). Kept in sync with that
 # file by hand — the INV-8a test reads FUNDING.yml and fails on any drift.
@@ -1495,7 +1496,7 @@ class MainWindow(QMainWindow):
                 # pair's I/O half, because the policy module stays pure.
                 validate_hint_with_recovery(hint, pw_str)
             except HintPolicyError as exc:
-                dialog.show_error(str(exc))
+                dialog.show_error(user_text(exc))
                 return
             if hint.strip():
                 write_hint(hint)

@@ -475,7 +475,7 @@ def test_INV8_password_prompts_are_bounded(
     files = widget._batch_files
     skipped = [f for f in files if f.outcome == "skipped"]
     assert len(skipped) == 1 and skipped[0].path == locked
-    assert "unlock" in skipped[0].reason, (
+    assert "unlock" in str(skipped[0].reason), (
         f"reason = {skipped[0].reason!r} — it must not claim the user supplied "
         "no password; three wrong ones reach here too"
     )
@@ -1506,7 +1506,7 @@ def test_FIBR0471_an_unexpected_error_queueing_the_next_turn_ends_the_batch(
 
 
 def test_FIBR0471_the_stopped_rows_line_is_one_translated_sentence(
-    qtbot, service, monkeypatch
+    qtbot, service, translate_one
 ):
     """It read "Couldn't read this file — Not imported — the batch stopped
     after an unexpected error": a claim the error may not bear out, doubled up,
@@ -1515,10 +1515,10 @@ def test_FIBR0471_the_stopped_rows_line_is_one_translated_sentence(
 
     widget = _wizard(qtbot, service)
     review = widget._batch_review
-    monkeypatch.setattr(review, "tr", lambda text: f"[T]{text}")
+    translate_one("Refusal", STOPPED_BY_ERROR.template, "[T]stopped")
     record = BatchFile(path="/tmp/a.pdf")
     record.outcome, record.reason = "failed", STOPPED_BY_ERROR
-    assert review.report_line(record) == f"[T]{STOPPED_BY_ERROR}"
+    assert review.report_line(record) == "[T]stopped"
 
 
 def test_FIBR0407_counts_use_the_locales_digits(qapp):

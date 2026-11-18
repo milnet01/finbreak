@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Literal
 
-from finbreak.errors import FinbreakError
+from finbreak.errors import QT_TRANSLATE_NOOP, FinbreakError, UserMessage, message_of
 from finbreak.importers.base import ParseResult, SourceAccountHint
 from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.importers.ofx_importer import OfxImporter
@@ -69,9 +69,17 @@ _MAX_BATCH_DRAFTS = 200_000
 # role, since § 4.2 gives `not_attempted` no other field to distinguish them.
 log = logging.getLogger(__name__)
 
-CANCELLED = "Not imported — the batch was cancelled"
-STOPPED_BY_ERROR = "Not imported — the batch stopped after an unexpected error"
-CAP_REACHED = "Not imported — the batch reached its size limit"
+CANCELLED = UserMessage(
+    QT_TRANSLATE_NOOP("Refusal", "Not imported — the batch was cancelled")
+)
+STOPPED_BY_ERROR = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal", "Not imported — the batch stopped after an unexpected error"
+    )
+)
+CAP_REACHED = UserMessage(
+    QT_TRANSLATE_NOOP("Refusal", "Not imported — the batch reached its size limit")
+)
 
 # SCAN failure text reuses the wizard's existing friendly strings (§ 4.8) rather
 # than inventing a second vocabulary for the same errors. This one is the
@@ -79,10 +87,20 @@ CAP_REACHED = "Not imported — the batch reached its size limit"
 # `PdfError`'s own `str` is raw pikepdf internals ("unable to find trailer
 # dictionary while recovering damaged file"). It is duplicated rather than
 # shared because the wizard's copy is `tr()`-wrapped and this module is Qt-free.
-PDF_UNREADABLE = "Couldn't read this PDF — try your bank's CSV or OFX export."
-UNDATED = "No dated transactions found in this file"
-SKIPPED_LOCKED = "Skipped — we couldn't unlock this file"
-SKIPPED_UNMAPPED = "Skipped — no column mapping was set"
+PDF_UNREADABLE = UserMessage(
+    QT_TRANSLATE_NOOP(
+        "Refusal", "Couldn't read this PDF — try your bank's CSV or OFX export."
+    )
+)
+UNDATED = UserMessage(
+    QT_TRANSLATE_NOOP("Refusal", "No dated transactions found in this file")
+)
+SKIPPED_LOCKED = UserMessage(
+    QT_TRANSLATE_NOOP("Refusal", "Skipped — we couldn't unlock this file")
+)
+SKIPPED_UNMAPPED = UserMessage(
+    QT_TRANSLATE_NOOP("Refusal", "Skipped — no column mapping was set")
+)
 
 Outcome = Literal[
     "waiting",  # selected, not yet reached by SCAN  (initial value)
@@ -164,7 +182,7 @@ class BatchFile:
     # The Create prefill; see _settle_parse.
     hint: SourceAccountHint | None = field(default=None, repr=False)
     account_id: int | None = None  # the destination, once settled
-    reason: str = ""  # user-facing text for failed/skipped/not_attempted
+    reason: UserMessage | None = None  # why it failed, was skipped or not attempted
     # § 4.4 — held, not yet written. Out of the repr: never logged (FIBR-0479).
     pending_password: str | None = field(default=None, repr=False)
     remember_password: bool = False  # § 4.4 — the dialog's tick
@@ -406,10 +424,10 @@ class BatchImportService:
         except PdfError as exc:
             self._fail(record, PDF_UNREADABLE, exc)
         except (ValueError, OSError, FinbreakError) as exc:
-            self._fail(record, str(exc), exc)
+            self._fail(record, message_of(exc), exc)
 
     @staticmethod
-    def _fail(record: BatchFile, reason: str, exc: Exception) -> None:
+    def _fail(record: BatchFile, reason: UserMessage, exc: Exception) -> None:
         # The TYPE only: the message can carry the statement's own text
         # (security-model INV-9, FIBR-0407).
         log.warning("batch import: a file failed at scan (%s)", type(exc).__name__)
@@ -885,7 +903,7 @@ class BatchImportService:
                 "batch import: a file failed at commit (%s)", type(exc).__name__
             )
             record.outcome = "failed"
-            record.reason = str(exc)
+            record.reason = message_of(exc)
             return
         record.outcome = "committed"
         self._remember_password(record)
@@ -930,7 +948,7 @@ class BatchImportService:
                 other.reason = STOPPED_BY_ERROR
 
     @staticmethod
-    def stop_from(files: Sequence[BatchFile], index: int, reason: str) -> None:
+    def stop_from(files: Sequence[BatchFile], index: int, reason: UserMessage) -> None:
         """Mark every record from ``index`` on as ``not_attempted`` — a cap
         stopping SCAN, or Cancel stopping either pass.
 

@@ -40,6 +40,7 @@ from finbreak.services.categorization import CategorizationService
 from finbreak.ui._table_state import fill_guard, remember_columns
 from finbreak.ui._widgets import add_grouped_categories, select_combo_data
 from finbreak.ui.modal import show_modal
+from finbreak.ui.user_text import user_text
 
 _COL_PATTERN = 0
 _COL_CATEGORY = 1
@@ -238,7 +239,7 @@ class RulesWidget(QWidget):
         except VaultLockedError:
             return  # defense-in-depth; INV-2 destroys the dialog before this slot
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._refresh()
 
@@ -268,7 +269,7 @@ class RulesWidget(QWidget):
         except VaultLockedError:
             return  # defense-in-depth; INV-2 destroys the dialog before this slot
         except (ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self._refresh()
 

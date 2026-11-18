@@ -52,6 +52,7 @@ from finbreak.ui._widgets import account_label
 from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.modal import show_modal
+from finbreak.ui.user_text import user_text
 
 COL_FILE, COL_ACCOUNT, COL_NEW, COL_DUPLICATE, COL_ERRORS, COL_STATUS = range(6)
 
@@ -100,6 +101,10 @@ def file_labels(files: Sequence[BatchFile]) -> list[str]:
             label = self_index_label(label, record.statement_index, siblings)
         labels.append(label)
     return labels
+
+
+def _reason(record: batch.BatchFile) -> str:
+    return "" if record.reason is None else user_text(record.reason)
 
 
 def _digits(value: int) -> str:
@@ -372,9 +377,9 @@ class BatchReviewWidget(QWidget):
                 if record.preview is not None
                 else self.tr("Couldn't read this file — {why}")
             )
-            return template.format(why=self._translated(record.reason))
+            return template.format(why=_reason(record))
         if outcome in ("skipped", "not_attempted", "failed"):
-            return self._translated(record.reason)
+            return _reason(record)
         return {
             "waiting": self.tr("Waiting…"),
             "ready": self.tr("Ready to import"),
@@ -382,32 +387,6 @@ class BatchReviewWidget(QWidget):
             "needs_mapping": self.tr("Needs its columns matched up"),
             "needs_account": self.tr("Pick an account"),
         }.get(outcome, "")
-
-    def _translated(self, reason: str) -> str:
-        """Translate a reason the SERVICE authored; pass anything else through.
-
-        `services/batch_import.py` is Qt-free by design (§ 4.1), so its fixed
-        report sentences cannot call `tr()` where they are written. They are
-        translated here, at the one place they reach a screen. A reason that is
-        NOT one of them is an exception's own message — dynamic text, untranslated
-        by the same established convention every other rejection in this app
-        follows (`ManualEntryDialog._on_add` renders `str(exc)` verbatim).
-        """
-        return {
-            batch.CANCELLED: self.tr("Not imported — the batch was cancelled"),
-            batch.CAP_REACHED: self.tr(
-                "Not imported — the batch reached its size limit"
-            ),
-            batch.PDF_UNREADABLE: self.tr(
-                "Couldn't read this PDF — try your bank's CSV or OFX export."
-            ),
-            batch.UNDATED: self.tr("No dated transactions found in this file"),
-            batch.SKIPPED_LOCKED: self.tr("Skipped — we couldn't unlock this file"),
-            batch.SKIPPED_UNMAPPED: self.tr("Skipped — no column mapping was set"),
-            batch.STOPPED_BY_ERROR: self.tr(
-                "Not imported — the batch stopped after an unexpected error"
-            ),
-        }.get(reason, reason)
 
     # -- setting an account ---------------------------------------------------
     @Slot(int, int)
@@ -514,7 +493,7 @@ class BatchReviewWidget(QWidget):
             # reading "— pick one —" and no hint that a duplicate name was the
             # reason — the single-file twin (`_create_account_from`) has always
             # shown the message.
-            self._error.setText(str(exc))
+            self._error.setText(user_text(exc))
             return
         self.accounts_changed.emit()
         # Report what was STORED, not what the statement printed: the number box

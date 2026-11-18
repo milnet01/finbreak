@@ -24,6 +24,7 @@ from sqlcipher3 import dbapi2
 
 from finbreak import category_library
 from finbreak.db import owned_transaction
+from finbreak.errors import QT_TRANSLATE_NOOP, UserMessage
 from finbreak.migrations import DEFAULT_CATEGORIES
 from finbreak.models import CategorizationRule, Category, CategoryKind, CategorySource
 from finbreak.repositories.categories import CategoryRepository
@@ -387,7 +388,11 @@ class CategorizationService:
         **leaf** (non-root) target (INV-9)."""
         pattern = pattern.strip()
         if not pattern:
-            raise ValueError("a rule pattern must not be empty")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP("Refusal", "a rule pattern must not be empty")
+                )
+            )
         self._require_leaf(category_id)
         return pattern
 
@@ -397,4 +402,10 @@ class CategorizationService:
         ``CategoryService``'s root check."""
         category = CategoryRepository(self._conn).get(category_id)
         if category is None or category.parent_id is None:
-            raise ValueError("a category must be a leaf, not a Type")
+            raise ValueError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal", "a category must be a leaf, not a Type"
+                    )
+                )
+            )
