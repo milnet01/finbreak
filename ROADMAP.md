@@ -5517,13 +5517,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: services.
 
-- 📋 [FIBR-0480] **The wizard's account-match label renders markup from a user-typed account name.**
+- ✅ [FIBR-0480] **The wizard's account-match label renders markup from a user-typed account name.**
   LOW; lane 03. ui/import_wizard.py sets "Created {name}. ..." on
   _account_match_label, a QLabel left on Qt.AutoText; the name is
   user-typed or prefilled from a PDF header. self._error has the same
   shape where an exception echoes file text. The batch screen's labels
   are already plain text. Fix: setTextFormat(Qt.TextFormat.PlainText)
   on both labels.
+  2026-11-18 — test 4d44872, fix c56e524: both labels are now
+  PlainText (red: the account-match label was AutoText after a Create
+  named `<b>Bold</b> Savings`).
   **Layman:** An account name containing formatting code would display as formatted text on the import screen. Display only.
   Kind: review-fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).

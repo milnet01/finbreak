@@ -105,6 +105,10 @@ signaling per
   already switched to the second statement's, so Import would have put
   the first statement's rows there. Import now stays off until a preview
   succeeds.
+- **An account name is shown as typed on the import screen** (FIBR-0480).
+  A name containing text such as `<b>` was displayed as formatting
+  after you created the account during an import. Error messages there
+  are shown as plain text too.
 
 ### Security
 
