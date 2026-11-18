@@ -5572,7 +5572,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: FIBR-0474 fix, 2026-11-18.
   Lanes: ui, services.
 
-- 📋 [FIBR-0483] **A batch record's printed form carries the statement's decrypted text and rows.**
+- ✅ [FIBR-0483] **A batch record's printed form carries the statement's decrypted text and rows.**
   LOW, latent. Found while fixing FIBR-0479. services/batch_import.py
   BatchFile keeps plaintext (the decrypted PDF bytes) out of its repr,
   but source_text (that PDF's table serialised to CSV, or a CSV's text),
@@ -5580,6 +5580,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   any repr of a record prints the statement's transactions. No current
   call site logs a record. Fix: repr=False on the three, with a test
   that a marker in each is absent from repr(record).
+  Shipped 2026-11-18 (f9dfec9 test, 8086dd9 fix). repr=False on
+  source_text, parsed, preview and hint. hint was not named above; it
+  carries the account number as printed, the same leak. No CHANGELOG
+  entry: nothing a user sees changes, as with FIBR-0479.
   **Layman:** A debug printout of the batch import's internal records could show statement contents. Nothing prints one today.
   Kind: security.
   Source: FIBR-0479 fix, 2026-11-18.
