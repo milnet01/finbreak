@@ -90,7 +90,7 @@ class BatchFile:
     preview: ImportPreview | None = None        # None until an account is known
     hint: SourceAccountHint | None = None       # Create prefill: no_match/wrong_bank only
     account_id: int | None = None               # the destination, once settled
-    reason: str = ""                            # user-facing text for failed/skipped
+    reason: UserMessage | None = None           # why it failed or was skipped (FIBR-0425)
     pending_password: str | None = None         # §4.4 — held, not yet written
     remember_password: bool = False             # §4.4 — the dialog's tick
     result: ImportResult | None = None          # None until committed

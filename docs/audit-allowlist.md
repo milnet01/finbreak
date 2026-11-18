@@ -188,7 +188,8 @@ Do not delete revoked entries — the history is the value.
 
 ## allowlist-004 — coding.md § 5.2: the FIBR-0219 ambiguity message is untranslated
 
-- **Status:** active
+- **Status:** revoked 2026-11-18 — FIBR-0425 marks these strings for the
+  catalog and the screen translates them, so the finding no longer fires.
 - **Tool / rule:** `coding.md § 5.2` (every user-facing string in `ui/` goes
   through `tr()` / `QCoreApplication.translate`) — fires for `check-code` and
   `review-code` alike, no tool rule id.

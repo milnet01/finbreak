@@ -185,6 +185,12 @@ below cover the two surfaces; there is no C++ in the codebase.
   `tests/features/i18n/` checks both. This holds from the
   first UI (P02) — it makes the FIBR-0017 (P12) i18n pass a translate-and-ship
   step instead of a rewrite.
+- **Refusals from a Qt-free layer:** an importer or service raises with a
+  `UserMessage` (`errors.py`) whose first argument is a
+  `QT_TRANSLATE_NOOP("Refusal", "<literal>")` call, each value passed by name.
+  A screen shows a caught exception through `ui/user_text.user_text(exc)`,
+  never `str(exc)`. `tests/features/i18n/test_user_text.py` checks both
+  ([FIBR-0425](../specs/FIBR-0425-translatable-refusals.md)).
 - **Live language switching:** Qt does **not** re-translate a widget that is
   already built, so a switch rebuilds instead. `MainWindow` rebuilds its chrome
   and its live content on `LanguageController.languageChanged`

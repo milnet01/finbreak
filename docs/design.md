@@ -305,6 +305,8 @@ whole-codebase rewrite. So, as a standing convention:
   strings are never assembled by `+` / f-string concatenation (word order
   varies by language); values are substituted through placeholders after
   translation instead. The exact PySide6 idioms live in coding.md § 5.2.
+  The Qt-free importers and services raise a refusal as a marked English
+  template plus its values, which the screen translates (FIBR-0425).
 - **Layouts are direction-agnostic so the whole UI mirrors for RTL locales.**
   Screens are arranged with Qt layout managers rather than fixed positions, so
   they flip automatically with the application's `layoutDirection`, and text

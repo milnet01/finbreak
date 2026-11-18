@@ -39,7 +39,7 @@ call in the wrapper's body, where lupdate reads it. `ui/unlock.py`'s
 
 | ID | Test | Assertion |
 |---|---|---|
-| INV-1 | `test_no_tr_call_takes_a_non_literal_argument` | No `.tr()` first argument, and no `.translate()` first or second argument, in `src/finbreak/` is anything but a string literal — `services/pdf_export.py` excepted |
+| INV-1 | `test_no_tr_call_takes_a_non_literal_argument` | No `.tr()` first argument, and no `.translate()` first or second argument, in `src/finbreak/` is anything but a string literal — `services/pdf_export.py` excepted, and `user_text`'s one call on a refusal's template |
 | INV-2 | `test_the_walk_actually_sees_a_planted_offence` | The walk returns exactly the three dropped shapes from a planted file, and neither of the two good ones — INV-1 asserts an absence, and this is what stops a walk that matches nothing reading as a pass |
 | INV-3 | `test_the_known_offender_is_still_one` | `services/pdf_export.py` still holds at least one offence, so the by-name exclusion fails the day the work lands rather than quietly outliving it (FIBR-0311) |
 
@@ -63,6 +63,23 @@ pseudo catalog built per session: every extracted source text, translated as
 | FIBR-0017 INV-8 | `test_INV8_*` | The picker lists *System default* then each language under its own name (`pt` and `pt_BR` distinct); saving a new choice writes it and switches, saving the same one does neither |
 | FIBR-0017 INV-9 | `test_INV9_month_name_follows_language` | Month names follow the language; amount separators keep the locale's |
 | FIBR-0017 INV-10 | `test_INV10_direction_follows` | A right-to-left language mirrors the layout, and switching back restores it |
+
+## Refusals
+
+`test_user_text.py` enforces
+[`docs/specs/FIBR-0425-translatable-refusals.md`](../../../docs/specs/FIBR-0425-translatable-refusals.md).
+Its INV-4 is the existing message assertions in other suites, so it has no row
+here.
+
+| ID | Test | Assertion |
+|---|---|---|
+| FIBR-0425 INV-1 | `test_INV1_no_screen_shows_exception_text` | No `str(exc)` of a caught exception in `ui/` outside a logging call; a planted `setText(str(exc))` is seen |
+| FIBR-0425 INV-2 | `test_INV2_every_message_is_marked`, `test_INV2_lupdate_extracts_refusals` | Every `UserMessage(…)` in `src/finbreak/` starts with `QT_TRANSLATE_NOOP("Refusal", <literal>)`; lupdate extracts an imported marker under `Refusal` |
+| FIBR-0425 INV-3 | `test_INV3_placeholders_match_values` | Each template's placeholder names equal its call's keyword names |
+| FIBR-0425 INV-5 | `test_INV5_*` | Under the pseudo catalog the Accounts error label, a batch status cell and a preview reason cell show the refusal translated, values filled in after |
+| FIBR-0425 INV-6 | `test_INV6_int_values_use_locale_digits` | An `int` value reads in the locale's digits |
+| FIBR-0425 INV-7 | `test_INV7_bad_translation_falls_back` | A translation whose placeholders do not fit shows the English sentence and logs the template, not the values |
+| FIBR-0425 INV-8 | `test_INV8_bare_exception_shows_a_fixed_sentence` | An exception with no `UserMessage` shows a fixed sentence, and its text reaches neither the screen nor the log |
 
 ## Why an AST walk rather than running lupdate
 
