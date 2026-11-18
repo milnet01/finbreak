@@ -157,7 +157,7 @@ class BatchFile:
     statement_index: int | None = None  # OFX fan-out; None for every other format
     parsed: ParseResult | None = None  # kept: the account may be set later
     preview: ImportPreview | None = None  # None until an account is known
-    hint: SourceAccountHint | None = None  # ParseResult.source_account
+    hint: SourceAccountHint | None = None  # the Create prefill; see _settle_parse
     account_id: int | None = None  # the destination, once settled
     reason: str = ""  # user-facing text for failed/skipped/not_attempted
     pending_password: str | None = None  # § 4.4 — held, not yet written
@@ -558,7 +558,6 @@ class BatchImportService:
         """The tail every format shares: keep the parse, refuse an undated file,
         then try to resolve its destination account."""
         record.parsed = parsed
-        record.hint = parsed.source_account
         # `ImportPreview.errors` holds the rows that could not be parsed. A file
         # where 40 of 50 rows failed commits 10 and would report "10 added" with
         # no hint that 40 vanished — in a money app a silently dropped row is
@@ -574,6 +573,14 @@ class BatchImportService:
             record.reason = UNDATED
             return
         match = match_account(parsed.source_account, self._accounts.list_accounts())
+        # Creation is offered from no_match and wrong_bank ONLY (FIBR-0086 §4.6):
+        # a masked number must never be stored, and a matched or ambiguous one
+        # would become a second account on the same number.
+        record.hint = (
+            parsed.source_account
+            if match.outcome in ("no_match", "wrong_bank")
+            else None
+        )
         if match.account_id is None:
             record.outcome = "needs_account"  # settled on the review screen
             return

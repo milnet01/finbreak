@@ -1834,8 +1834,10 @@ def test_FIBR0474_picker_offers_create_only_where_matching_allows(
     widget = _wizard(qtbot, service)
     widget._select_files([_ofx(tmp_path, "a.ofx", acctid)])
     qtbot.waitUntil(
-        lambda: widget._batch_phase == "review"
-        and widget._batch_files[0].outcome in ("needs_account", "ready"),
+        lambda: (
+            widget._batch_phase == "review"
+            and widget._batch_files[0].outcome in ("needs_account", "ready")
+        ),
         timeout=3000,
     )
     review = widget._batch_review

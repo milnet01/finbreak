@@ -832,6 +832,46 @@ def test_FIBR0252_error_count_is_set_for_a_standard_bank_file(service, batch):
     )
 
 
+def test_FIBR0474_wrong_bank_keeps_the_create_prefill(
+    service, batch, tmp_path, monkeypatch
+):
+    """FIBR-0086 §4.6 offers Create from ``no_match`` AND ``wrong_bank``. The
+    review-screen test drives OFX, which names no bank, so only this leg sees
+    the second outcome: the statement's number is on file, at another bank.
+    The read is stubbed because every committed Standard Bank fixture prints an
+    all-zero number, which matching treats as no number at all."""
+    from finbreak.importers.base import SourceAccountHint
+
+    printed = SourceAccountHint(number="447556667", bank="Standard Bank")
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(lambda data, password=None: b"%PDF-1.7 plain"),
+    )
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.read_pdf",
+        lambda plaintext, exponent: ParseResult(
+            drafts=[TransactionDraft(1, "2026-03-05", -1000, "Fake Row")],
+            errors=[],
+            period_start="2026-03-01",
+            period_end="2026-03-31",
+            source_account=printed,
+        ),
+    )
+    AccountService(service.vault).add_account(
+        "Elsewhere",
+        AccountType.CURRENT.value,
+        account_number="447556667",
+        bank="Nedbank",
+    )
+    statement = tmp_path / "statement.pdf"
+    statement.write_bytes(b"%PDF-1.7")
+
+    files = batch.build([str(statement)])
+    _scan_all(batch, files)
+    assert files[0].outcome == "needs_account"
+    assert files[0].hint == printed
+
+
 def test_FIBR0085_4_4_an_answered_password_unlocks_the_rest_of_the_batch(
     batch, tmp_path, monkeypatch
 ) -> None:

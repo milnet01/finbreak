@@ -88,7 +88,7 @@ class BatchFile:
     statement_index: int | None = None          # OFX fan-out (below); else None
     parsed: ParseResult | None = None           # kept: the account may be set later
     preview: ImportPreview | None = None        # None until an account is known
-    hint: SourceAccountHint | None = None       # ParseResult.source_account
+    hint: SourceAccountHint | None = None       # Create prefill: no_match/wrong_bank only
     account_id: int | None = None               # the destination, once settled
     reason: str = ""                            # user-facing text for failed/skipped
     pending_password: str | None = None         # §4.4 — held, not yet written
@@ -194,6 +194,8 @@ SCAN   refuse the batch before reading anything, if
              -> failed, "No dated transactions found in this file"
                                                           (§3 decision 4)
          match_account(parsed.source_account, accounts)
+             hint = parsed.source_account on no_match / wrong_bank, else None
+                    (FIBR-0086 §4.6: Create is offered from those two only)
              matched   -> account_id set; preview_result(parsed, account_id)
                           -> preview; outcome `ready`
              otherwise -> needs_account   (no preview yet — §4.2)
