@@ -982,6 +982,11 @@ class ImportWizardWidget(QWidget):
             preview = self._imports.preview_result(result, self._target_account_id())
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
+            # The destination has already moved to this statement's account, so
+            # the previous statement's preview must not stay importable
+            # (FIBR-0478).
+            self._preview = None
+            self._import_button.setEnabled(False)
             return
         self._show_preview(preview)
 
