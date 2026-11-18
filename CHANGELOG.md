@@ -26,8 +26,11 @@ signaling per
 - **A Language choice in Settings** (FIBR-0017, FIBR-0129, FIBR-0209).
   finbreak opens in your computer's language when it has a translation for
   it, and in English otherwise. Choosing a language in Settings changes
-  every screen at once, with no restart. Only English ships for now; other
-  languages appear in the list as their translations are added.
+  every screen at once, with no restart. finbreak comes in Arabic, Chinese
+  (Simplified), French, Hindi and Spanish as well as English (FIBR-0473).
+  These five were translated by AI, and the list marks each one
+  "machine-translated" until a native speaker has checked it. In Arabic the
+  screens read right to left.
 - **A warning when you pick a statement file you've already imported**
   (FIBR-0088). finbreak says when you imported it, into which account and
   for which period, and asks whether to import it again — before it reads
@@ -64,6 +67,10 @@ signaling per
 
 ### Fixed
 
+- **A failed "Start over" no longer suggests nothing changed** (FIBR-0484).
+  The message said "nothing has changed for certain", which reads as a
+  promise that the vault is untouched. It can be partly erased, so the
+  message now says so.
 - **A failed update on Windows no longer deletes finbreak** (FIBR-0469)
   If another program, such as a virus scanner, held the downloaded
   update open, the update could delete the old program and then the

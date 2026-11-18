@@ -1,7 +1,7 @@
 """FIBR-0017 — the translation pipeline: catalogs, loading, and switching live.
 
-Enforces ``docs/specs/FIBR-0017-translation-pipeline.md`` INV-1 to INV-10. No
-real catalog ships, so the GUI legs run on a PSEUDO catalog: every source text
+Enforces ``docs/specs/FIBR-0017-translation-pipeline.md`` INV-1 to INV-10. The
+GUI legs run on a PSEUDO catalog, not the shipped ones: every source text
 ``lupdate`` extracts from the tree, translated as ``⟦text⟧`` and compiled with
 ``lrelease`` once per session under each language a test needs. Built per
 session, it cannot go stale the way a committed fixture would.
@@ -379,8 +379,23 @@ def test_INV8_picker_offers_system_then_each_language(
     # Each under its own name; English as plain "English", not "American English"
     # (QLocale("en")'s native name), which misnames it for every other region.
     assert labels["en"] == "English"
-    assert labels["fr"] == "français"
+    assert labels["pt"] == "português"
     assert combo.currentData() == "system"
+
+
+def test_FIBR0017_a_machine_drafted_catalog_says_so_in_the_picker(
+    qtbot, service, catalogs, controller
+):
+    """The shipped catalogs are AI drafts (user decision 2026-11-18). The picker
+    says so until a native speaker has reviewed one; any other is listed plainly."""
+    dialog = SettingsDialog(service, "ZAR", language_controller=controller)
+    qtbot.addWidget(dialog)
+    combo = dialog.findChild(QComboBox, "settings_language")
+    assert combo is not None
+    labels = {combo.itemData(i): combo.itemText(i) for i in range(combo.count())}
+    assert labels["fr"] == "français (machine-translated)"
+    assert labels["pt"] == "português"
+    assert labels["en"] == "English"
 
 
 def test_INV8_picker_saving_a_new_choice_writes_and_switches(

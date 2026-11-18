@@ -39,6 +39,9 @@ LANGUAGE_PREF_KEY = "language"
 LANGUAGE_SYSTEM = "system"
 SOURCE_LANGUAGE = "en"
 CATALOG_DIR = Path(__file__).parent.parent / "data" / "i18n"
+# Catalogs drafted by AI, which the picker labels as machine-translated (user
+# decision 2026-11-18). Remove a language once a native speaker has reviewed it.
+MACHINE_TRANSLATED = frozenset({"ar", "es", "fr", "hi", "zh_CN"})
 
 # The language the installed translators speak. Module state rather than a
 # controller attribute so ``ui_locale()`` needs no reference to the controller.
@@ -72,6 +75,15 @@ def language_name(lang: str) -> str:
     if "_" in lang:  # pt_BR beside pt: both are "português" otherwise
         return f"{name} ({locale.nativeTerritoryName()})"
     return name
+
+
+def load_qtbase(translator: QTranslator, lang: str) -> bool:
+    """Load Qt's own words (OK, Cancel, the text-edit menus) for ``lang``. Not
+    every language has a catalog in the wheel; then they stay English (spec § 6).
+    The QLocale lookup also tries regional files: the wheel has qtbase_pt_BR.qm
+    and no qtbase_pt.qm."""
+    directory = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    return translator.load(QLocale(lang), "qtbase", "_", directory)
 
 
 def load_language_pref() -> str:
@@ -146,13 +158,8 @@ class LanguageController(QObject):
         self.languageChanged.emit()
 
     def _install_qtbase(self, lang: str) -> None:
-        # Qt's own words (OK, Cancel, the text-edit menus). Not every language
-        # has a catalog in the wheel; then they stay English (spec § 6).
-        # The QLocale lookup also tries regional files: the wheel has
-        # qtbase_pt_BR.qm and no qtbase_pt.qm.
-        directory = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
         translator = QTranslator(self._app)
-        if translator.load(QLocale(lang), "qtbase", "_", directory):
+        if load_qtbase(translator, lang):
             self._install(translator)
         else:
             translator.deleteLater()

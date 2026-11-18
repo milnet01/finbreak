@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=483 -->
+<!-- ants-roadmap-id-high-water: FIBR=484 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5747,9 +5747,25 @@ on the § 2 surface.
   PyInstaller, AppImage and OBS bundles: run build-smoke.sh with a catalog
   present and switch language inside the clean-room container.
   2026-11-18: started, items 1-2 first.
+  2026-11-18: items 1-2 done in c96c92b (twelve tr() month names;
+  "{text} {more}" join; FIBR-0231 § 4.6 amended). Item 3 waits for the
+  catalogs.
   **Layman:** Three small things to fix when the first real translation is added, so it reads correctly and reaches every download.
   Kind: review-fix.
   Source: review-code-2026-11-15-fibr0017.
+  Lanes: ui, i18n.
+
+- 🚧 [FIBR-0484] **A failed Start over said "nothing has changed for certain", which reads as a promise the vault is intact.**
+  Found 2026-11-18 while drafting the catalogs: four of five AI
+  translators read ui/main_window.py's reset-failure message as "it is
+  certain nothing changed". The code's own comment says not to promise
+  the vault is intact, since a second-unlink failure leaves a mixed
+  state. Fix: the English now says part of the vault may already be
+  erased, and each catalog carries that sentence. No test pins the
+  wording; the reset-failure path has none.
+  **Layman:** After a failed reset, the message no longer suggests your data is untouched when part of it may be erased.
+  Kind: fix.
+  Source: translation-drafts-2026-11-18.
   Lanes: ui, i18n.
 
 ## v1.2.0 — Import breadth

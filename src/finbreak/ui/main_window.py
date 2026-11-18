@@ -1544,8 +1544,8 @@ class MainWindow(QMainWindow):
                 self,
                 self.tr("Start over failed"),
                 self.tr(
-                    "finbreak could not erase the vault. The reset failed, so "
-                    "nothing has changed for certain — please try again."
+                    "finbreak could not erase the vault, and part of it may "
+                    "already be erased. Please try again."
                 ),
             )
             return

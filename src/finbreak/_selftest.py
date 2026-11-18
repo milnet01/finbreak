@@ -11,7 +11,8 @@ stack travels with the artifact: Qt, QtCharts (``Qt6Charts``, the dashboard's
 donut + trend, FIBR-0012), the SQLCipher native library, and qpdf
 (behind ``pikepdf``, FIBR-0003), Argon2 (FIBR-0004), ofxparse's transitive tree
 incl. native lxml (FIBR-0008), and pdfplumber's native tree — Pillow, PDFium
-(``pypdfium2``/``pypdfium2_raw``), cryptography (FIBR-0009). See
+(``pypdfium2``/``pypdfium2_raw``), cryptography (FIBR-0009), and the
+translation catalogs, finbreak's and Qt's (FIBR-0473). See
 docs/specs/FIBR-0003.md.
 """
 
@@ -116,6 +117,32 @@ def _check_icons() -> None:
             "branded app icon did not render — ui/icons/app.png did not travel "
             "with the bundle"
         )
+
+
+def _check_translations() -> None:
+    """Load every bundled ``finbreak_<lang>.qm`` and Qt's own catalog, proving
+    the ``data/i18n/`` package data and PySide6's ``translations/`` directory
+    travel into the bundle (FIBR-0473). Qt's catalog is required for at least
+    one language, not each: the wheel has none for some (Hindi), and the
+    directory travels whole or not at all."""
+    from PySide6.QtCore import QTranslator
+
+    from finbreak.ui import language
+
+    shipped = [
+        lang
+        for lang in language.available_languages()
+        if lang != language.SOURCE_LANGUAGE
+    ]
+    if not shipped:
+        raise RuntimeError("no translation catalog travelled with the bundle")
+    for lang in shipped:
+        path = language.CATALOG_DIR / f"finbreak_{lang}.qm"
+        translator = QTranslator()
+        if not translator.load(str(path)) or translator.isEmpty():
+            raise RuntimeError(f"{path.name} did not load, or is empty")
+    if not any(language.load_qtbase(QTranslator(), lang) for lang in shipped):
+        raise RuntimeError("no qtbase catalog travelled with the bundle")
 
 
 def _check_sqlcipher() -> None:
@@ -357,6 +384,7 @@ CHECK_NAMES = (
     "qtnetwork",
     "qtcharts",
     "icons",
+    "translations",
     "sqlcipher",
     "pikepdf",
     "pdf_encrypt",

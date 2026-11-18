@@ -47,8 +47,8 @@ call in the wrapper's body, where lupdate reads it. `ui/unlock.py`'s
 
 `test_language.py` enforces
 [`docs/specs/FIBR-0017-translation-pipeline.md`](../../../docs/specs/FIBR-0017-translation-pipeline.md),
-whose invariants it numbers. No real catalog ships, so its GUI legs run on a
-pseudo catalog built per session: every extracted source text, translated as
+whose invariants it numbers. Its GUI legs run on a pseudo catalog built per
+session, not the shipped ones: every extracted source text, translated as
 `⟦text⟧`.
 
 | ID | Test | Assertion |
@@ -63,6 +63,12 @@ pseudo catalog built per session: every extracted source text, translated as
 | FIBR-0017 INV-8 | `test_INV8_*` | The picker lists *System default* then each language under its own name (`pt` and `pt_BR` distinct); saving a new choice writes it and switches, saving the same one does neither |
 | FIBR-0017 INV-9 | `test_INV9_month_name_follows_language` | Month names follow the language; amount separators keep the locale's |
 | FIBR-0017 INV-10 | `test_INV10_direction_follows` | A right-to-left language mirrors the layout, and switching back restores it |
+| FIBR-0017 label | `test_FIBR0017_a_machine_drafted_catalog_says_so_in_the_picker` | A language in `MACHINE_TRANSLATED` is listed as "<name> (machine-translated)"; any other plainly |
+
+`test_catalog_placeholders.py` reads every shipped `.ts`. Each finished
+translation must name the same `{placeholders}` as its source and parse as a
+format string; a planted renamed, added, dropped or unclosed placeholder must
+each be caught.
 
 ## Refusals
 
@@ -91,8 +97,8 @@ to act on.
 
 ## Out of scope
 
-- **Whether a translation is any good.** No non-English catalog ships yet
-  (FIBR-0017's `Waiting-on: user`).
+- **Whether a translation is any good.** The shipped catalogs are AI drafts
+  (user decision 2026-11-18); only their placeholders are checked.
 - **Non-display strings** — log lines, DB keys, enum values. The standard says
   not to wrap those, and this suite does not check that they are not wrapped:
   it only checks the arguments of calls that *are* there.

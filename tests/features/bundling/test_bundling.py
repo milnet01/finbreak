@@ -800,3 +800,35 @@ def test_FIBR0399_a_failed_clean_room_image_build_shows_its_output():
     marker = '"$RUNNER" build -t "$CLEANROOM_IMAGE"'
     build = next(line for line in joined.splitlines() if marker in line)
     assert ">/dev/null" not in build, build
+
+
+@pytest.mark.features
+def test_FIBR0473_selftest_checks_the_translations_travelled(
+    qapp, monkeypatch, tmp_path
+):
+    """Every bundle runs ``--self-test``, so this is what proves the catalogs and
+    Qt's own ``qtbase_*.qm`` reach the AppImage, onedir and OBS builds. A bundle
+    with no catalog at all is the likeliest failure, and must not pass vacuously."""
+    from finbreak import _selftest
+    from finbreak.ui import language
+
+    assert "translations" in _selftest.CHECK_NAMES
+    _selftest._check_translations()  # the real tree passes
+
+    monkeypatch.setattr(language, "CATALOG_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="no translation catalog"):
+        _selftest._check_translations()
+
+    (tmp_path / "finbreak_es.qm").write_bytes(b"")
+    with pytest.raises(RuntimeError, match="finbreak_es.qm"):
+        _selftest._check_translations()
+
+
+@pytest.mark.features
+def test_FIBR0473_selftest_fails_without_qts_own_catalogs(qapp, monkeypatch):
+    from finbreak import _selftest
+    from finbreak.ui import language
+
+    monkeypatch.setattr(language, "load_qtbase", lambda translator, lang: False)
+    with pytest.raises(RuntimeError, match="qtbase"):
+        _selftest._check_translations()

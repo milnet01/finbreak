@@ -212,7 +212,8 @@ class SettingsDialog(QDialog):
         # The FIBR-0129 language picker. Unlike the theme it applies on Save, and
         # only when the choice changed: a switch rebuilds the main window, which
         # costs the user their place in it (FIBR-0017 INV-8). Each language is
-        # listed under its own name, which is data, not tr()-wrapped.
+        # listed under its own name, which is data, not tr()-wrapped; only the
+        # "(machine-translated)" label on an AI-drafted catalog is translated.
         self._language_combo: QComboBox | None = None
         if language_controller is not None:
             self._language_combo = QComboBox()
@@ -227,7 +228,12 @@ class SettingsDialog(QDialog):
                 language.LANGUAGE_SYSTEM,
             )
             for lang in language.available_languages():
-                self._language_combo.addItem(language.language_name(lang), lang)
+                name = language.language_name(lang)
+                if lang in language.MACHINE_TRANSLATED:
+                    name = self.tr("{language} (machine-translated)").format(
+                        language=name
+                    )
+                self._language_combo.addItem(name, lang)
             select_combo_data(self._language_combo, language.load_language_pref())
 
         form = QFormLayout()

@@ -11,8 +11,8 @@ FIBR-0209 (which language a launch picks). Each keeps its roadmap bullet as its
 contract; this spec cites them and builds on them.
 
 **Layman:** This builds everything finbreak needs to show itself in another
-language and to switch language without restarting. It ships in English only;
-the other languages are added once it is settled who writes them.
+language and to switch language without restarting. Five languages ship on it
+as AI drafts, labelled machine-translated in the picker.
 
 ## 1. Goal
 
@@ -50,10 +50,10 @@ shows. No non-English catalog ships with this item.
 
 ## 3. Scope decisions (agreed with the user)
 
-- **English only for now** (finbreak's developer, 2026-11-15). The question
-  of who writes the five non-English catalogs is the user's. It is recorded on
-  FIBR-0017 as `Waiting-on: user`, with the recommendation to ship AI drafts
-  labelled as machine-translated. The pipeline does not depend on the answer.
+- **The five catalogs are AI drafts** (user decision 2026-11-18). The picker
+  adds "(machine-translated)" to each language in `MACHINE_TRANSLATED`
+  (`ui/language.py`) until a native speaker reviews it. The pipeline does not
+  depend on who writes a catalog.
 - **Switching rebuilds the window rather than re-translating each widget**
   (finbreak's developer, 2026-11-15). This replaces `coding.md` § 5.2's
   `changeEvent` rule; § 8 says why. It still meets the purpose of the
@@ -314,8 +314,9 @@ shellcheck stage covers it.
 
 ## 9. Out of scope
 
-- The five non-English catalogs, and how the picker labels a machine-drafted
-  one. These are tracked by FIBR-0017's `Waiting-on: user`.
+- The five non-English catalogs and the picker's machine-translated label.
+  They ship on this pipeline under FIBR-0017 and FIBR-0473; this spec does not
+  specify them.
 - Right-to-left layout QA on real screens. That needs a real Arabic catalog,
   and comes with the catalogs.
 - FIBR-0434 and FIBR-0425 were deferred to FIBR-0017. This spec does not
