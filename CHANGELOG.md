@@ -38,6 +38,9 @@ signaling per
   accounts' statements, it says how many of them you have imported so far.
   Importing it again adds nothing you already have. A renamed copy is still
   recognised; files imported before this version are not.
+- **Hints when you add a transaction by hand** (FIBR-0049). Under Amount:
+  money in is a plain number, and money out starts with a minus sign. Under
+  Description: what it was for — the shop, the bill, or who paid you.
 - **A Bank box on each account** (FIBR-0283). Type the bank an account is at,
   or pick one finbreak suggests. The Accounts screen shows it in its own
   column, and the import account choosers and a PDF report's account names
@@ -52,6 +55,14 @@ signaling per
   carry the number, finbreak says so, picks nothing, and offers to create
   the account with Standard Bank already filled in. Accounts with no bank
   recorded keep matching as before.
+- **While you import a statement, the buttons that would leave it are
+  greyed out** (FIBR-0072). The other screens and Settings come back when
+  the import ends, so the file and the column choices you made cannot be
+  thrown away by accident. Lock still works.
+- **An unexpected error no longer says finbreak cannot continue**
+  (FIBR-0472). Some errors, such as one that stops a batch import, leave
+  finbreak working. The message now names the error and says to close and
+  reopen finbreak if it stops working.
 - **Importing a large PDF statement no longer freezes the window**
   (FIBR-0104, FIBR-0468). The statement is read in the background while
   a "Reading the statement…" bar shows. Importing several files at once
