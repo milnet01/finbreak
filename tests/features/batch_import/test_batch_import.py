@@ -23,7 +23,7 @@ import pytest
 
 from conftest import _PW, _acct
 from finbreak.errors import FinbreakError
-from finbreak.importers.base import ParseResult
+from finbreak.importers.base import ParseResult, SourceAccountHint
 from finbreak.importers.pdf_importer import PasswordError
 from finbreak.models import AccountType, ColumnMapping, TransactionDraft
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -37,7 +37,7 @@ from finbreak.services.batch_import import (
     next_question,
     stored_passwords,
 )
-from finbreak.services.import_ import ImportService
+from finbreak.services.import_ import ImportPreview, ImportService
 
 pytestmark = pytest.mark.features
 
@@ -1415,3 +1415,36 @@ def test_FIBR0479_a_held_password_stays_out_of_the_record_s_printed_form():
     record = BatchFile(path="/statements/june.pdf", pending_password="pw-FIBR0479")
     assert record.pending_password == "pw-FIBR0479", "precondition: it is held"
     assert "pw-FIBR0479" not in repr(record)
+
+
+def test_FIBR0483_statement_contents_stay_out_of_the_record_s_printed_form():
+    """A record's repr reaches log lines, assertion diffs and debuggers; the
+    statement's text, rows and printed account number must not appear there."""
+    record = BatchFile(
+        path="/statements/june.pdf",
+        source_text="Date,Amount,Description\n2026-06-01,-10.00,src-FIBR0483",
+        parsed=ParseResult(
+            [TransactionDraft(1, "2026-06-01", -1000, "parsed-FIBR0483")],
+            [],
+            None,
+            None,
+        ),
+        preview=ImportPreview(
+            1,
+            [TransactionDraft(1, "2026-06-01", -1000, "preview-FIBR0483")],
+            [],
+            1,
+            0,
+            None,
+            None,
+        ),
+        hint=SourceAccountHint(number="hint-FIBR0483"),
+    )
+    printed = repr(record)
+    for marker in (
+        "src-FIBR0483",
+        "parsed-FIBR0483",
+        "preview-FIBR0483",
+        "hint-FIBR0483",
+    ):
+        assert marker not in printed, f"{marker} is in the record's repr"
