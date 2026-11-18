@@ -5532,13 +5532,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui.
 
-- 📋 [FIBR-0481] **Batch import report counts use ASCII digits while the count cells use locale digits.**
+- ✅ [FIBR-0481] **Batch import report counts use ASCII digits while the count cells use locale digits.**
   LOW; lane 04. ui/import_batch.py formats inserted_count,
   duplicate_count, error_count and the index/total with str.format,
   which always gives ASCII digits, while the Errors cell uses
   QLocale().toString. Matters once a non-Latin-digit catalog ships
   (FIBR-0017). Fix: pass each interpolated count through
   QLocale().toString.
+  2026-11-18 — test 33810cf, fix 8058581: a module-level _digits
+  formats every count in report_line and self_index_label; mutation
+  probe killed all five reverts. No CHANGELOG entry: no catalog with its
+  own digits ships yet (FIBR-0017).
   **Layman:** In a language with its own digits, one batch import row could show the same number written two different ways.
   Kind: fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
