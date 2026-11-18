@@ -4182,6 +4182,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   no spec until then.
   Started 2026-11-18 with FIBR-0434: survey of every untranslated
   refusal that reaches the screen, then one spec for both.
+  Spec (2026-11-18): docs/specs/FIBR-0425-translatable-refusals.md,
+  accepted. It covers FIBR-0434 too: one mechanism (a UserMessage
+  carried in the exception, translated by ui/user_text.py) and one
+  guard over every screen.
   **Layman:** Messages that explain why a statement could not be imported are written in English inside the importers and cannot be translated yet; they should use the same translation system as the rest of the app.
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
@@ -4434,6 +4438,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   User decision (2026-10-07): do this together with FIBR-0017
   (multi-language UI), not before.
   Started 2026-11-18 with FIBR-0425; one spec for both.
+  Contract (2026-11-18): docs/specs/FIBR-0425-translatable-refusals.md.
+  This item is that spec's services half and has no spec of its own;
+  the FIBR-0219 4.1 amendment is listed in its cross-doc impact.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
