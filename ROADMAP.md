@@ -5437,7 +5437,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: importers.
 
-- 📋 [FIBR-0476] **Two Standard Bank row patterns take quadratic time on one very long line.**
+- 🚧 [FIBR-0476] **Two Standard Bank row patterns take quadratic time on one very long line.**
   MEDIUM, lane 02; timed by the orchestrator with python3 -I. The
   Family A row pattern in importers/standard_bank.py (the re.search
   with a lazy (.*?) head) took 64 / 1,092 / 18,248 ms and

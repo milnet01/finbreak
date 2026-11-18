@@ -8,6 +8,7 @@ end-to-end + security + wizard legs use committed SYNTHETIC reportlab fixtures
 
 import io
 import logging
+import time
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
@@ -1515,15 +1516,16 @@ _OVERDRAWN_D = [
 ]
 
 
-def _parse_text(monkeypatch, lines: list[str]):
+def _parse_text(monkeypatch, lines: list[str], *more_pages: list[str]):
     import pdfplumber
 
     import finbreak.importers.pdf_importer as pdf_mod
 
-    page = SimpleNamespace(extract_text=lambda: "\n".join(lines))
+    def _page(text: str) -> SimpleNamespace:
+        return SimpleNamespace(extract_text=lambda: text)
 
     class _Pdf:
-        pages = [page]
+        pages = [_page("\n".join(p)) for p in (lines, *more_pages)]
 
         def __enter__(self):
             return self
@@ -1570,3 +1572,47 @@ def test_FIBR0405_every_refusal_points_at_the_csv_or_ofx_export(call):
 
     with pytest.raises(ValueError, match="try your bank's CSV or OFX export"):
         call(sb)
+
+
+@pytest.mark.parametrize(
+    ("fixture", "where", "line"),
+    [
+        ("family_a_current.pdf", "table", "1.00 01 02 " * 2_200),
+        ("family_c_creditcard.pdf", "table", "1 Jan 26 " * 6_600),
+        ("family_c_creditcard.pdf", "next page", "1 Jan 26 x " + "1" * 24_000 + "x"),
+    ],
+    ids=["A-row-tails", "C-many-dates", "C-headerless-page"],
+)
+def test_FIBR0476_one_very_long_line_does_not_stall_the_import(
+    monkeypatch, fixture, where, line
+):
+    """A crafted PDF can put one line of tens of thousands of characters on a
+    page: pdfplumber returns one ``Tj`` of tiny glyphs as a single line. Family
+    A's row pattern and Family C's amount-ending check retried from every
+    character, so their time grew with the square of the line's length and one
+    such line held the import for many seconds (FIBR-0476). Accepting or
+    refusing the statement are both fine answers; only the time is under test."""
+    lines = _text(fixture).splitlines()
+    family = detect_standard_bank("\n".join(lines))
+    assert family is not None, "precondition: the statement is detected"
+    pages = [lines]
+    if where == "table":
+        lines.insert(_table_region(lines, family).stop, line)
+        assert line in lines[_table_region(lines, family)], (
+            "precondition: the line sits inside the transaction table"
+        )
+    else:
+        # A credit-card continuation page with no column header: the reader
+        # scans every line of it for the first real row (FIBR-0112).
+        pages.append([line])
+        assert _table_region([line], family) == slice(0, 0), (
+            "precondition: the page has no column header and no row"
+        )
+
+    started = time.monotonic()
+    try:
+        _parse_text(monkeypatch, *pages)
+    except ValueError:
+        pass
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0, f"one long line held the import for {elapsed:.1f}s"
