@@ -107,6 +107,10 @@ signaling per
   every character in it, so a line of tens of thousands of characters
   kept the import busy for many seconds. Both now read it once. What
   they accept is unchanged.
+- **Locking while the import file picker is open no longer reads the
+  chosen file** (FIBR-0477). If finbreak locked itself while you were
+  choosing a statement, closing the picker still loaded that file into
+  the import screen the lock had just cleared. It now stops there.
 
 ## [1.0.4] - 2026-11-08
 

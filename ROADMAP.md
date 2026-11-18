@@ -5461,7 +5461,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: importers.
 
-- 📋 [FIBR-0477] **The import wizard's blocking file and warning dialogs may outlive an auto-lock.**
+- ✅ [FIBR-0477] **The import wizard's blocking file and warning dialogs may outlive an auto-lock.**
   MEDIUM, premise contested; lane 03. ui/import_wizard.py calls the
   static QFileDialog.getOpenFileNames and QMessageBox.warning, each a
   nested event loop. If an idle auto-lock destroys the wizard inside
@@ -5471,7 +5471,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   _clear_decrypted_rows docstring says Qt defers the wizard's deletion
   until the pop-up closes. Settle with write-test first; if real,
   route both through show_modal / a non-static dialog.
-  **Layman:** If the app locks itself while one of two import pop-ups is open, it might crash when the pop-up closes. No data is lost; this needs a test to confirm.
+  2026-11-18 — settled by test (fdb04a8), fix 353bc4a. The
+  crash premise does not hold: deleteLater waits for the outer loop, so
+  the wizard is alive when either pop-up returns. Balance warning: already
+  safe, because _clear_decrypted_rows blocks the wizard's own signals and
+  done.emit() reaches nothing; the test locks it in. File picker: live;
+  _select_file read the picked file into the wiped wizard. Fixed with a
+  vault-open guard after the picker. No INV-6 guard extension: neither
+  call needs routing through show_modal.
+  **Layman:** If the app locked itself while you were choosing a statement file, closing the picker still loaded that file into the cleared import screen. It no longer does; nothing crashed.
   Kind: investigate.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui.
