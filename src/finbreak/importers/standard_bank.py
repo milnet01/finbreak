@@ -305,7 +305,7 @@ def _table_region(page_lines: list[str], family: Family) -> slice:
         # amount, which excludes summary-page date spans ("Statement Period 20 Sep 25
         # to 20 Oct 25") whose trailing token carries no cents.
         for i, line in enumerate(page_lines):
-            if any(_AMOUNT_TAIL.search(seg) for seg in _split_credit_card_line(line)):
+            if any(_ends_in_amount(seg) for seg in _split_credit_card_line(line)):
                 start = i
                 break
     if start == -1:
@@ -383,9 +383,23 @@ def extract_account_number(
 _MON_RE = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
 _CC_DATE = re.compile(rf"\d{{1,2}} {_MON_RE} \d{{2}}")
 _E_DATE_LEAD = re.compile(rf"^\s*\d{{1,2}} {_MON_RE} \d{{2}}\b")
-_AMOUNT_TAIL = re.compile(
-    r"-?[\d.,]+[.,]\d{2}$"
-)  # a segment ending in a 2-decimal amount
+
+
+def _ends_in_amount(text: str, end: int | None = None) -> bool:
+    """Whether ``text[:end]``, trailing whitespace dropped, ends in a 2-decimal
+    amount (``-?[\\d.,]+[.,]\\d{2}``). It reads back from ``end`` over that
+    whitespace and the run of digits, dots and commas before it, and no further.
+    Keep it that way: a regex search retries from every character, and run once
+    per date on a crafted line it took time in the square of the line's length
+    (FIBR-0476)."""
+    end = len(text) if end is None else end
+    while end and text[end - 1].isspace():
+        end -= 1
+    start = end
+    while start and (text[start - 1].isdecimal() or text[start - 1] in ".,"):
+        start -= 1
+    run = text[start:end]
+    return len(run) >= 4 and run[-3] in ".," and run[-2:].isdecimal()
 
 
 def _split_credit_card_line(line: str) -> list[str]:
@@ -399,7 +413,7 @@ def _split_credit_card_line(line: str) -> list[str]:
         return []
     boundaries: list[int] = []
     for i, m in enumerate(matches):
-        if i == 0 or _AMOUNT_TAIL.search(line[: m.start()].rstrip()):
+        if i == 0 or _ends_in_amount(line, m.start()):
             boundaries.append(m.start())
     segs = []
     for k, s in enumerate(boundaries):
@@ -964,7 +978,10 @@ def _parse_family_a(
         if bf is not None:
             prev_balance = _reanchor(prev_balance, bf)  # page-1 or undated repeat
             continue
-        m = re.search(
+        # match, not search: the lazy head takes any prefix, so every match starts
+        # at 0, and a search retries from every character — time in the square of
+        # a crafted long line's length (FIBR-0476).
+        m = re.match(
             r"(.*?)\s+((?:R?-?[\d.,]+-?)\s+)(\d{1,2})\s+(\d{1,2})\s+([\d.,]+-?)\s*$",
             line,
         )
