@@ -1875,3 +1875,32 @@ def test_create_prefills_the_statements_bank(qtbot, service, monkeypatch):
         if a.name == "Home loan"
     )
     assert created.bank == "Standard Bank"
+
+
+def test_FIBR0481_report_counts_use_the_locales_digits(qtbot, service):
+    """The count cells already use the locale's digits (FIBR-0407); the report
+    line and the "[n of m]" label beside them wrote Western digits, so one row
+    could show the same number two ways."""
+    from PySide6.QtCore import QLocale
+
+    widget = _wizard(qtbot, service)
+    record = BatchFile(path="/statements/june.pdf")
+    record.outcome = "committed"
+    record.error_count = 5
+    record.result = ImportResult(
+        inserted_count=12,
+        duplicate_count=3,
+        error_count=5,
+        period_recorded=True,
+    )
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.Arabic, QLocale.Country.Egypt))
+    try:
+        assert QLocale().toString(12) != "12", "precondition: own digits"
+        line = widget._batch_review.report_line(record)
+        label = import_batch_mod.self_index_label("june.ofx", 1, 3)
+    finally:
+        QLocale.setDefault(previous)
+    for shown in (line, label):
+        western = [c for c in shown if c in "0123456789"]
+        assert not western, f"Western digits in {shown!r}"
