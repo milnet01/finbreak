@@ -13,7 +13,7 @@ goes through ``tr()`` and every widget sits in a layout manager (coding.md § 5.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import QLocale, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -165,7 +165,7 @@ class StatementsWidget(QWidget):
                     _COL_FILE: QTableWidgetItem(statement.source_filename or ""),
                     _COL_IMPORTED: SortableItem(imported, statement.imported_at),
                     _COL_COUNT: SortableItem(
-                        str(statement.transaction_count),
+                        QLocale().toString(statement.transaction_count),
                         statement.transaction_count,
                     ),
                 }

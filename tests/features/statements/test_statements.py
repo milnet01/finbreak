@@ -626,6 +626,30 @@ def test_INV7a_statements_tab_shows_exact_counts(qtbot, service):
     )
 
 
+def test_FIBR0434_count_column_uses_the_locale_digits(qtbot, service):
+    """The count cell read Western digits under every locale (str())."""
+    from PySide6.QtCore import QLocale
+
+    from conftest import cell_text
+    from finbreak.ui.statements import _COL_COUNT
+
+    imp, acct = ImportService(service.vault), _acct(service)
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-06", "b", "-2.00"]]),
+        acct,
+    )
+    previous = QLocale()
+    QLocale.setDefault(QLocale("ar_EG"))
+    try:
+        widget = StatementsWidget(service)
+        qtbot.addWidget(widget)
+        shown = cell_text(widget._table, 0, _COL_COUNT)
+    finally:
+        QLocale.setDefault(previous)
+    assert shown == "\u0662", f"expected Arabic-Indic two, got {shown!r}"
+
+
 def test_INV7b_zero_linked_statement_lists_as_zero(qtbot, service):
     imp, acct = ImportService(service.vault), _acct(service)
     rows = [["2026-01-05", "a", "-1.00"], ["2026-01-20", "b", "-2.00"]]

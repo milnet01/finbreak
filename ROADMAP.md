@@ -4164,7 +4164,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0405).
 
-- 🚧 [FIBR-0425] **Importer refusal messages reach the screen through Qt's translation system.**
+- ✅ [FIBR-0425] **Importer refusal messages reach the screen through Qt's translation system.**
   From FIBR-0405 finding 5, and the matching finding in the CSV/OFX
   lane. design.md i18n: every user-facing string goes through tr() /
   QCoreApplication.translate(). The importers (CSV, OFX, generic PDF,
@@ -4186,6 +4186,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   accepted. It covers FIBR-0434 too: one mechanism (a UserMessage
   carried in the exception, translated by ui/user_text.py) and one
   guard over every screen.
+  Shipped 2026-11-18 (5904a90..c5e5189): refusals in the importers and
+  services raise a UserMessage marked QT_TRANSLATE_NOOP("Refusal", ...);
+  every screen shows one through ui/user_text.py. English is unchanged
+  but for an unreadable file's sentence and grouped numbers (CHANGELOG).
+  Tests: tests/features/i18n/test_user_text.py. A two-lane cold code
+  review found 7 points; all fixed or recorded in c5e5189.
   **Layman:** Messages that explain why a statement could not be imported are written in English inside the importers and cannot be translated yet; they should use the same translation system as the rest of the app.
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
@@ -4401,7 +4407,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: doc-fix.
   Source: close-findings FIBR-0394 sweep 2026-10-01.
 
-- 🚧 [FIBR-0434] **Manual entry and Accounts show the services' English validation text, which FIBR-0219 4.1 designs and design.md i18n forbids.**
+- ✅ [FIBR-0434] **Manual entry and Accounts show the services' English validation text, which FIBR-0219 4.1 designs and design.md i18n forbids.**
   Queued from FIBR-0396 D3 (2026-10-01). ui/manual_entry.py and three
   handlers in ui/accounts.py render str(exc) from Qt-free services
   (parse_transaction, parse_amount_input, AccountService): their
@@ -4441,6 +4447,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Contract (2026-11-18): docs/specs/FIBR-0425-translatable-refusals.md.
   This item is that spec's services half and has no spec of its own;
   the FIBR-0219 4.1 amendment is listed in its cross-doc impact.
+  Shipped 2026-11-18 with FIBR-0425 (its commits, plus the count
+  column in the commit after them): the accounts,
+  categories, categorization and transactions refusals, ui/_amount.py's
+  ambiguous-amount message and Manual entry now go through the catalog.
+  FIBR-0219 4.1 amended to render through user_text. The Statements
+  count column now formats through QLocale, so it shows the locale's
+  digits (test_FIBR0434_count_column_uses_the_locale_digits).
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
