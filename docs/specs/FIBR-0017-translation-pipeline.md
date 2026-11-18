@@ -43,8 +43,7 @@ shows. No non-English catalog ships with this item.
    `QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)`, and it loads
    only if something installs it.
 4. **Two kinds of word come from `QLocale()`, not from `tr()`.** These are month
-   names (`ui/month_summary.py` and `services/pdf_export.py`, through
-   `standaloneMonthName`) and the layout direction (`app.py::run`, through
+   names (`services/pdf_export.py`, through `standaloneMonthName`) and the layout direction (`app.py::run`, through
    `textDirection`). `QLocale()` is the system locale, so a user who picks a
    language other than the system's would see month names in the system's
    language.

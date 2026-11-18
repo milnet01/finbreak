@@ -85,7 +85,7 @@ def _amount(value_minor: int) -> str:
     return _format_amount(to_display_decimal(abs(value_minor), _EXP), _SYMBOL)
 
 
-_JUNE = QLocale().standaloneMonthName(6)
+_JUNE = "June"  # the source text; a catalog may give another form (FIBR-0473)
 
 
 # --------------------------------------------------------------------------- #
@@ -253,7 +253,7 @@ def test_INV14a_month_form_with_year(qtbot) -> None:
 
 
 def test_FIBR0393_the_strips_year_uses_the_locales_digits(qtbot) -> None:
-    """The month name is the locale's, so the year beside it must be too."""
+    """The year is written in the locale's digits, like every other number."""
     previous = QLocale()
     QLocale.setDefault(QLocale("ar_EG"))
     try:
@@ -423,3 +423,27 @@ def test_a_long_merchant_name_truncates_to_thirty_nine_characters_plus_ellipsis(
     # any cut from 39 to 59 characters, since the shorter run is a substring of
     # the longer one — so the assertion above pins a lower bound, not the rule.
     assert ("A" * 40) + "…" not in text
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0473 — what a translator must be able to change, before a catalog ships
+
+
+def test_FIBR0473_a_translator_chooses_the_month_names_form(
+    qtbot, translate_one
+) -> None:
+    """Polish, Russian and Czech put a month inside a sentence in a different
+    case from the standalone name. Only a translatable month lets the
+    translator choose the form their sentences need."""
+    translate_one("MonthSummaryStrip", "June", "[T]czerwiec")
+    assert _render(qtbot, _summary()).startswith("[T]czerwiec ")
+
+
+def test_FIBR0473_a_translator_chooses_what_joins_the_sentences(
+    qtbot, translate_one
+) -> None:
+    """Chinese and Japanese put no space between sentences."""
+    translate_one("MonthSummaryStrip", "{text} {more}", "{text}{more}")
+    text = _render(qtbot, _summary(cause=_cause(1000), residual_minor=minor(1340)))
+    assert "month.Most of it" in text
+    assert "usual.Even without it" in text

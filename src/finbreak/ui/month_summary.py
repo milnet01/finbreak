@@ -9,9 +9,10 @@ works for drill nodes, which carry a ``label`` field, but a sentence has
 grammar — clause order, sign-selected templates — which cannot be expressed as
 injected nouns.
 
-**The rendered slots are ONE label, joined by a single space**, following
-``ui/forecast.py``'s clause assembly — not three labels in a layout. One label
-is what makes the block wrap as prose rather than breaking at slot boundaries.
+**The rendered slots are ONE label**, joined through a translatable
+``"{text} {more}"`` as ``ui/forecast.py`` does — not three labels in a layout.
+One label is what makes the block wrap as prose rather than breaking at slot
+boundaries; the template lets Chinese and Japanese drop the space.
 
 The strip is the first thing on the dashboard, because a reader who stops after
 one line must have read the most useful line.
@@ -26,7 +27,6 @@ from finbreak.datetime_format import format_year
 from finbreak.models import MonthCause, MonthSummary, MonthVerdict
 from finbreak.services.transactions import to_display_decimal
 from finbreak.ui._amount import _format_amount
-from finbreak.ui.language import ui_locale
 
 # A merchant name is derived from raw bank text and can be arbitrarily long, so
 # it is shortened before interpolation: the first _NAME_MAX - 1 characters plus
@@ -88,7 +88,13 @@ class MonthSummaryStrip(QWidget):
             slots.append(self._cause_text(summary, summary.cause, symbol))
         if summary.residual_minor is not None:
             slots.append(self._correction_text(summary, summary.residual_minor, symbol))
-        self._label.setText(" ".join(slots))
+        joined = self.tr(
+            "{text} {more}", "joins two sentences; Chinese and Japanese drop the space"
+        )
+        text = slots[0]
+        for more in slots[1:]:
+            text = joined.format(text=text, more=more)
+        self._label.setText(text)
         self.setVisible(True)
 
     # --- text builders ----------------------------------------------------- #
@@ -98,6 +104,26 @@ class MonthSummaryStrip(QWidget):
         normal" rows render "cost you -R500 less than your usual month"."""
         return _format_amount(to_display_decimal(abs(value_minor), exponent), symbol)
 
+    def _month_names(self) -> tuple[str, ...]:
+        """Translated here rather than taken from ``QLocale``, whose standalone
+        name is the nominative: Polish, Russian and Czech need another case
+        inside a sentence, and only a catalog entry lets the translator pick it.
+        Twelve literal calls, because ``lupdate`` extracts nothing else."""
+        return (
+            self.tr("January", "month, inside a sentence"),
+            self.tr("February", "month, inside a sentence"),
+            self.tr("March", "month, inside a sentence"),
+            self.tr("April", "month, inside a sentence"),
+            self.tr("May", "month, inside a sentence"),
+            self.tr("June", "month, inside a sentence"),
+            self.tr("July", "month, inside a sentence"),
+            self.tr("August", "month, inside a sentence"),
+            self.tr("September", "month, inside a sentence"),
+            self.tr("October", "month, inside a sentence"),
+            self.tr("November", "month, inside a sentence"),
+            self.tr("December", "month, inside a sentence"),
+        )
+
     def _month_text(self, summary: MonthSummary) -> str:
         """The month, composed with its year through a template rather than by
         concatenation — month/year order is precisely what some locales reorder,
@@ -105,7 +131,7 @@ class MonthSummaryStrip(QWidget):
         applies is decided by ``show_year``, computed by the service, which
         already has the clock; the strip needs none."""
         year, month = summary.month.split("-")
-        name = ui_locale().standaloneMonthName(int(month))
+        name = self._month_names()[int(month) - 1]
         if summary.show_year:
             return self.tr("{month_name} {year}").format(
                 month_name=name, year=format_year(int(year))

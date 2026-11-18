@@ -5730,7 +5730,7 @@ on the § 2 surface.
   Source: user-request-2026-08-03.
   Lanes: ui, i18n.
 
-- 📋 [FIBR-0473] **Before the first non-English catalog ships: month-name grammar, sentence spacing, bundle check.**
+- 🚧 [FIBR-0473] **Before the first non-English catalog ships: month-name grammar, sentence spacing, bundle check.**
   Queued from the FIBR-0017 review-code lane (2026-11-15). None of these
   can show while English is the only language, so each waits for the first
   catalog (FIBR-0017's Waiting-on).
@@ -5746,6 +5746,7 @@ on the § 2 surface.
   3. Check that data/i18n/*.qm and PySide6's qtbase_*.qm reach the
   PyInstaller, AppImage and OBS bundles: run build-smoke.sh with a catalog
   present and switch language inside the clean-room container.
+  2026-11-18: started, items 1-2 first.
   **Layman:** Three small things to fix when the first real translation is added, so it reads correctly and reaches every download.
   Kind: review-fix.
   Source: review-code-2026-11-15-fibr0017.
