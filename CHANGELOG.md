@@ -100,6 +100,12 @@ signaling per
   or let a home-loan statement with missing rows at the end through the
   check. It now ignores transaction lines when looking for the figure.
 
+- **A failed preview of the second statement in an OFX file no longer
+  leaves the first one ready to import** (FIBR-0478). The account had
+  already switched to the second statement's, so Import would have put
+  the first statement's rows there. Import now stays off until a preview
+  succeeds.
+
 ### Security
 
 - **A crafted Standard Bank PDF can no longer stall an import with one

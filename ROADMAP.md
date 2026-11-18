@@ -5484,7 +5484,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
   Lanes: ui.
 
-- 📋 [FIBR-0478] **A failed OFX re-preview leaves the previous statement's preview live behind the new destination.**
+- ✅ [FIBR-0478] **A failed OFX re-preview leaves the previous statement's preview live behind the new destination.**
   LOW (raw MEDIUM, calibrated by the orchestrator: only a non-lock
   vault error reaches it, and none was shown). ui/import_wizard.py: on
   the OFX statement chooser, _apply_account_match has already moved
@@ -5492,6 +5492,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   except sets the error text and returns with self._preview still
   statement 1's, aimed at statement 1's account, and Import enabled.
   Fix: on failure set self._preview = None and disable Import.
+  2026-11-18 — test 1064ce5 (red: statement 1's row landed), fix
+  0ab3f7e: on failure the OFX re-preview clears the preview and
+  disables Import.
   **Layman:** In a rare error case, choosing a second statement from one OFX file could leave the Import button ready to import the first statement instead.
   Kind: review-fix.
   Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
