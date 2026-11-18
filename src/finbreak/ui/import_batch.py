@@ -102,13 +102,18 @@ def file_labels(files: Sequence[BatchFile]) -> list[str]:
     return labels
 
 
+def _digits(value: int) -> str:
+    # QLocale, not str(): the locale's own digits (design.md i18n, FIBR-0407).
+    return QLocale().toString(value)
+
+
 def self_index_label(name: str, index: int, total: int) -> str:
     # Module level, so QCoreApplication.translate with an explicit context rather
     # than self.tr. One message rather than an f-string, so "of" is translatable
     # at all and the parts can be reordered (coding.md § 5.2).
     return QCoreApplication.translate(
         "BatchImport", "{name} [{index} of {total}]"
-    ).format(name=name, index=index + 1, total=total)
+    ).format(name=name, index=_digits(index + 1), total=_digits(total))
 
 
 class BatchReviewWidget(QWidget):
@@ -288,8 +293,7 @@ class BatchReviewWidget(QWidget):
 
     @staticmethod
     def _number(value: int) -> str:
-        # QLocale, not str(): the locale's own digits (design.md i18n, FIBR-0407).
-        return QLocale().toString(value) if value else ""
+        return _digits(value) if value else ""
 
     def _account_name(self, record: BatchFile) -> str:
         # The literal must sit INSIDE tr(): `lupdate` scans source text, so a
@@ -325,7 +329,7 @@ class BatchReviewWidget(QWidget):
         if record.error_count == 1:
             return self.tr("{outcome}, 1 row couldn't be read").format(outcome=line)
         return self.tr("{outcome}, {n} rows couldn't be read").format(
-            outcome=line, n=record.error_count
+            outcome=line, n=_digits(record.error_count)
         )
 
     def report_line(self, record: BatchFile) -> str:
@@ -353,7 +357,8 @@ class BatchReviewWidget(QWidget):
                 line = self.tr("{new} added, {dup} duplicates")
             return self._with_unreadable_rows(
                 line.format(
-                    new=record.result.inserted_count, dup=record.result.duplicate_count
+                    new=_digits(record.result.inserted_count),
+                    dup=_digits(record.result.duplicate_count),
                 ),
                 record,
             )
