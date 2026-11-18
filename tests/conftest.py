@@ -17,6 +17,12 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import json
+import shutil
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -41,6 +47,7 @@ from finbreak.services.auth import (
     ARGON2_PARALLELISM,
     ARGON2_TIME_COST,
 )
+from finbreak.ui import language
 
 # Keep the whole session out of the user's real data directory (full audit
 # 2026-09-27, rows 1-3). Every per-user file the app writes resolves through
@@ -544,3 +551,112 @@ def build_v9_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> N
     conn = keyed_connection(vault_path, salt)
     _migrate_to_v9(conn)  # v8 -> v9 (recurring_decisions)
     conn.close()
+
+
+_ROOT = Path(__file__).resolve().parents[1]
+_PSEUDO_LANGS = ("fr", "pt", "zh_CN", "ar")
+
+
+# --------------------------------------------------------------------------- #
+# The pseudo catalog (FIBR-0017; shared with FIBR-0425's refusal tests)
+# --------------------------------------------------------------------------- #
+def _qt_tool(name: str) -> str:
+    """A PySide6 tool beside the running interpreter, else on PATH."""
+    sibling = Path(sys.executable).parent / name
+    if sibling.is_file():
+        return str(sibling)
+    found = shutil.which(name)
+    assert found is not None, f"{name} is not installed beside {sys.executable}"
+    return found
+
+
+def _tool_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["PATH"] = f"{Path(_qt_tool('pyside6-lupdate')).parent}{os.pathsep}{env['PATH']}"
+    return env
+
+
+def _tracked(root: Path, *patterns: str) -> list[str]:
+    out = subprocess.run(
+        ["git", "ls-files", *patterns],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    return out.split("\n")[:-1] if out else []
+
+
+@dataclass(frozen=True)
+class Pseudo:
+    directory: Path
+    sources: frozenset[str]
+
+
+@pytest.fixture(scope="session")
+def pseudo(tmp_path_factory) -> Pseudo:
+    work = tmp_path_factory.mktemp("pseudo_i18n")
+    ts = work / "source.ts"
+    subprocess.run(
+        [_qt_tool("pyside6-lupdate"), "-no-obsolete", "-locations", "none"]
+        + _tracked(_ROOT, "src/finbreak/*.py")
+        + ["-ts", str(ts)],
+        cwd=_ROOT,
+        check=True,
+        capture_output=True,
+    )
+    tree = ET.parse(ts)
+    root = tree.getroot()
+    sources: set[str] = set()
+    for message in root.iter("message"):
+        source = message.findtext("source") or ""
+        sources.add(source)
+        translation = message.find("translation")
+        assert translation is not None
+        translation.attrib.pop("type", None)  # lrelease drops "unfinished"
+        if message.get("numerus") == "yes":
+            translation.text = None
+            for child in list(translation):
+                translation.remove(child)
+            for _ in range(6):  # Arabic's count; lrelease ignores any surplus
+                ET.SubElement(translation, "numerusform").text = f"⟦{source}⟧"
+        else:
+            translation.text = f"⟦{source}⟧"
+    catalogs = work / "catalogs"
+    catalogs.mkdir()
+    for lang in _PSEUDO_LANGS:
+        root.set("language", lang)
+        lang_ts = work / f"finbreak_{lang}.ts"
+        tree.write(lang_ts, encoding="utf-8", xml_declaration=True)
+        subprocess.run(
+            [
+                _qt_tool("pyside6-lrelease"),
+                str(lang_ts),
+                "-qm",
+                str(catalogs / f"finbreak_{lang}.qm"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+    assert len(sources) > 100, "lupdate found the tree's strings"
+    return Pseudo(catalogs, frozenset(sources))
+
+
+@pytest.fixture
+def catalogs(monkeypatch, pseudo) -> Pseudo:
+    monkeypatch.setattr(language, "CATALOG_DIR", pseudo.directory)
+    return pseudo
+
+
+@pytest.fixture
+def controller(qapp, monkeypatch) -> Iterator[language.LanguageController]:
+    """A controller whose translators, active language and layout direction are
+    undone after the test, so a pseudo language cannot leak into a sibling."""
+    monkeypatch.setattr(language, "_active", language._active)
+    direction = qapp.layoutDirection()
+    ctrl = language.LanguageController(qapp)
+    yield ctrl
+    ctrl._uninstall()
+    qapp.setLayoutDirection(direction)
+    ctrl.setParent(None)
+    ctrl.deleteLater()
