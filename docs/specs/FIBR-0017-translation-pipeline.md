@@ -51,8 +51,8 @@ shows. No non-English catalog ships with this item.
 ## 3. Scope decisions (agreed with the user)
 
 - **The five catalogs are AI drafts** (user decision 2026-11-18). The picker
-  adds "(machine-translated)" to each language in `MACHINE_TRANSLATED`
-  (`ui/language.py`) until a native speaker reviews it. The pipeline does not
+  adds "(machine-translated)" to every language not in `REVIEWED`
+  (`ui/language.py`), which lists the catalogs a native speaker has reviewed. The pipeline does not
   depend on who writes a catalog.
 - **Switching rebuilds the window rather than re-translating each widget**
   (finbreak's developer, 2026-11-15). This replaces `coding.md` § 5.2's
@@ -143,6 +143,8 @@ available language, under its own name. `language_name` gives English as
 "English", because `QLocale("en").nativeLanguageName()` reads "American
 English". Any other language gets its native name, with its native territory
 when the token names one ("português (Brasil)"), so `pt` and `pt_BR` differ.
+A bare token whose Qt name names a territory gets a plain one instead: `es` is
+"español", not "español de España".
 A token Qt has no name for shows as itself.
 
 On save, `MainWindow._on_settings_saved` checks whether the token changed. If

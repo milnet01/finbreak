@@ -39,9 +39,14 @@ LANGUAGE_PREF_KEY = "language"
 LANGUAGE_SYSTEM = "system"
 SOURCE_LANGUAGE = "en"
 CATALOG_DIR = Path(__file__).parent.parent / "data" / "i18n"
-# Catalogs drafted by AI, which the picker labels as machine-translated (user
-# decision 2026-11-18). Remove a language once a native speaker has reviewed it.
-MACHINE_TRANSLATED = frozenset({"ar", "es", "fr", "hi", "zh_CN"})
+# Catalogs a native speaker has reviewed. The picker labels every other one
+# machine-translated (user decision 2026-11-18): the shipped ones are AI drafts,
+# and a catalog nobody vouched for errs towards the label.
+REVIEWED: frozenset[str] = frozenset()
+
+# Bare codes whose Qt native name names a territory: QLocale("es") reads
+# "español de España", which tells a Mexican user the catalog is Spain's.
+_BARE_NAMES = {"es": "español"}
 
 # The language the installed translators speak. Module state rather than a
 # controller attribute so ``ui_locale()`` needs no reference to the controller.
@@ -68,6 +73,8 @@ def language_name(lang: str) -> str:
     misnames it for every other region."""
     if lang == SOURCE_LANGUAGE:
         return QLocale.languageToString(QLocale.Language.English)
+    if lang in _BARE_NAMES:
+        return _BARE_NAMES[lang]
     locale = QLocale(lang)
     name = locale.nativeLanguageName()
     if not name:

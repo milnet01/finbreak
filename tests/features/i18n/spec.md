@@ -63,12 +63,12 @@ session, not the shipped ones: every extracted source text, translated as
 | FIBR-0017 INV-8 | `test_INV8_*` | The picker lists *System default* then each language under its own name (`pt` and `pt_BR` distinct); saving a new choice writes it and switches, saving the same one does neither |
 | FIBR-0017 INV-9 | `test_INV9_month_name_follows_language` | Month names follow the language; amount separators keep the locale's |
 | FIBR-0017 INV-10 | `test_INV10_direction_follows` | A right-to-left language mirrors the layout, and switching back restores it |
-| FIBR-0017 label | `test_FIBR0017_a_machine_drafted_catalog_says_so_in_the_picker` | A language in `MACHINE_TRANSLATED` is listed as "<name> (machine-translated)"; any other plainly |
+| FIBR-0017 label | `test_FIBR0017_a_catalog_is_labelled_until_a_native_speaker_reviews_it` | A language not in `REVIEWED` is listed as "<name> (machine-translated)"; a reviewed one plainly |
 
 `test_catalog_placeholders.py` reads every shipped `.ts`. Each finished
-translation must name the same `{placeholders}` as its source and parse as a
-format string; a planted renamed, added, dropped or unclosed placeholder must
-each be caught.
+translation must name the same `{placeholders}`, format specs, conversions and
+Qt `%n` / `%1` markers as its source, and parse as a format string; a planted
+offence of each kind must be caught.
 
 ## Refusals
 

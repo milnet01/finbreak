@@ -1724,62 +1724,62 @@ A private, offline personal-finance vault.</source>
     <message>
         <source>January</source>
         <comment>month, inside a sentence</comment>
-        <translation>一月</translation>
+        <translation>1月</translation>
     </message>
     <message>
         <source>February</source>
         <comment>month, inside a sentence</comment>
-        <translation>二月</translation>
+        <translation>2月</translation>
     </message>
     <message>
         <source>March</source>
         <comment>month, inside a sentence</comment>
-        <translation>三月</translation>
+        <translation>3月</translation>
     </message>
     <message>
         <source>April</source>
         <comment>month, inside a sentence</comment>
-        <translation>四月</translation>
+        <translation>4月</translation>
     </message>
     <message>
         <source>May</source>
         <comment>month, inside a sentence</comment>
-        <translation>五月</translation>
+        <translation>5月</translation>
     </message>
     <message>
         <source>June</source>
         <comment>month, inside a sentence</comment>
-        <translation>六月</translation>
+        <translation>6月</translation>
     </message>
     <message>
         <source>July</source>
         <comment>month, inside a sentence</comment>
-        <translation>七月</translation>
+        <translation>7月</translation>
     </message>
     <message>
         <source>August</source>
         <comment>month, inside a sentence</comment>
-        <translation>八月</translation>
+        <translation>8月</translation>
     </message>
     <message>
         <source>September</source>
         <comment>month, inside a sentence</comment>
-        <translation>九月</translation>
+        <translation>9月</translation>
     </message>
     <message>
         <source>October</source>
         <comment>month, inside a sentence</comment>
-        <translation>十月</translation>
+        <translation>10月</translation>
     </message>
     <message>
         <source>November</source>
         <comment>month, inside a sentence</comment>
-        <translation>十一月</translation>
+        <translation>11月</translation>
     </message>
     <message>
         <source>December</source>
         <comment>month, inside a sentence</comment>
-        <translation>十二月</translation>
+        <translation>12月</translation>
     </message>
     <message>
         <source>{month_name} {year}</source>

@@ -288,8 +288,9 @@ class PdfExportService:
         # system's rather than the chosen one (FIBR-0017). This is in a module
         # where every other string goes through translate(). Composed through
         # a template rather than an f-string, because month/year order is what
-        # some locales reorder (coding.md 5.2). Same spelling as
-        # ui/month_summary.py (FIBR-0327).
+        # some locales reorder (coding.md 5.2). Not the month summary's catalog
+        # month names: those take the form a sentence needs, and a header stands
+        # alone (FIBR-0473).
         month = QCoreApplication.translate("PdfExport", "{month_name} {year}").format(
             month_name=ui_locale().standaloneMonthName(end.month),
             year=format_year(end.year),

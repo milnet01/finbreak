@@ -213,7 +213,7 @@ class SettingsDialog(QDialog):
         # only when the choice changed: a switch rebuilds the main window, which
         # costs the user their place in it (FIBR-0017 INV-8). Each language is
         # listed under its own name, which is data, not tr()-wrapped; only the
-        # "(machine-translated)" label on an AI-drafted catalog is translated.
+        # "(machine-translated)" label on an unreviewed catalog is translated.
         self._language_combo: QComboBox | None = None
         if language_controller is not None:
             self._language_combo = QComboBox()
@@ -229,7 +229,7 @@ class SettingsDialog(QDialog):
             )
             for lang in language.available_languages():
                 name = language.language_name(lang)
-                if lang in language.MACHINE_TRANSLATED:
+                if lang != language.SOURCE_LANGUAGE and lang not in language.REVIEWED:
                     name = self.tr("{language} (machine-translated)").format(
                         language=name
                     )

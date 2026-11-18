@@ -158,6 +158,7 @@ def test_INV1_corrupt_catalog_falls_back_to_english(
     ("lang", "name"),
     [
         ("en", "English"),
+        ("es", "español"),  # Qt's native name for bare es is "español de España"
         ("pt", "português"),
         ("pt_BR", "português (Brasil)"),  # differs from pt in the picker
         ("xx", "xx"),  # Qt has no name for it: the token, never an empty entry
@@ -365,8 +366,9 @@ def test_INV7_qm_is_package_data():
 # INV-8 — the picker
 # --------------------------------------------------------------------------- #
 def test_INV8_picker_offers_system_then_each_language(
-    qtbot, service, catalogs, controller
+    qtbot, service, catalogs, controller, monkeypatch
 ):
+    monkeypatch.setattr(language, "REVIEWED", frozenset({"pt"}), raising=False)
     dialog = SettingsDialog(service, "ZAR", language_controller=controller)
     qtbot.addWidget(dialog)
     combo = dialog.findChild(QComboBox, "settings_language")
@@ -383,19 +385,28 @@ def test_INV8_picker_offers_system_then_each_language(
     assert combo.currentData() == "system"
 
 
-def test_FIBR0017_a_machine_drafted_catalog_says_so_in_the_picker(
-    qtbot, service, catalogs, controller
-):
-    """The shipped catalogs are AI drafts (user decision 2026-11-18). The picker
-    says so until a native speaker has reviewed one; any other is listed plainly."""
+def _picker_labels(qtbot, service, controller) -> dict[str, str]:
     dialog = SettingsDialog(service, "ZAR", language_controller=controller)
     qtbot.addWidget(dialog)
     combo = dialog.findChild(QComboBox, "settings_language")
     assert combo is not None
-    labels = {combo.itemData(i): combo.itemText(i) for i in range(combo.count())}
+    return {combo.itemData(i): combo.itemText(i) for i in range(combo.count())}
+
+
+def test_FIBR0017_a_catalog_is_labelled_until_a_native_speaker_reviews_it(
+    qtbot, service, catalogs, controller, monkeypatch
+):
+    """The shipped catalogs are AI drafts (user decision 2026-11-18). A catalog
+    added later is labelled too unless someone marks it reviewed, so forgetting
+    a list entry errs towards the label, never away from it."""
+    monkeypatch.setattr(language, "REVIEWED", frozenset(), raising=False)
+    labels = _picker_labels(qtbot, service, controller)
     assert labels["fr"] == "français (machine-translated)"
-    assert labels["pt"] == "português"
+    assert labels["pt"] == "português (machine-translated)"
     assert labels["en"] == "English"
+
+    monkeypatch.setattr(language, "REVIEWED", frozenset({"pt"}))
+    assert _picker_labels(qtbot, service, controller)["pt"] == "português"
 
 
 def test_INV8_picker_saving_a_new_choice_writes_and_switches(

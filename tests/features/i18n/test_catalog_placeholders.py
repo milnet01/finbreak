@@ -2,13 +2,14 @@
 
 A screen fills a translated template with ``.format(name=…)``. A translation
 that renames, drops or adds a placeholder, or leaves a stray brace, raises
-``KeyError`` or ``ValueError`` at that moment, in that language only. The
-catalogs are machine-drafted, so this is checked for every entry rather than
-trusted.
+``KeyError`` or ``ValueError`` at that moment, in that language only; one that
+changes a format spec or drops ``%n`` shows the wrong value. The catalogs are
+machine-drafted, so this is checked for every entry rather than trusted.
 """
 
 from __future__ import annotations
 
+import re
 import string
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -20,12 +21,18 @@ from finbreak.ui.language import CATALOG_DIR
 pytestmark = pytest.mark.features
 
 
-def _fields(text: str) -> set[str] | None:
-    """The placeholder names ``str.format`` would look up; None if it would raise."""
+def _fields(text: str) -> tuple[list[tuple[str, str, str]], list[str]] | None:
+    """What ``str.format`` would substitute — each field with its format spec and
+    conversion — and Qt's ``%n`` / ``%1`` markers; None if ``format`` would raise."""
     try:
-        return {f for _, f, _, _ in string.Formatter().parse(text) if f is not None}
+        fields = sorted(
+            (f, spec or "", conv or "")
+            for _, f, spec, conv in string.Formatter().parse(text)
+            if f is not None
+        )
     except ValueError:
         return None
+    return fields, sorted(re.findall(r"%(?:n|L?\d+)", text))
 
 
 def mismatches(ts: Path) -> list[str]:
@@ -58,20 +65,31 @@ def test_every_translation_keeps_its_placeholders() -> None:
 
 
 @pytest.mark.parametrize(
-    "translation",
-    ["{montant} de plus", "{amount} de plus {extra}", "de plus", "{amount de plus"],
+    ("source", "good", "bad"),
+    [
+        ("{amount} more", "{amount} de plus", "{montant} de plus"),
+        ("{amount} more", "{amount} de plus", "{amount} de plus {extra}"),
+        ("{amount} more", "{amount} de plus", "de plus"),
+        ("{amount} more", "{amount} de plus", "{amount de plus"),
+        ("{amount:,} more", "{amount:,} de plus", "{amount} de plus"),
+        ("{amount} more", "{amount} de plus", "{amount!r} de plus"),
+        ("%n rows", "%n lignes", "des lignes"),
+        ("%1 rows", "%1 lignes", "%2 lignes"),
+    ],
 )
-def test_the_check_sees_a_bad_translation(tmp_path: Path, translation: str) -> None:
+def test_the_check_sees_a_bad_translation(
+    tmp_path: Path, source: str, good: str, bad: str
+) -> None:
     """The leg above asserts an absence, which a parse that matched nothing also
-    reports. A renamed, added, dropped and unclosed placeholder must each show."""
+    reports. A renamed, added, dropped or unclosed placeholder, a changed format
+    spec or conversion, and a dropped or renumbered Qt marker must each show."""
     ts = tmp_path / "finbreak_fr.ts"
     ts.write_text(
         '<?xml version="1.0" encoding="utf-8"?><TS version="2.1" language="fr">'
         "<context><name>X</name>"
-        "<message><source>{amount} more</source>"
-        "<translation>{amount} de plus</translation></message>"
-        "<message><source>{amount} more</source>"
-        f"<translation>{translation}</translation></message>"
+        f"<message><source>{source}</source><translation>{good}</translation>"
+        f"</message><message><source>{source}</source>"
+        f"<translation>{bad}</translation></message>"
         "</context></TS>",
         encoding="utf-8",
     )
