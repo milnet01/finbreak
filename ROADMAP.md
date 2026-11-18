@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=473 -->
+<!-- ants-roadmap-id-high-water: FIBR=481 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5387,6 +5387,120 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** When something unexpected goes wrong during a batch import, the error box says finbreak cannot continue, even though the import report is still there and the app works.
   Kind: review-fix.
   Source: review-code-FIBR-0471-2026-11-15.
+
+- 📋 [FIBR-0474] **Batch review offers Create on every row with a hint, masked or already matched.**
+  MEDIUM, lane 04. ui/import_batch.py passes record.hint to the
+  account picker whatever match_account returned, and the picker shows
+  Create whenever hint is not None. So a masked OFX id (outcome
+  no_number) opens CreateAccountDialog prefilled with the mask, the
+  mask is stored, _is_masked then excludes it from every match, and
+  _created reports "Created ... with account number ...". On a matched
+  or ambiguous row, Create makes a second account on the same number,
+  so every later statement is ambiguous. Contradicts FIBR-0086 §4.6
+  (creation only from no_match and wrong_bank; a masked number never
+  reaches the form) and FIBR-0085 §3 decision 6 ("An unmatched row's
+  picker"). Fix: record the match outcome on BatchFile in
+  _settle_parse; pass hint only for no_match / wrong_bank.
+  **Layman:** The batch import screen can offer to create an account from a hidden (masked) number, or a duplicate of one you already have, and then say it worked.
+  Kind: review-fix.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: ui, services.
+
+- 📋 [FIBR-0475] **A transaction row naming "closing balance" can be taken as the statement's closing figure.**
+  MEDIUM, lane 02. importers/standard_bank.py _capture_closing
+  matches the family's closing marker over the whole text with no row
+  check, first match wins. _is_terminator was fixed for the same case
+  (audit 2026-09-27 row 20) by skipping lines where
+  _looks_like_row(line, dmy_lead=True). A Family B row described
+  "CLOSING BALANCE TRANSFER" before the real closing row is captured
+  as the closing: a valid statement is refused, or a statement whose
+  tail rows were lost passes B's gate - the silent under-import
+  FIBR-0050 INV-11 exists to catch. Family C has the same marker.
+  Fix: skip row-shaped lines in _capture_closing, as _is_terminator
+  does. Amend FIBR-0050 INV-11 in the same commit if behaviour moves.
+  **Layman:** A Standard Bank statement with a transaction described like 'closing balance transfer' could be wrongly refused, or a cut-short statement could pass its completeness check.
+  Kind: review-fix.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: importers.
+
+- 📋 [FIBR-0476] **Two Standard Bank row patterns take quadratic time on one very long line.**
+  MEDIUM, lane 02; timed by the orchestrator with python3 -I. The
+  Family A row pattern in importers/standard_bank.py (the re.search
+  with a lazy (.*?) head) took 64 / 1,092 / 18,248 ms and
+  _AMOUNT_TAIL 11 / 175 / 2,925 ms at 1k / 4k / 16k characters. No cap
+  bounds one line's length (FIBR-0078 counts lines; INV-5b's caps are
+  file, page, row and decoded size). Unverified: whether pdfplumber
+  emits a line that long. Fix: refuse any region or page-1 line over a
+  fixed length before the family patterns run, or anchor A's pattern
+  to peel the tail from the right.
+  **Layman:** A deliberately crafted PDF with one enormous line could keep the import busy for a long time.
+  Kind: review-fix.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: importers.
+
+- 📋 [FIBR-0477] **The import wizard's blocking file and warning dialogs may outlive an auto-lock.**
+  MEDIUM, premise contested; lane 03. ui/import_wizard.py calls the
+  static QFileDialog.getOpenFileNames and QMessageBox.warning, each a
+  nested event loop. If an idle auto-lock destroys the wizard inside
+  one, the next line (self.done.emit(), or self._select_file) runs on
+  a deleted object. The FIBR-0065 INV-6 guard matches only .exec( and
+  processEvents, so it passes both. Contested: main_window.py's
+  _clear_decrypted_rows docstring says Qt defers the wizard's deletion
+  until the pop-up closes. Settle with write-test first; if real,
+  route both through show_modal / a non-static dialog.
+  **Layman:** If the app locks itself while one of two import pop-ups is open, it might crash when the pop-up closes. No data is lost; this needs a test to confirm.
+  Kind: investigate.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: ui.
+
+- 📋 [FIBR-0478] **A failed OFX re-preview leaves the previous statement's preview live behind the new destination.**
+  LOW (raw MEDIUM, calibrated by the orchestrator: only a non-lock
+  vault error reaches it, and none was shown). ui/import_wizard.py: on
+  the OFX statement chooser, _apply_account_match has already moved
+  the combo, label and Create button when preview_result raises; the
+  except sets the error text and returns with self._preview still
+  statement 1's, aimed at statement 1's account, and Import enabled.
+  Fix: on failure set self._preview = None and disable Import.
+  **Layman:** In a rare error case, choosing a second statement from one OFX file could leave the Import button ready to import the first statement instead.
+  Kind: review-fix.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: ui.
+
+- 📋 [FIBR-0479] **A held PDF password appears in the batch record's printed form.**
+  LOW, latent; lane 04. services/batch_import.py BatchFile declares
+  pending_password without repr=False, so any repr of a record (a log
+  line, an assertion diff, a debugger) prints it in plain text. Its
+  neighbours tried_passwords and source_sha256 are already kept out.
+  No current call site logs a record. Fix:
+  field(default=None, repr=False).
+  **Layman:** A statement's password could show up in a debug printout of the batch import's internal records. Nothing prints one today.
+  Kind: security.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: services.
+
+- 📋 [FIBR-0480] **The wizard's account-match label renders markup from a user-typed account name.**
+  LOW; lane 03. ui/import_wizard.py sets "Created {name}. ..." on
+  _account_match_label, a QLabel left on Qt.AutoText; the name is
+  user-typed or prefilled from a PDF header. self._error has the same
+  shape where an exception echoes file text. The batch screen's labels
+  are already plain text. Fix: setTextFormat(Qt.TextFormat.PlainText)
+  on both labels.
+  **Layman:** An account name containing formatting code would display as formatted text on the import screen. Display only.
+  Kind: review-fix.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: ui.
+
+- 📋 [FIBR-0481] **Batch import report counts use ASCII digits while the count cells use locale digits.**
+  LOW; lane 04. ui/import_batch.py formats inserted_count,
+  duplicate_count, error_count and the index/total with str.format,
+  which always gives ASCII digits, while the Errors cell uses
+  QLocale().toString. Matters once a non-Latin-digit catalog ships
+  (FIBR-0017). Fix: pass each interpolated count through
+  QLocale().toString.
+  **Layman:** In a language with its own digits, one batch import row could show the same number written two different ways.
+  Kind: fix.
+  Source: review-code-2026-11-18 (FIBR-0284 run; records in the scratchpad reviews/review-code-2026-11-18/).
+  Lanes: ui.
 
 ## v1.1.0 — Localisation
 

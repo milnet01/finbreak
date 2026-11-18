@@ -628,3 +628,34 @@ def test_create_prefills_the_statements_bank(qtbot, service, tmp_path, monkeypat
 
     created = next(a for a in svc.list_accounts() if a.name == "New Savings")
     assert created.bank == "Standard Bank"
+
+
+@pytest.mark.parametrize(
+    "edit", ["bank", "number"], ids=["bank-changed", "number-changed"]
+)
+def test_create_claims_a_match_only_when_the_statement_matches_it(
+    qtbot, service, tmp_path, monkeypatch, edit
+):
+    """INV-18. After Create, "Matched account number … printed on this
+    statement" promises that later statements file themselves. With the
+    prefilled bank or number edited, they will not — this statement's own
+    hint no longer matches the new account — so the label must not say so."""
+    _ofx_names_standard_bank(monkeypatch)
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+
+    dialog = _open_create_dialog(widget)
+    dialog._name.setText("New Savings")
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
+    if edit == "bank":
+        dialog._bank.setText("Other Bank")
+    else:
+        dialog._number.setText("11 222 333 4")
+    dialog.accept()
+
+    label = widget._account_match_label.text()
+    assert "Matched" not in label, label
+    assert "will not file themselves" in label, label

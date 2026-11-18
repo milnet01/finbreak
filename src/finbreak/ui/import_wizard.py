@@ -900,7 +900,8 @@ class ImportWizardWidget(QWidget):
     def _create_account_from(self, dialog: CreateAccountDialog) -> None:
         """The accepted half of ``_on_create_account``, run as ``show_modal``'s
         ``on_accept`` slot."""
-        if self._pending_hint is None:  # lock or a second accept — nothing pending
+        hint = self._pending_hint
+        if hint is None:  # lock or a second accept — nothing pending
             return
         self._error.clear()
         try:
@@ -909,6 +910,13 @@ class ImportWizardWidget(QWidget):
                 dialog.entered_type(),
                 account_number=dialog.entered_number(),
                 bank=dialog.entered_bank(),
+            )
+            # Whether later statements like this one will file themselves into
+            # it. The number and bank boxes are editable, so ask the matcher
+            # rather than assume (FIBR-0086 INV-18).
+            files_itself = (
+                match_account(hint, self._accounts.list_accounts()).account_id
+                == account.id
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the other handlers
@@ -928,20 +936,28 @@ class ImportWizardWidget(QWidget):
             self._confirm_account_combo.findData(account.id)
         )
         # Report what was actually STORED, not what the statement printed — the
-        # number box is editable, and clearing it stores NULL. Claiming a match on
-        # the printed number there would promise auto-filing that cannot happen,
-        # and every later import of this account would offer to create it again.
-        if account.account_number:
+        # number and bank boxes are editable, and clearing the number stores NULL.
+        # Claiming a match the statement does not make would promise auto-filing
+        # that cannot happen, and every later import of this account would offer
+        # to create it again.
+        if files_itself:
             self._account_match_label.setText(
                 self.tr(
                     "Matched account number {number} printed on this statement."
                 ).format(number=account.account_number)
             )
-        else:
+        elif not account.account_number:
             self._account_match_label.setText(
                 self.tr(
                     "Created {name}. It has no account number, so future statements "
                     "will not file themselves."
+                ).format(name=account.name)
+            )
+        else:
+            self._account_match_label.setText(
+                self.tr(
+                    "Created {name}. Its account number or bank differs from this "
+                    "statement's, so future statements will not file themselves."
                 ).format(name=account.name)
             )
         # Shown explicitly: the combo change above ran the override handler,

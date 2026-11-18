@@ -95,6 +95,12 @@ def _at_another_bank(account: Account, bank: str | None) -> bool:
     return bool(statement_bank and account_bank) and statement_bank != account_bank
 
 
+def _at_the_same_bank(account: Account, bank: str | None) -> bool:
+    """Is this account recorded at the statement's own bank, folded? (FIBR-0284)"""
+    statement_bank = fold_name(bank or "")
+    return bool(statement_bank) and fold_name(account.bank or "") == statement_bank
+
+
 def match_account(
     hint: SourceAccountHint | None, accounts: Sequence[Account]
 ) -> AccountMatch:
@@ -141,5 +147,11 @@ def match_account(
         dropped = tuple(account.id for account in numbered)
         return AccountMatch(None, "wrong_bank", key, dropped)
     if len(candidates) == 1:
-        return AccountMatch(candidates[0], "matched", key, candidates)
+        (sole,) = (account for account in numbered if account.id == candidates[0])
+        # A drop means the number is shared across banks. A survivor with no bank
+        # recorded is then a guess: the dropped account may be the real one, its
+        # bank merely spelt another way ("SBSA"). Only the statement's own bank
+        # turns a drop into a match.
+        if len(candidates) == len(numbered) or _at_the_same_bank(sole, hint.bank):
+            return AccountMatch(candidates[0], "matched", key, candidates)
     return AccountMatch(None, "ambiguous", key, candidates)

@@ -83,6 +83,22 @@ def test_an_unrecorded_bank_stays_a_candidate() -> None:
     assert both.candidates == (1, 2)
 
 
+def test_a_drop_never_leaves_an_unrecorded_bank_matched() -> None:
+    """INV-17. When rule 4 drops an account, the number is shared across banks,
+    and an account with no bank recorded is then a guess, not a match. The
+    statement's real account may be the dropped one, its bank merely spelt
+    another way ("SBSA"). Before FIBR-0284 this pair was ambiguous; it must
+    stay so. Only an account recorded at the statement's bank is matched."""
+    spelt_otherwise = _account(1, "11 222 333 4", bank="SBSA")
+    unknown = _account(2, "112223334")
+
+    match = match_account(_sb_hint("112223334"), [spelt_otherwise, unknown])
+
+    assert match.outcome == "ambiguous"
+    assert match.account_id is None
+    assert match.candidates == (2,)
+
+
 def test_bank_comparison_folds_case_and_spacing() -> None:
     """INV-13. Banks are free text (FIBR-0283), so the user's spelling of the
     same bank must still compare equal — under ``text.fold_name``."""

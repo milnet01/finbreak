@@ -14,7 +14,7 @@ account-create UI existed; and INV-8's scanner matches a wider separator set.
 **FIBR-0284 extends it with the account's bank as a second signal**, each
 change marked *(FIBR-0284)*: the hint carries a bank (§4.1), the ladder drops
 candidates recorded at another bank (§4.4 rule 4), a fifth outcome
-`wrong_bank` (§4.5), the bank prefill (§4.6), and INV-10 to INV-16.
+`wrong_bank` (§4.5), the bank prefill (§4.6), and INV-10 to INV-18.
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0086 (user-request-2026-07-11, dogfooding v0.1.0);
 promoted ahead of FIBR-0085 by user directive 2026-08-06.
@@ -43,7 +43,7 @@ The user can always override. `ParseResult` gains one optional field — a
 name and a family — and no schema change is required.
 
 *(FIBR-0284)* Where the statement shows which bank issued it, an account
-recorded at a different bank is never selected, and the create form is
+recorded at a different bank is never auto-selected, and the create form is
 pre-filled with that bank. Where it does not, matching is exactly as above.
 
 ## 2. Problem
@@ -267,7 +267,8 @@ Preference calls, not deductions.
 ### 4.1 The seam: one optional field on `ParseResult`
 
 The seam must carry **three** things, not one — §4.6 prefills an account's
-number, name and type, and a bare `str` can only carry the number. So the new
+number, name and type, and a bare `str` can only carry the number. (FIBR-0284
+adds a fourth, `bank`.) So the new
 field is a small value object, and `ParseResult` still gains exactly one field,
 appended **last**, exactly as FIBR-0171 appended `closing_balance_minor`:
 
@@ -507,7 +508,12 @@ The rules, in order:
    ambiguity degrades to manual (§3 decision 5). If rule 3 found candidates
    and this rule dropped them all → `wrong_bank`, `account_id` `None`. Where
    `hint.bank` is `None` or blank, this rule drops nothing.
-5. Exactly one candidate left → `matched`, `account_id` set.
+5. Exactly one candidate left → `matched`, `account_id` set — **unless rule
+   4 dropped any**. A drop means the number is shared across banks, so the
+   survivor is matched only when its stored bank folds equal to `hint.bank`.
+   A survivor with no bank recorded is a guess — the dropped account may be
+   the statement's own, its bank spelt another way — and gives `ambiguous`
+   (INV-17).
 6. Rule 3 found none → `no_match`. Offers creation (§4.5).
 7. Two or more left → `ambiguous`. The combo is left as the pick step set it
    and the wizard says why it could not choose (§3 decision 5).
@@ -578,7 +584,8 @@ that is no longer true.
   *"This statement's account number matches more than one account — pick
   one."*
 - **`no_match`** — the combo keeps the pick step's value; the label offers
-  creation with a button, *"No account has number 22 333 444 5. Create it?"*
+  *"No account has number 22 333 444 5."*, with a *Create it* button beside
+  it.
 - **`wrong_bank`** *(FIBR-0284)* — the combo keeps the pick step's value; the
   label reads *"Every account numbered 22 333 444 5 is at a different bank
   from this statement (Standard Bank). Pick one, or create it."*, and the
@@ -610,6 +617,8 @@ then and the signal is what retargets it; and the confirmation line reports the
 number **actually stored**, since the prefilled box is editable and clearing it
 stores `NULL` — claiming a match there would promise auto-filing that cannot
 happen and make every later import offer to create the account again.
+*(FIBR-0284)* It claims a match only when this statement's hint now matches
+the new account, since the number and bank boxes are both editable (INV-18).
 
 The create button opens an account-create dialog pre-filled from
 four statement-derived values:
@@ -682,7 +691,8 @@ confirming.
   it, with identical output on all 34 readable A/B/D files.
 
 - **INV-3** — `match_account` returns an `account_id` only when exactly one
-  account matched; `candidates` always carries every match.
+  account matched; `candidates` always carries every match. *(FIBR-0284: the
+  ids left after rule 4, or for `wrong_bank` the ids it dropped.)*
   *Test:* `tests/features/account_detect/test_match.py::test_two_matches_select_nothing`.
   *Breaks when:* the ladder returns the first candidate instead of requiring
   uniqueness — which silently picks one of two equally valid accounts.
@@ -819,6 +829,21 @@ confirming.
   `tests/features/batch_import/test_batch_import_ui.py::test_create_prefills_the_statements_bank`
   — the accepted dialog stores `"Standard Bank"` with the Bank box untouched.
   *Breaks when:* either caller omits `bank=` and the box starts empty.
+- **INV-17** *(FIBR-0284)* — Where rule 4 dropped a candidate, a lone
+  survivor with no bank recorded is `ambiguous`, never `matched`.
+  *Test:* `test_match.py::test_a_drop_never_leaves_an_unrecorded_bank_matched`
+  — a Standard Bank hint with one same-number account at `"SBSA"` and one
+  with no bank → `ambiguous`, `candidates` the second.
+  *Breaks when:* rule 5 matches any lone survivor — the statement is then
+  filed under the unrecorded account while its real one, spelt `SBSA`, was
+  dropped.
+- **INV-18** *(FIBR-0284)* — After Create, the wizard says *"Matched account
+  number …"* only when this statement's hint now matches the new account.
+  *Test:* `test_wizard.py::test_create_claims_a_match_only_when_the_statement_matches_it`
+  — with the prefilled bank, or the number, edited before accepting, the
+  label says future statements will not file themselves.
+  *Breaks when:* the label is chosen from the stored number alone, which
+  claims a match an edited bank or number makes false.
 
 ## 6. Failure modes
 
@@ -854,9 +879,10 @@ confirming.
   surfaces rather than hides.
 - **The user records a bank in a spelling that does not fold to the
   statement's** (`SBSA` for `Standard Bank`). *(FIBR-0284)* The account drops
-  out at rule 4: `wrong_bank`, or `ambiguous` among the rest. Nothing is
-  selected, the label says why, and correcting the account's bank restores
-  matching. Degraded, never misfiled.
+  out at rule 4: `wrong_bank`, or `ambiguous` among the rest — including
+  when one account is left with no bank recorded (rule 5, INV-17). Nothing is
+  auto-selected, the label says why, and correcting the account's bank
+  restores matching. Degraded, never misfiled.
 - **A bank pads differently between two statements of the same account.**
   Covered by INV-5; both normalise identically.
 - **OFX `account_id` is masked by some institution.** §4.4 rule 2 classifies
@@ -879,8 +905,8 @@ real corpus is read only in the scratchpad, never committed (INV-8).
 | File | Locks | Notes |
 |---|---|---|
 | `test_extract.py` | INV-1, INV-2, INV-2a, INV-14 | Synthetic per-family header blocks built to the shapes measured in §2.2, including a family-A header whose rows carry a foreign account number, and a label line with a trailing numeric column. |
-| `test_match.py` | INV-3, INV-4, INV-5, INV-9, INV-10, INV-11, INV-12, INV-13 | Pure-function tests over `match_account` / `normalise_account_number`; no vault. |
-| `test_wizard.py` | INV-7, INV-7a, INV-15, INV-16 | `qtbot`; asserts the combo selection, that the preview's account equals the displayed one, and that no commit occurred. Probe widget reveal with `isHidden()`, not `isVisible()`: a widget on a non-current `QStackedLayout` page reports `isVisible() == False` even after `setVisible(True)`, because visibility needs the whole ancestor chain shown. |
+| `test_match.py` | INV-3, INV-4, INV-5, INV-9, INV-10, INV-11, INV-12, INV-13, INV-17 | Pure-function tests over `match_account` / `normalise_account_number`; no vault. |
+| `test_wizard.py` | INV-7, INV-7a, INV-15, INV-16, INV-18 | `qtbot`; asserts the combo selection, that the preview's account equals the displayed one, and that no commit occurred. Probe widget reveal with `isHidden()`, not `isVisible()`: a widget on a non-current `QStackedLayout` page reports `isVisible() == False` even after `setVisible(True)`, because visibility needs the whole ancestor chain shown. |
 | `test_no_real_data.py` | INV-8 | Walks `git ls-files`, normalises each file's digit runs, and fails on any of the corpus keys supplied via `FINBREAK_CORPUS_NUMBERS`; skips when unset. |
 | `tests/features/batch_import/test_batch_import_ui.py` | INV-16 | The batch half of the prefill: the review screen's Create affordance. |
 
@@ -977,7 +1003,7 @@ pages, so it is O(header) and independent of statement length. Matching is
 one linear pass over the configured accounts (`normalise_account_number` is a
 character filter), so O(accounts), with no vault read beyond the account list
 the wizard already loads to populate its combo. Per `ParseResult`, one extra
-reference to a frozen 3-field value object, or `None`.
+reference to a frozen value object (four fields since FIBR-0284), or `None`.
 
 ## 11. What checks this
 
@@ -1001,6 +1027,8 @@ reference to a frozen 3-field value object, or `None`.
 | INV-14 | `test_extract.py::test_a_standard_bank_hint_names_its_bank` |
 | INV-15 | `test_wizard.py::test_wrong_bank_keeps_the_pick_and_offers_create` |
 | INV-16 | `test_wizard.py::test_create_prefills_the_statements_bank`; `test_batch_import_ui.py::test_create_prefills_the_statements_bank` |
+| INV-17 | `test_match.py::test_a_drop_never_leaves_an_unrecorded_bank_matched` |
+| INV-18 | `test_wizard.py::test_create_claims_a_match_only_when_the_statement_matches_it` |
 | A bank read from an OFX file | **nothing** — none is read (§4.1); an OFX hint carries no bank, so INV-10 governs it. |
 | §4.6 name prefill is correct for family A | **nothing** — the prefill is read from a synthetic fixture matching the measured shape, so a *real* layout change is caught only by a user noticing a wrong name. Low consequence: the field is editable before creation. |
 | §2.2's corpus measurements (one number per folder; label above `_table_region(...).start` on 34/34) | **nothing** — one-off scratchpad measurements over a corpus that is not in the repository and cannot be re-run in CI. Re-measure if the extraction rules or the `_table_region` header detection change. |
@@ -1017,7 +1045,7 @@ reference to a frozen 3-field value object, or `None`.
 - No standard changes. No ADR: this adds no dependency and no new layer.
 - *(FIBR-0284)* `docs/specs/FIBR-0283-bank-field-on-accounts.md` §4.5 says
   the create dialog's Bank field starts empty; it now points here for the
-  prefill. `tests/features/account_detect/spec.md` gains INV-10 to INV-16.
+  prefill. `tests/features/account_detect/spec.md` gains INV-10 to INV-18.
 
 **INV-8 binds every one of those.** The invariant is not a testing rule — it
 covers prose, and the CHANGELOG entry, the README line, the ROADMAP

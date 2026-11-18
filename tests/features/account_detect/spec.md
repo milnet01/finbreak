@@ -28,6 +28,8 @@ every row below is either "reads the right number" or "declines to guess".
 | 14 | INV-14 | **The Standard Bank reader names its bank.** Every hint `extract_account_number` returns carries `STANDARD_BANK`, which is in `KNOWN_BANKS`. Without it the bank check never fires. |
 | 15 | INV-15 | **`wrong_bank` keeps the pick.** The wizard leaves the destination at the pick step's account and shows the label and the Create button. |
 | 16 | INV-16 | **Create pre-fills the bank.** From the wizard and from batch import's review screen, accepting the dialog without touching Bank stores the statement's bank. |
+| 17 | INV-17 | **A drop leaves no guess.** Where the bank rule dropped an account, the number is shared across banks; a lone survivor with no bank recorded is `ambiguous`, since the dropped one may be the statement's own, its bank spelt `SBSA`. |
+| 18 | INV-18 | **Create claims only a real match.** After Create, "Matched account number …" shows only when this statement's hint matches the new account; an edited bank or number gets "future statements will not file themselves". |
 
 ## Fixtures
 
