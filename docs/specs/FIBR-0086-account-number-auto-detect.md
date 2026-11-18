@@ -10,6 +10,11 @@ sides (§4.4 rule 2, INV-9); non-matched outcomes re-seed the combo from the
 pick step explicitly rather than leaving it untouched (§4.5); §4.6's create
 path needed a **new** dialog, `ui/account_create.py`, because no reusable
 account-create UI existed; and INV-8's scanner matches a wider separator set.
+
+**FIBR-0284 extends it with the account's bank as a second signal**, each
+change marked *(FIBR-0284)*: the hint carries a bank (§4.1), the ladder drops
+candidates recorded at another bank (§4.4 rule 4), a fifth outcome
+`wrong_bank` (§4.5), the bank prefill (§4.6), and INV-10 to INV-16.
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0086 (user-request-2026-07-11, dogfooding v0.1.0);
 promoted ahead of FIBR-0085 by user directive 2026-08-06.
@@ -36,6 +41,10 @@ choose.
 The user can always override. `ParseResult` gains one optional field — a
 `SourceAccountHint` carrying the number, and where the layout prints them a
 name and a family — and no schema change is required.
+
+*(FIBR-0284)* Where the statement shows which bank issued it, an account
+recorded at a different bank is never selected, and the create form is
+pre-filled with that bank. Where it does not, matching is exactly as above.
 
 ## 2. Problem
 
@@ -276,6 +285,7 @@ class SourceAccountHint:
     number: str          # as printed, grouping and padding intact
     name: str | None = None    # the product name, where the layout prints one
     family: str | None = None  # the Family value, as a str; None for non-SB
+    bank: str | None = None    # (FIBR-0284) the issuing bank's display name
 
 
 @dataclass
@@ -324,6 +334,16 @@ prefilled type is worse than an empty one the user fills in. §9 tracks it.
 OFX needs no new extraction: `OfxImporter.parse` already builds
 `OfxAccountInfo(account.account_id or "", ...)`. The value is threaded into
 the `ParseResult` beside it.
+
+**`bank` (FIBR-0284)** is set by `extract_account_number` on every hint it
+returns, to `services/accounts.py::STANDARD_BANK` (`"Standard Bank"`). The
+evidence is the layout: `detect_standard_bank` recognised the page as one of
+that bank's families before extraction ran. `KNOWN_BANKS` is built from the
+same constant, so the hint and the Accounts screen's suggestion cannot spell
+it differently. OFX and CSV hints carry no bank: the corpus holds no OFX file
+to show which field names a bank (§3 decision 3), and CSV carries no hint at
+all. **A bank is never inferred from the account number's shape or prefix** —
+that is the guess FIBR-0283 removed.
 
 ### 4.2 Header-confined, family-dispatched extraction
 
@@ -432,11 +452,14 @@ ever false, the pair is ambiguous and lands in manual — degraded, not wrong.
 class AccountMatch:
     """Why the wizard selected (or did not select) an account."""
     account_id: int | None      # None unless exactly one candidate matched
-    outcome: Literal["matched", "no_number", "no_match", "ambiguous"]
+    outcome: Literal[
+        "matched", "no_number", "no_match", "ambiguous", "wrong_bank"
+    ]                           # wrong_bank: FIBR-0284, rule 4
     normalised: str             # the MATCH KEY only ("" when no_number).
                                 # No prefill reads this — §4.6 prefills from
                                 # hint.number, as printed.
-    candidates: tuple[int, ...] # every id that matched; len != 1 => no select
+    candidates: tuple[int, ...] # the ids left after rule 4; for wrong_bank,
+                                # the ids rule 4 dropped. len != 1 => no select
 
 
 def match_account(
@@ -476,16 +499,24 @@ The rules, in order:
 3. Otherwise collect every account whose stored `account_number` is non-`None`
    and normalises to the **same** string. Accounts with a `NULL`
    `account_number` never match anything — a fresh vault matches nothing.
-4. Exactly one candidate → `matched`, `account_id` set.
-5. Zero candidates → `no_match`. Offers creation (§4.5).
-6. Two or more → `ambiguous`. The combo is left as the pick step set it and
-   the wizard says why it could not choose (§3 decision 5).
+4. *(FIBR-0284)* Where `hint.bank` is set and not blank, drop every
+   candidate whose stored `bank` is set, not blank, and differs from it under
+   `text.fold_name`. A candidate with no stored bank stays: an unrecorded bank
+   is unknown, not different. Nor does a candidate recorded at the same bank
+   outrank one with no bank — either may be the statement's account, and
+   ambiguity degrades to manual (§3 decision 5). If rule 3 found candidates
+   and this rule dropped them all → `wrong_bank`, `account_id` `None`. Where
+   `hint.bank` is `None` or blank, this rule drops nothing.
+5. Exactly one candidate left → `matched`, `account_id` set.
+6. Rule 3 found none → `no_match`. Offers creation (§4.5).
+7. Two or more left → `ambiguous`. The combo is left as the pick step set it
+   and the wizard says why it could not choose (§3 decision 5).
 
 Comparison is on the normalised form of *both* sides, so a user who typed
 `11 222 333 4`, `112223334` or `0112223334` when creating the account gets
 the same result.
 
-### 4.5 The three outcomes in the wizard
+### 4.5 The outcomes in the wizard
 
 The hook is the existing preview-step picker `_confirm_account_combo`
 (FIBR-0057) and its `_target_account_id()`. No new step and no new dialog for
@@ -522,7 +553,7 @@ step 0 → preview step is safe under its blocker: it also runs before
 
 Auto-detect also **overrides the step-0 pick** when it fires, because the
 statement is better evidence than a default the user may never have touched.
-`no_number`, `no_match` and `ambiguous` leave the existing pick-step seeding
+`no_number`, `no_match`, `ambiguous` and `wrong_bank` leave the existing pick-step seeding
 untouched (§3 decision 5) — they change the *label*, never the selection.
 
 **(as built)** "Keeps the pick step's value" below is implemented by
@@ -548,6 +579,16 @@ that is no longer true.
   one."*
 - **`no_match`** — the combo keeps the pick step's value; the label offers
   creation with a button, *"No account has number 22 333 444 5. Create it?"*
+- **`wrong_bank`** *(FIBR-0284)* — the combo keeps the pick step's value; the
+  label reads *"Every account numbered 22 333 444 5 is at a different bank
+  from this statement (Standard Bank). Pick one, or create it."*, and the
+  create button shows as for `no_match`. Creating it is the right fix when two
+  banks issued the same number; correcting the existing account's bank is the
+  fix when it was recorded wrongly.
+
+Batch import (FIBR-0085) needs no change of its own: it files a record only
+on `matched`, so `wrong_bank` reaches its review screen as `needs_account`,
+whose Create affordance takes the same §4.6 prefill.
 
 **Every label renders `hint.number` as printed, never the normalised key.**
 The number on screen is the one the user can see on the paper statement in
@@ -571,21 +612,23 @@ stores `NULL` — claiming a match there would promise auto-filing that cannot
 happen and make every later import offer to create the account again.
 
 The create button opens an account-create dialog pre-filled from
-three statement-derived values:
+four statement-derived values:
 
 | Field | Source | Available for |
 |---|---|---|
 | `account_number` | `hint.number`, **as printed** | every detecting family |
 | `name` | `hint.name` | family A only |
 | `type` | derived from `hint.family` | families B, D |
+| `bank` *(FIBR-0284)* | `hint.bank`, through `CreateAccountDialog`'s `bank` keyword | every Standard Bank family that detects |
 
-All three arrive through the single `SourceAccountHint` field of §4.1; there
-is no second seam.
+All four arrive through the single `SourceAccountHint` field of §4.1; there
+is no second seam. The single-file wizard and batch import's review screen
+both open the dialog, and both pass `bank`.
 
 **A masked number never reaches this form at all**, so there is no masking
 case to handle here. §4.4 rule 2 classifies it `no_number`, and `no_number` is
 the one outcome that offers no creation button (§4.5) — creation is reachable
-only from `no_match`. An earlier draft of this spec carried a "blank the
+only from `no_match` and `wrong_bank`. An earlier draft of this spec carried a "blank the
 number when masked" rule here; it guarded a branch nothing could enter, and
 removing it is the shorter correct design rather than a loss of safety.
 
@@ -733,6 +776,50 @@ confirming.
   accidentally implementing the trailing-digit matching §3 decision 3
   explicitly declined to build.
 
+- **INV-10** *(FIBR-0284)* — A hint with no bank ignores stored banks: the
+  outcome is the one rules 3, 5, 6 and 7 give alone.
+  *Test:* `test_match.py::test_a_bankless_hint_ignores_stored_banks` — no
+  bank on the hint, two accounts on its number at two different banks →
+  `ambiguous` with both ids.
+  *Breaks when:* rule 4 compares a `None` hint bank with the stored ones, so
+  every banked candidate is dropped and the result is `wrong_bank`.
+- **INV-11** *(FIBR-0284)* — A candidate recorded at a different bank is never
+  selected, and when every candidate is, the outcome is `wrong_bank`.
+  *Test:* `test_match.py::test_another_banks_account_is_never_selected` — a
+  Standard Bank hint with one same-number account at `"Other Bank"` and one
+  at `"Standard Bank"` → `matched` the second; with only the first →
+  `wrong_bank`, `account_id` `None`.
+  *Breaks when:* rule 4 is skipped — the pair gives `ambiguous` and the lone
+  account `matched`.
+- **INV-12** *(FIBR-0284)* — A candidate with no recorded bank stays a
+  candidate, and is not outranked by one at the statement's bank.
+  *Test:* `test_match.py::test_an_unrecorded_bank_stays_a_candidate` — a
+  Standard Bank hint with one same-number account and no bank → `matched`;
+  adding a same-number account at `"Standard Bank"` → `ambiguous`.
+  *Breaks when:* a `NULL` bank counts as different (the first case gives
+  `wrong_bank`), or a recorded same-bank candidate is preferred (the second
+  gives `matched`).
+- **INV-13** *(FIBR-0284)* — Banks compare under `text.fold_name`.
+  *Test:* `test_match.py::test_bank_comparison_folds_case_and_spacing` — a
+  stored `"standard  BANK"` matches a `"Standard Bank"` hint.
+  *Breaks when:* rule 4 compares with `==`, giving `wrong_bank`.
+- **INV-14** *(FIBR-0284)* — Every hint `extract_account_number` returns
+  carries `bank == STANDARD_BANK`, and `STANDARD_BANK` is in `KNOWN_BANKS`.
+  *Test:* `test_extract.py::test_a_standard_bank_hint_names_its_bank`.
+  *Breaks when:* the extractor leaves `bank` unset — rule 4 then never fires
+  and the whole of FIBR-0284 is silently off.
+- **INV-15** *(FIBR-0284)* — `wrong_bank` leaves the wizard's destination at
+  the pick step's account and shows the label and the create button.
+  *Test:* `test_wizard.py::test_wrong_bank_keeps_the_pick_and_offers_create`.
+  *Breaks when:* the wizard seeds the combo from `candidates` for any outcome
+  but `matched`, filing the statement under the other bank's account.
+- **INV-16** *(FIBR-0284)* — Create from a statement pre-fills the dialog's
+  bank with `hint.bank`, in the wizard and in batch import.
+  *Test:* `test_wizard.py::test_create_prefills_the_statements_bank` and
+  `tests/features/batch_import/test_batch_import_ui.py::test_create_prefills_the_statements_bank`
+  — the accepted dialog stores `"Standard Bank"` with the Bank box untouched.
+  *Breaks when:* either caller omits `bank=` and the box starts empty.
+
 ## 6. Failure modes
 
 - **The label moves or is reworded.** Extraction returns `None`, the wizard
@@ -765,6 +852,11 @@ confirming.
   wrong account, visibly, with the number shown in the label. The user sees
   the mismatch and changes the combo. This is a data-entry error the design
   surfaces rather than hides.
+- **The user records a bank in a spelling that does not fold to the
+  statement's** (`SBSA` for `Standard Bank`). *(FIBR-0284)* The account drops
+  out at rule 4: `wrong_bank`, or `ambiguous` among the rest. Nothing is
+  selected, the label says why, and correcting the account's bank restores
+  matching. Degraded, never misfiled.
 - **A bank pads differently between two statements of the same account.**
   Covered by INV-5; both normalise identically.
 - **OFX `account_id` is masked by some institution.** §4.4 rule 2 classifies
@@ -786,10 +878,11 @@ real corpus is read only in the scratchpad, never committed (INV-8).
 
 | File | Locks | Notes |
 |---|---|---|
-| `test_extract.py` | INV-1, INV-2, INV-2a | Synthetic per-family header blocks built to the shapes measured in §2.2, including a family-A header whose rows carry a foreign account number, and a label line with a trailing numeric column. |
-| `test_match.py` | INV-3, INV-4, INV-5, INV-9 | Pure-function tests over `match_account` / `normalise_account_number`; no vault. |
-| `test_wizard.py` | INV-7, INV-7a | `qtbot`; asserts the combo selection, that the preview's account equals the displayed one, and that no commit occurred. Probe widget reveal with `isHidden()`, not `isVisible()`: a widget on a non-current `QStackedLayout` page reports `isVisible() == False` even after `setVisible(True)`, because visibility needs the whole ancestor chain shown. |
+| `test_extract.py` | INV-1, INV-2, INV-2a, INV-14 | Synthetic per-family header blocks built to the shapes measured in §2.2, including a family-A header whose rows carry a foreign account number, and a label line with a trailing numeric column. |
+| `test_match.py` | INV-3, INV-4, INV-5, INV-9, INV-10, INV-11, INV-12, INV-13 | Pure-function tests over `match_account` / `normalise_account_number`; no vault. |
+| `test_wizard.py` | INV-7, INV-7a, INV-15, INV-16 | `qtbot`; asserts the combo selection, that the preview's account equals the displayed one, and that no commit occurred. Probe widget reveal with `isHidden()`, not `isVisible()`: a widget on a non-current `QStackedLayout` page reports `isVisible() == False` even after `setVisible(True)`, because visibility needs the whole ancestor chain shown. |
 | `test_no_real_data.py` | INV-8 | Walks `git ls-files`, normalises each file's digit runs, and fails on any of the corpus keys supplied via `FINBREAK_CORPUS_NUMBERS`; skips when unset. |
+| `tests/features/batch_import/test_batch_import_ui.py` | INV-16 | The batch half of the prefill: the review screen's Create affordance. |
 
 **Every `test_extract.py` fixture must contain a line `_table_region`
 recognises as that family's column header** — for family A, one carrying
@@ -868,6 +961,9 @@ not appended last.
 - **Non-Standard-Bank PDF families** (ABSA/Nedbank/FNB) — already tracked by
   FIBR-0074, itself blocked on sample statements.
 - **Batch import** — FIBR-0085, which this unblocks.
+- **Reading a bank from an OFX file** *(FIBR-0284)* — no OFX file exists in
+  the corpus to show which field names the bank. Revisit with the first one.
+  Not yet queued.
 
 ## 10. Resource cost
 
@@ -898,6 +994,14 @@ reference to a frozen 3-field value object, or `None`.
 | INV-7a | `test_wizard.py::test_preview_account_matches_displayed_account` |
 | INV-8 | `test_no_real_data.py::test_no_corpus_numbers_in_tree` — covers full account numbers only. A pasted **masked tail** (§2.4's `*****NNNNNNN` counterparties) is a 7-digit fragment that will not match any of the five 9-to-11-digit keys, so that shape is **unchecked**; the author is the guard. **Only when `FINBREAK_CORPUS_NUMBERS` is set**; it skips in CI, which cannot hold the numbers. So CI does not catch this: a developer running it before a push does. Explicitly **not** `gitleaks`, which matches credential patterns and would pass a bare digit run. |
 | INV-9 | `test_match.py::test_masked_number_never_matches` |
+| INV-10 | `test_match.py::test_a_bankless_hint_ignores_stored_banks` |
+| INV-11 | `test_match.py::test_another_banks_account_is_never_selected` |
+| INV-12 | `test_match.py::test_an_unrecorded_bank_stays_a_candidate` |
+| INV-13 | `test_match.py::test_bank_comparison_folds_case_and_spacing` |
+| INV-14 | `test_extract.py::test_a_standard_bank_hint_names_its_bank` |
+| INV-15 | `test_wizard.py::test_wrong_bank_keeps_the_pick_and_offers_create` |
+| INV-16 | `test_wizard.py::test_create_prefills_the_statements_bank`; `test_batch_import_ui.py::test_create_prefills_the_statements_bank` |
+| A bank read from an OFX file | **nothing** — none is read (§4.1); an OFX hint carries no bank, so INV-10 governs it. |
 | §4.6 name prefill is correct for family A | **nothing** — the prefill is read from a synthetic fixture matching the measured shape, so a *real* layout change is caught only by a user noticing a wrong name. Low consequence: the field is editable before creation. |
 | §2.2's corpus measurements (one number per folder; label above `_table_region(...).start` on 34/34) | **nothing** — one-off scratchpad measurements over a corpus that is not in the repository and cannot be re-run in CI. Re-measure if the extraction rules or the `_table_region` header detection change. |
 | Auto-detect silently stopping (a layout change moves the label below the column header, §6) | **nothing** — every degraded path is indistinguishable from "this format carries no number". No metric, no warning. Accepted: the failure is safe, and the alternative is alerting on a condition that is also the normal CSV case. |
@@ -911,6 +1015,9 @@ reference to a frozen 3-field value object, or `None`.
 - `docs/specs/FIBR-0085-*.md` — will cite this spec as its enabler when written.
 - ROADMAP — FIBR-0086 → 🚧 at implementation; FIBR-0240/0241/0242/0243 filed from §9.
 - No standard changes. No ADR: this adds no dependency and no new layer.
+- *(FIBR-0284)* `docs/specs/FIBR-0283-bank-field-on-accounts.md` §4.5 says
+  the create dialog's Bank field starts empty; it now points here for the
+  prefill. `tests/features/account_detect/spec.md` gains INV-10 to INV-16.
 
 **INV-8 binds every one of those.** The invariant is not a testing rule — it
 covers prose, and the CHANGELOG entry, the README line, the ROADMAP
@@ -922,8 +1029,4 @@ added lines, where `.corpus-numbers` exists (FIBR-0439).
 
 ## 13. Cold-eyes loop log
 
-| Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
-|------|------|-------|------|------|-----|-----|---------|
-| 3 | 2026-08-06 | 3 | 2 | 4 | 3 | 8 | 17 verified, all fixed; 0 dismissed. Dimensions: dim 4×6, dim 7×3, dim 12×3, dim 5×3, dim 6×2. Origin split: **2 draft, 15 collateral — the second consecutive loop dominated by collateral**, which is loop-economics' stop-dispatching signal; answered by a harder 4b/4c sweep rather than a fourth cold loop. Both CRITICALs were contradictions loop 2 introduced. (a) Loop 2 wrote "leave the existing step-0 seeding exactly as it is today" against §3 decision 5's "leave the combo unselected" — and settling it surfaced that **"nothing pre-selected" was never implementable**: `_target_account_id()` is typed `-> int` and returns `_confirm_account_combo.currentData()` (verified against source), which is `None` on an unselected combo, and `preview_result` takes `account_id: int`. Settled as: no outcome ever clears the combo; only `matched` changes it. (b) Loop 2's masked-number rule routed to `no_number`, which made loop 2's own §4.6 blank-prefill rule and INV-9's second clause **unreachable** — creation is offered only from `no_match`. Removed the unreachable branch rather than routing around it. Also verified this loop and previously only assumed: `_target_account_id()`'s source combo, `ImportPreview.account_id`'s existence, and `ImportService.retarget`'s signature — all three underpin INV-7a. Mechanical: §7's table had been split in two by an interposed paragraph (3 of 4 rows rendering as literal pipes); the ladder's `1a.` was not a valid ordered-list marker; §7's Locks column omitted INV-7a and INV-9. |
-| 2 | 2026-08-06 | 3 | 3 | 6 | 5 | 10 | 24 verified, all fixed; 1 dismissed (TOC — 0 of 3 siblings at 946–1594 lines carry one, so it is project convention). Dimensions: dim 4×6, dim 5×5, dim 2×4, dim 7×3, dim 6×3, dim 15×2, dim 11×1, dim 1×1, dim 10×1. Origin split: **2 draft defects, 9 collateral** — most of this loop answered loop 1's own fixes. **The decisive finding was a draft defect all 3 lanes found independently: §4.5 seeded the matched account into `_confirm_account_combo` under a `QSignalBlocker` AFTER the preview was built.** Verified against source — the blocker suppresses `currentIndexChanged`, which is wired to `_on_confirm_account_changed`, the only caller of `ImportService.retarget`; so the combo would display the matched account while `self._preview` stayed pointed at the old one, and `commit_import` persists `self._preview`. That is a wrong-account **commit**, introduced by this spec's own UI design. Fixed by specifying the order as a numbered sequence (match → seed → preview) with the reasoning inline, plus INV-7a. Second CRITICAL, verified by running it: `normalise_account_number("xxxx1234")` returns `"1234"`, so a masked id could match a real account numbered 1234 — §3 decision 3's deferral was enforced nowhere. Fixed with a new ladder rule (numbered 1a at the time; renumbered to rule 2 in loop 3) + INV-9. Third: §4.4's `normalised` comment and §4.6's as-printed rule gave opposite instructions for a persisted value (loop-1 collateral). |
-| 1 | 2026-08-06 | 3 | 3 | 5 | 6 | 7 | 21 verified, all fixed; 2 dismissed unverified. Dimensions: dim 2×6, dim 6×4, dim 7×3, dim 4×3, dim 5×2, dim 10×1, dim 15×1, dim 9×1. **The three CRITICALs were the doc leaking the user's real account numbers into a PUBLIC repo against its own INV-8 (all 3 lanes, independently), INV-2 prescribing a real number as a committed fixture, and §4.6's name/type prefill having no transport through §4.1's one-field seam.** Fixes: every number replaced with a synthetic stand-in preserving the §2.3 collision; the seam widened to a `SourceAccountHint` value object; INV-8 rewritten to bind prose and given a real test (`gitleaks` cannot see a bare digit run). Two lane CRITICALs were **refuted by running them** — the claim that `_table_region(...).start` yields an empty header block and the feature never fires is false: measured 34/34 A/B/D files with the label above the boundary (margin 1–10 lines). Its residue was real and fixed (the reliability claim had been measured with a first-N-lines probe, not the specified boundary). One prescribed regex was executed before landing (4b-x): the greedy `[\d\s-]*` merges a following numeric column, the specified `[ -]?` form does not, with zero difference across all 34 files → new INV-2a. |
+The review record is [`docs/reviews/FIBR-0086-account-number-auto-detect-loop-log.md`](../reviews/FIBR-0086-account-number-auto-detect-loop-log.md).

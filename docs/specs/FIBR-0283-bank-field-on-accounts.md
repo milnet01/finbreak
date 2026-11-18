@@ -177,8 +177,9 @@ inserted at logical 1, the same restore would have given it Type's width of
 number, a keyword `banks: Sequence[str] = ()` that feeds its completer, and
 `entered_bank() -> str`. Both callers, `ui/import_wizard.py` and
 `ui/import_batch.py`, pass `banks=accounts.bank_suggestions()` and
-`bank=dialog.entered_bank()` to `add_account`. The field starts empty.
-Pre-filling it from the statement is FIBR-0284.
+`bank=dialog.entered_bank()` to `add_account`. The field starts empty unless
+the statement names a bank; that prefill is FIBR-0284's, specified in
+[FIBR-0086 §4.6](FIBR-0086-account-number-auto-detect.md#46-create-from-statement-prefill).
 
 ## 5. Invariants
 

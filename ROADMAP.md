@@ -5672,7 +5672,7 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Source: user-request-2026-08-19.
   Lanes: ui, repositories, services.
 
-- 📋 [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
+- 🚧 [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
   BLOCKED ON FIBR-0283 (the `bank` field itself). File this now so the
   dependency is visible; there is nothing to build until that field
   exists.
@@ -5717,6 +5717,13 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Do NOT infer a bank from an account number's shape or prefix. That
   is the fragile guess FIBR-0283 exists to remove, reintroduced one
   layer down.
+  2026-11-18: started — FIBR-0283 shipped the field (02da4fb). Next:
+  spec decision (write-spec), then build.
+  2026-11-18: contract — amends
+  docs/specs/FIBR-0086-account-number-auto-detect.md in place (§4.1,
+  §4.4 rule 4, outcome wrong_bank, §4.5, §4.6, INV-10 to INV-16); no
+  spec at this id. Amendment, so no review gate (rule 14). Next: build
+  test-first.
   **Layman:** Once accounts know which bank they belong to, statement auto-filing can use that too - so it picks the right account when two accounts look alike, and refuses rather than guessing when the statement is clearly from a different bank.
   Kind: feature.
   Source: user-request-2026-08-19 (adjacency raised while filing FIBR-0283).
