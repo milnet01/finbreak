@@ -5683,6 +5683,17 @@ automatic forward migration, which § 2's carve-out says is not a break.
 
 - 📋 [FIBR-0074] **Dedicated per-bank PDF readers for ABSA / Nedbank / FNB (needs real anonymised sample statements).**
   Today ABSA/Nedbank/FNB statements CAN already be imported two ways: (1) their CSV/OFX exports (most reliable), and (2) the generic PDF table-extractor (pdf_importer.py) for any PDF with ruled transaction tables, via the column-mapping step. A DEDICATED zero-config text-layer reader like standard_bank.py (auto-detect + no mapping) needs REAL anonymised sample statements per bank to build and validate — the SB reader (FIBR-0050) required 6 real statements to catch layout edge cases; synthetic dummy PDFs exercise code paths but don't validate real-world layouts. Blocked on the user providing (or the project sourcing) a few real anonymised statements per bank. Until then, the generic extractor + CSV/OFX cover these banks.
+  Sample search 2026-11-18 (user request): no bank publishes a mock
+  statement. The only usable public samples are FNB's: two MIT-licensed
+  fixtures in github.com/sellomkantjwa/fnb-statement-extractor
+  (test/fixtures/sample-statement.pdf, current account;
+  sample-credit-card.pdf). Each was redrawn from a real FNB statement:
+  the layout and dates are kept, and every description and figure is
+  fictitious but still reconciles. They have a text layer. Its
+  scripts/sample-statements/redraw.js is a route to fictitious copies
+  of our own real statements. Nothing usable was found for ABSA,
+  Nedbank, Capitec, Discovery, TymeBank or Investec. The Scribd uploads
+  are real customers' statements: never use them.
   **Layman:** Zero-config PDF import for the other big SA banks, the way Standard Bank statements already import without mapping columns.
   Kind: feature.
   Source: user-request-2026-07-10.
