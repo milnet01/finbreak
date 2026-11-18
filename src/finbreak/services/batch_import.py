@@ -160,7 +160,8 @@ class BatchFile:
     hint: SourceAccountHint | None = None  # the Create prefill; see _settle_parse
     account_id: int | None = None  # the destination, once settled
     reason: str = ""  # user-facing text for failed/skipped/not_attempted
-    pending_password: str | None = None  # § 4.4 — held, not yet written
+    # § 4.4 — held, not yet written. Out of the repr: never logged (FIBR-0479).
+    pending_password: str | None = field(default=None, repr=False)
     remember_password: bool = False  # § 4.4 — the dialog's tick
     result: ImportResult | None = None  # None until committed
     new_count: int = 0  # § 4.5 cumulative
