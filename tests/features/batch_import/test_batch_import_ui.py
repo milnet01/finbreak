@@ -1904,3 +1904,46 @@ def test_FIBR0481_report_counts_use_the_locales_digits(qtbot, service):
     for shown in (line, label):
         western = [c for c in shown if c in "0123456789"]
         assert not western, f"Western digits in {shown!r}"
+
+
+def test_FIBR0482_after_create_no_row_on_that_number_offers_create_again(
+    qtbot, service, tmp_path
+):
+    """Each file is matched once, at scan, and its Create prefill was never
+    revisited. So after creating the account from one row, that row and every
+    other row printing the same number still offered Create — each a further
+    account on one number, which makes every later statement ambiguous."""
+    january = _ofx(tmp_path, "jan.ofx", "447556667")
+    february = Path(_ofx(tmp_path, "feb.ofx", "447556667"))
+    february.write_text(
+        february.read_text().replace("20260131", "20260228").replace("202601", "202602")
+    )
+    widget = _wizard(qtbot, service)
+    widget._select_files([january, str(february)])
+    qtbot.waitUntil(
+        lambda: (
+            widget._batch_phase == "review"
+            and [f.outcome for f in widget._batch_files]
+            == ["needs_account", "needs_account"]
+        ),
+        timeout=3000,
+    )
+    review = widget._batch_review
+    files = widget._batch_files
+
+    entered = cast(CreateAccountDialog, _EnteredAccount("Cheque", "447556667"))
+    review._created(files[0], entered)
+
+    created = next(
+        a for a in AccountService(service.vault).list_accounts() if a.name == "Cheque"
+    )
+    assert files[1].account_id == created.id, "the other row did not file itself"
+    for row in (0, 1):
+        review._choose_account(row)
+        dialog = review.findChild(AccountPickerDialog)
+        assert dialog is not None, f"row {row}: the picker did not open"
+        create = dialog.findChild(QDialogButtonBox, "account_picker_create")
+        assert create is None, f"row {row} still offers Create"
+        dialog.reject()
+        dialog.deleteLater()
+        qtbot.waitUntil(lambda: review.findChild(AccountPickerDialog) is None)
