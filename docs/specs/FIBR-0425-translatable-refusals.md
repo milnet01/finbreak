@@ -225,8 +225,10 @@ is deleted, and its callers call `user_text`.
 
 INV-1, INV-2, INV-3 and INV-5 to INV-8 live in
 `tests/features/i18n/test_user_text.py`. INV-4 is the existing suites. INV-5
-needs FIBR-0017's `pseudo` fixture, which `test_language.py` defines, so it
-moves to `tests/features/i18n/conftest.py` for both files to use. Each
+needs FIBR-0017's `pseudo` fixture, which `test_language.py` defined, so it
+moves to `tests/conftest.py` for both files to use. A second `conftest.py`
+under `tests/features/i18n/` would shadow the root one, and
+`from conftest import _PW` would then fail (measured 2026-11-18). Each
 new test is seen to fail before its code exists: INV-1 against today's
 `setText(str(exc))` lines, INV-5 against today's English. The AST walks each
 carry a planted-offence leg, as `test_translatable_strings.py` does, so a walk
