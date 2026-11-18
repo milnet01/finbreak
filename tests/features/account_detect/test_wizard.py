@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 
 from conftest import _PW, wait_for_pdf_read
 from finbreak.repositories.transactions import TransactionRepository
@@ -659,3 +660,25 @@ def test_create_claims_a_match_only_when_the_statement_matches_it(
     label = widget._account_match_label.text()
     assert "Matched" not in label, label
     assert "will not file themselves" in label, label
+
+
+def test_FIBR0480_a_created_account_name_is_shown_as_typed_not_as_markup(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The label after Create echoes the account name the user typed; the
+    error label echoes exception text, which can quote a file's contents. A
+    QLabel left on AutoText renders either as HTML when it looks like markup."""
+    _ofx_names_standard_bank(monkeypatch)
+    svc = _accounts(service)
+    widget = _wizard(qtbot, service, svc.list_accounts()[0].id)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+
+    dialog = _open_create_dialog(widget)
+    dialog._name.setText("<b>Bold</b> Savings")
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
+    dialog._number.setText("11 222 333 4")  # so the label names the account
+    dialog.accept()
+
+    assert "<b>Bold</b> Savings" in widget._account_match_label.text()
+    assert widget._account_match_label.textFormat() is Qt.TextFormat.PlainText
+    assert widget._error.textFormat() is Qt.TextFormat.PlainText
