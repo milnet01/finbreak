@@ -139,6 +139,7 @@ class ImportWizardWidget(QWidget):
         datetime_prefs: DateTimePrefs | None = None,
     ):
         super().__init__(parent)
+        self._vault = service.vault
         self._imports = ImportService(service.vault)
         self._accounts = AccountService(service.vault)
         # The currency scale, for rendering preview amounts as decimals (not raw
@@ -552,6 +553,12 @@ class ImportWizardWidget(QWidget):
         )
         if not paths:
             return  # cancelled — stay on the pick step, as today
+        if not self._vault.is_open:
+            # An auto-lock fired while the picker was open. Qt frees this wizard
+            # only after the picker's own loop returns, so it is still alive
+            # here; reading the file would refill it after the lock's wipe
+            # (FIBR-0477).
+            return
         try:
             if len(paths) == 1:
                 # One file routes to the existing single-file flow, ENTIRELY
