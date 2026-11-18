@@ -570,8 +570,11 @@ def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None
     """The statement's independently-printed closing figure, or ``None`` when the
     family prints none (Savings, and every Family-E statement; INV-10). Scans the
     full document text (the A/RCP closings print on a summary page outside the
-    transaction region)."""
+    transaction region). A row carrying a marker in its description ("CLOSING
+    BALANCE TRANSFER") is skipped, as `_is_terminator` skips it."""
     for line in full_text.splitlines():
+        if _looks_like_row(line, dmy_lead=True):
+            continue
         low = line.lower()
         for marker in _CLOSING_MARKERS[family]:
             if marker in low:
