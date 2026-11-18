@@ -18,6 +18,7 @@ import pytest
 from PySide6.QtCore import Qt
 
 from conftest import _PW, _acct, import_again
+from finbreak.errors import FinbreakError
 from finbreak.importers.base import ParseResult
 from finbreak.importers.ofx_importer import (
     _MAX_OFX_TRANSACTIONS,
@@ -480,6 +481,37 @@ def test_INV7e_multi_account_chooser(qtbot, service, tmp_path):
     # the count (a wrong-statement off-by-one would still yield count 1).
     rows = TransactionRepository(conn).list_all()
     assert [(r.description, r.amount_minor) for r in rows] == [("Fuel", -2500)]
+
+
+def test_FIBR0478_a_failed_re_preview_imports_nothing(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Choosing statement 2 moves the destination before its preview runs. If
+    that preview fails, statement 1's preview must not stay importable: Import
+    would then land statement 1's rows on statement 2's account."""
+    acct, conn = _acct(service), service.vault.connection
+    data = _ofx(
+        _stmt(
+            [_txn("20260105", "-10.00", name="Shop", fitid="e1")],
+            acctid="BANK111",
+            acct_type="SAVINGS",
+        ),
+        _ccstmt([_txn("20260106", "-25.00", name="Fuel", fitid="e2")], acctid="CC999"),
+    )
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(_write(tmp_path, "multi.ofx", data)))
+    assert widget._import_button.isEnabled(), "precondition: statement 1 previewed"
+
+    def fail(*_a, **_k):
+        raise FinbreakError("preview failed")
+
+    monkeypatch.setattr(widget._imports, "preview_result", fail)
+    widget._ofx_statement_combo.setCurrentIndex(1)
+    assert widget._error.text() == "preview failed"
+
+    widget._import_button.click()
+
+    assert TransactionRepository(conn).list_all() == [], "a stale preview imported"
 
 
 def test_INV7e_single_statement_hides_chooser(qtbot, service, tmp_path):
