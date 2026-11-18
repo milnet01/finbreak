@@ -5633,7 +5633,7 @@ translation pipeline, the bundled locales and the language switcher. Each item
 here is new user-visible capability under versioning.md § 3.2 and breaks nothing
 on the § 2 surface.
 
-- 📋 [FIBR-0017] **P12: multi-language UI (i18n) — 6 bundled locales incl. RTL + language switcher.**
+- ✅ [FIBR-0017] **P12: multi-language UI (i18n) — 6 bundled locales incl. RTL + language switcher.**
   Qt translation pipeline: every user-facing string is wrapped in `tr()` from the first UI onward (P02), `lupdate` extracts them to `.ts` catalogs, translations are compiled to `.qm` and loaded via `QTranslator` at startup and on live switch. Ships **6 locales**: English (base), Spanish, Simplified Chinese, Hindi, French, and **Arabic** (right-to-left). A language picker in the FIBR-0014 Settings screen switches locale. Numbers, currency, and dates render through `QLocale` (matters for a finance app — ties into the base-currency display), not hardcoded formats. The UI is built **RTL-ready** (layout mirroring) from P02 per design.md "Internationalization (i18n) & localisation", so Arabic is translate-and-ship; further RTL scripts (Hebrew, Urdu) are then a translation-only follow-up. NOTE: this stays cheap only if the string-externalization and RTL-safe-layout conventions are followed from P02 — retrofitting hardcoded English (and left-to-right-only layouts) across the whole feature stack is far more expensive. Dependencies: FIBR-0014 (settings screen hosts the switcher; transitively pulls the feature-complete UI so all strings exist to translate).
   **Layman:** Lets people use finbreak in their own language — ships in 6 languages to start (including Arabic, which reads right-to-left), with more addable later.
   Kind: implement.
@@ -5672,6 +5672,9 @@ on the § 2 surface.
   languages, each labelled machine-translated in the language picker
   until a native speaker reviews it. Unblocks FIBR-0425, FIBR-0434
   and FIBR-0473.
+  2026-11-18: shipped. Five AI-drafted catalogs (es, fr, hi, zh_CN, ar)
+  in dcb9064, labelled machine-translated in the picker until listed in
+  REVIEWED (9f86d94).
 
 - ✅ [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
   Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
@@ -5743,7 +5746,7 @@ on the § 2 surface.
   Source: user-request-2026-08-03.
   Lanes: ui, i18n.
 
-- 🚧 [FIBR-0473] **Before the first non-English catalog ships: month-name grammar, sentence spacing, bundle check.**
+- ✅ [FIBR-0473] **Before the first non-English catalog ships: month-name grammar, sentence spacing, bundle check.**
   Queued from the FIBR-0017 review-code lane (2026-11-15). None of these
   can show while English is the only language, so each waits for the first
   catalog (FIBR-0017's Waiting-on).
@@ -5763,12 +5766,17 @@ on the § 2 surface.
   2026-11-18: items 1-2 done in c96c92b (twelve tr() month names;
   "{text} {more}" join; FIBR-0231 § 4.6 amended). Item 3 waits for the
   catalogs.
+  2026-11-18: shipped. Items 1-2 in c96c92b; item 3 in dcb9064 as a
+  self-test translations check, which build-smoke ran green in the clean
+  room for onedir and AppImage (OBS runs it at its next build).
+  /code-review findings closed in 9f86d94: 5 fixed, 1 queued
+  (FIBR-0485), 2 dismissed with reasons in that commit body.
   **Layman:** Three small things to fix when the first real translation is added, so it reads correctly and reaches every download.
   Kind: review-fix.
   Source: review-code-2026-11-15-fibr0017.
   Lanes: ui, i18n.
 
-- 🚧 [FIBR-0484] **A failed Start over said "nothing has changed for certain", which reads as a promise the vault is intact.**
+- ✅ [FIBR-0484] **A failed Start over said "nothing has changed for certain", which reads as a promise the vault is intact.**
   Found 2026-11-18 while drafting the catalogs: four of five AI
   translators read ui/main_window.py's reset-failure message as "it is
   certain nothing changed". The code's own comment says not to promise
@@ -5776,6 +5784,7 @@ on the § 2 surface.
   state. Fix: the English now says part of the vault may already be
   erased, and each catalog carries that sentence. No test pins the
   wording; the reset-failure path has none.
+  2026-11-18: shipped in dcb9064.
   **Layman:** After a failed reset, the message no longer suggests your data is untouched when part of it may be erased.
   Kind: fix.
   Source: translation-drafts-2026-11-18.
