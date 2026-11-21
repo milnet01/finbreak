@@ -323,22 +323,20 @@ whole-codebase rewrite. So, as a standing convention:
   read naturally in every locale while still showing the user's chosen base
   currency.
 - **Translations load at runtime** via `QTranslator` (compiled `.qm`
-  catalogs), switchable at runtime from the language picker FIBR-0017 adds to
-  the FIBR-0014 Settings screen — no reinstall; selecting an RTL locale flips
+  catalogs), switchable at runtime from the language picker on the FIBR-0014
+  Settings screen — no reinstall; selecting an RTL locale flips
   the layout direction app-wide. A switch rebuilds the main window in the new
   language, because Qt does not re-translate built widgets
   ([FIBR-0017](specs/FIBR-0017-translation-pipeline.md) § 4.4).
 - **Non-display** strings — log messages, DB keys, enum values — are *not*
   translated; only what the user reads on screen.
 
-Shipping the catalogs themselves is the **FIBR-0017** (P12) deliverable — the
-initial set is English (base), Spanish, Simplified Chinese, Hindi, French, and
-**Arabic**; the packaging step below bundles the `.qm`
-files as app resources. The coding-level rules are in
+The catalogs ship under `src/finbreak/data/i18n/`: English (base), Spanish,
+Simplified Chinese, Hindi, French, and **Arabic**. The packaging step below
+bundles the `.qm` files as app resources. The coding-level rules are in
 [coding.md § 5.2](standards/coding.md#52-pyside6-qt-for-python); the extraction
-and compile pipeline (`lupdate` → `.ts` → `lrelease` → `.qm`) and per-locale
-plural / placeholder handling are pinned in the FIBR-0017 spec at
-implementation time.
+and compile pipeline (`lupdate` → `.ts` → `lrelease` → `.qm`) is pinned in
+[FIBR-0017](specs/FIBR-0017-translation-pipeline.md).
 
 ### Packaging & self-contained delivery
 
