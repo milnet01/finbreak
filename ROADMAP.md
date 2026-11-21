@@ -5932,6 +5932,11 @@ automatic forward migration, which § 2's carve-out says is not a break.
   currencies (per-currency scopes). The user-entered rate and combined
   total moved to FIBR-0487; checking a statement's currency on import is
   FIBR-0488. Spec: docs/specs/FIBR-0087-per-account-currency.md.
+  review-contract 2026-11-21: two cold loops (cap), 11 verified, 11 fixed,
+  none dismissed; calm cap. Spec Status: accepted. Loop 2's four fixes
+  were read by no lane; implementation is their reader. Record:
+  docs/reviews/FIBR-0087-per-account-currency-loop-log.md. Next: TDD
+  from the spec.
 
 - ✅ [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
   The Accounts screen carries Name, Type, Account number, Note and
