@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=486 -->
+<!-- ants-roadmap-id-high-water: FIBR=488 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5927,6 +5927,11 @@ automatic forward migration, which § 2's carve-out says is not a break.
   (3) one latest rate per currency, replaced on update, its entry date
   shown on every converted figure; no rate history. Next: spec via
   write-spec.
+  Split 2026-11-21 (developer call, so each spec stays reviewable): this
+  item is each account's currency plus the rule that no figure mixes
+  currencies (per-currency scopes). The user-entered rate and combined
+  total moved to FIBR-0487; checking a statement's currency on import is
+  FIBR-0488. Spec: docs/specs/FIBR-0087-per-account-currency.md.
 
 - ✅ [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
   The Accounts screen carries Name, Type, Account number, Note and
@@ -6055,6 +6060,32 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Kind: feature.
   Source: user-request-2026-08-19 (adjacency raised while filing FIBR-0283).
   Lanes: services, importers, ui.
+
+- 📋 [FIBR-0487] **Your own exchange rate — one combined total across currencies.**
+  Split from FIBR-0087 so each spec stays reviewable; builds on it. User
+  decisions 2026-11-21 (recorded on FIBR-0087): an optional rate the user
+  types in, stored in the vault; one latest rate per currency, replaced on
+  update, no history; every converted figure labelled "converted at your
+  rate, entered <date>"; never a live rate (offline posture, only the
+  FIBR-0054 updater goes online). Adds a converted scope beside FIBR-0087's
+  per-currency scopes. Warrants the small FX ADR FIBR-0087's body names.
+  Blocked by FIBR-0087.
+  **Layman:** Type in an exchange rate for each foreign currency, and the dashboard can show one combined total and combined graphs in your main currency, always labelled with the rate you typed and the date you typed it.
+  Kind: feature.
+  Source: split-from-FIBR-0087-2026-11-21.
+  Blocked-by: FIBR-0087.
+
+- 📋 [FIBR-0488] **Check an imported statement's currency against its account.**
+  Found while specifying FIBR-0087 (2026-11-21): no importer reads a
+  statement's currency. OFX carries CURDEF, which ofxparse exposes as
+  statement.currency, and nothing reads it. Once accounts have a currency
+  (FIBR-0087), an OFX import whose statement currency differs from the
+  target account's should be refused or warned. CSV and PDF carry no
+  reliable currency field today. Blocked by FIBR-0087.
+  **Layman:** When a statement says it is in dollars but you import it into a rand account, finbreak warns you instead of mixing the amounts in.
+  Kind: feature.
+  Source: split-from-FIBR-0087-2026-11-21.
+  Blocked-by: FIBR-0087.
 
 ## v1.3.0 — Money insight
 
