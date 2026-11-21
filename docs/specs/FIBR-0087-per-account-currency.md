@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # FIBR-0087 — Give each account its own currency
 
-**Status:** spec draft (2026-11-21).
+**Status:** accepted (2026-11-21).
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0087 (user-request-2026-07-11, an offshore account
 in the portfolio; revisits FIBR-0021).
@@ -22,7 +22,8 @@ Each account records its currency. It is chosen when the account is created,
 and existing accounts take the vault's base currency. Every amount shows in its
 own account's currency. No figure finbreak computes adds amounts from two
 currencies together. A vault whose accounts all share one currency looks and
-behaves exactly as it does today.
+behaves as it does today, apart from the currency choice on the Accounts screen
+and in the Create-an-account dialog (§ 4.8).
 
 ## 2. Problem
 
@@ -145,7 +146,10 @@ def account_currency_choices(conn) -> list[str]:
 ```
 
 `account_currency`'s fallback covers a NULL written outside the app and a
-hand-built `Account` in a test. Nothing in the app writes NULL.
+hand-built `Account` in a test. Nothing in the app writes NULL. **Every
+comparison of two accounts' currencies, or of a stored currency with a given
+one, uses this reading.** In SQL that is
+`COALESCE(NULLIF(TRIM(currency), ''), :base)`.
 
 **Why the exponent filter.** Amounts are stored as integer minor units at the
 vault's single `minor_unit_exponent` (`models.py` states it). A currency with a
@@ -165,8 +169,8 @@ It stops a later 0- or 3-decimal entry from being offered to an account (§ 9).
   `ValueError(UserMessage(QT_TRANSLATE_NOOP("Refusal", "unsupported currency")))`.
 - `update_account` refuses to **change** the currency of an account in use with
   `AccountInUseError`, and the message says the currency cannot change once
-  the account holds transactions or statements. Passing the stored currency
-  again is not a change.
+  the account holds transactions or statements. Passing the account's
+  current `account_currency` again is not a change.
 - `is_in_use(account_id) -> bool`: the account has a transaction
   (`TransactionRepository.count_for_account`) or a statement period
   (`StatementPeriodRepository.list_for_account`). `delete_account`'s two
@@ -187,7 +191,7 @@ These take a `currency` and read only that currency's accounts:
 
 | Service | Change |
 |---|---|
-| `RecurringService` | `snapshot(today, currency)`, `candidates(today, currency)`, `confirmed(today, currency)` and `summary(today, currency)` run detection over that currency's accounts only. `RecurringRepository.recurring_rows(account_ids)` gains the filter. `RecurringItem` gains `currency: str`, last. The Recurring tab calls `snapshot` once per currency in `vault_currencies` and lists the items together |
+| `RecurringService` | `snapshot(today, currency)`, `candidates(today, currency)`, `confirmed(today, currency)` and `summary(today, currency)` run detection over that currency's accounts only. `RecurringRepository.recurring_rows(account_ids)` gains the filter. `RecurringItem` gains `currency: str = field(kw_only=True)`, last: its last field, `day_of_month`, has a default, so a positional field without one cannot follow it. The Recurring tab calls `snapshot` once per currency in `vault_currencies` and lists the items together |
 | `AlertService` | `alerts(today)` runs each detector once per currency, over that currency's accounts. `SpendingAlert` gains `currency: str`, last. An alert in the base currency keeps today's `key`; any other appends `:<code>`, so existing dismissals still match |
 | `ForecastService` | `forecast(today, horizon, currency)` and `has_confirmed(today, currency)`. The anchor adds only `CASH_TYPES` accounts in that currency; the inputs are that currency's confirmed recurring items |
 | `TransferDetectionService` | `TransferRepository.candidate_pairs` pairs a debit and a credit only when both accounts have the same currency, so `candidates` and `confirm_all` both keep the rule. `TransferCandidate` and `ConfirmedTransfer` each gain `currency: str`, last |
@@ -230,7 +234,7 @@ to, not `read_base_currency`:
 | `ui/transfers.py` | the candidate's or pair's currency |
 | `ui/recurring.py` | the item's `currency` |
 | `ui/alerts_dialog.py` | the alert's `currency` |
-| `ui/accounts.py` reconciliation "off by" | the selected account |
+| `ui/accounts.py` reconciliation "off by" | the row's account |
 | `ui/import_wizard.py` preview | the target account |
 | `ui/forecast.py` | the Forecast tab's chosen currency (below) |
 
