@@ -4268,6 +4268,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   recommendation yes, it is read-only tooling; 2026-11-15)
   User decision 2026-11-18: install python313 debuginfo (via the
   labelled ksshaskpass prompt) so py-bt can show the crashing frame.
+  2026-11-21: tooling ready, kept cores unusable. Installed (user
+  approval 2026-11-18) python313-base-debuginfo, python313-debugsource,
+  libpython3_13-1_0-debuginfo and libpython3_13-1_0-x86-64-v3-debuginfo
+  from Tumbleweed-Debug-OSS. Every kept core predates the 2026-11-19
+  Python update to 3.13.18, so gdb reports build-id mismatches on all
+  their libraries and cannot read them; they are dead evidence. py-bt is
+  not auto-loaded: the venv loads the x86-64-v3 libpython from
+  /lib64/glibc-hwcaps/, which the auto-load script's path does not cover.
+  Recipe, proven on a deliberate SIGSEGV core (py-bt named the function
+  and line): coredumpctl debug <PID> --debugger-arguments="-batch -ex
+  'set debuginfod enabled off' -ex 'source
+  /usr/share/gdb/auto-load/usr/lib64/libpython3.13.so.1.0-gdb.py' -ex
+  py-bt -ex bt". Next: on the next worker crash, run that recipe on its
+  core straight away, before a Python update makes it unreadable.
+  Waiting on a recurrence, so back to planned.
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
