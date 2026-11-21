@@ -162,7 +162,7 @@ It stops a later 0- or 3-decimal entry from being offered to an account (§ 9).
 - `update_account(..., currency: str)`, keyword-only and **required**, beside
   `bank`.
 - Both refuse a code not in `account_currency_choices` with
-  `ValueError(UserMessage("unsupported currency"))`.
+  `ValueError(UserMessage(QT_TRANSLATE_NOOP("Refusal", "unsupported currency")))`.
 - `update_account` refuses to **change** the currency of an account in use with
   `AccountInUseError`, and the message says the currency cannot change once
   the account holds transactions or statements. Passing the stored currency
@@ -187,10 +187,10 @@ These take a `currency` and read only that currency's accounts:
 
 | Service | Change |
 |---|---|
-| `RecurringService` | `snapshot`, `candidates`, `confirmed` and `summary` run detection once per currency in `vault_currencies`. `RecurringRepository.recurring_rows(account_ids)` gains the filter. `RecurringItem` gains `currency: str`, last. `summary(today, currency)` sums only that currency's confirmed items |
+| `RecurringService` | `snapshot(today, currency)`, `candidates(today, currency)`, `confirmed(today, currency)` and `summary(today, currency)` run detection over that currency's accounts only. `RecurringRepository.recurring_rows(account_ids)` gains the filter. `RecurringItem` gains `currency: str`, last. The Recurring tab calls `snapshot` once per currency in `vault_currencies` and lists the items together |
 | `AlertService` | `alerts(today)` runs each detector once per currency, over that currency's accounts. `SpendingAlert` gains `currency: str`, last. An alert in the base currency keeps today's `key`; any other appends `:<code>`, so existing dismissals still match |
 | `ForecastService` | `forecast(today, horizon, currency)` and `has_confirmed(today, currency)`. The anchor adds only `CASH_TYPES` accounts in that currency; the inputs are that currency's confirmed recurring items |
-| `TransferDetectionService` | `candidates` pairs a debit and a credit only when both accounts have the same currency. `TransferCandidate` carries that currency for display |
+| `TransferDetectionService` | `TransferRepository.candidate_pairs` pairs a debit and a credit only when both accounts have the same currency, so `candidates` and `confirm_all` both keep the rule. `TransferCandidate` and `ConfirmedTransfer` each gain `currency: str`, last |
 
 ### 4.6 The dashboard (`ui/home.py`)
 
@@ -207,7 +207,9 @@ account id. The refresh passes `accounts_in(currency)` or `{id}` as
 `account_ids`, except that the single-currency "All accounts" still passes
 `None`. The symbol for every figure is the scope's currency. The recurring card
 reads `summary(today, scope.currency)`. The Alerts button counts that
-currency's alerts. A held selection is kept across refreshes as today. If its
+currency's alerts. The shell opens the Alerts dialog with the scope's currency,
+and the dialog lists only that currency's alerts, so the count it reports after
+a dismiss is that currency's too. A held selection is kept across refreshes as today. If its
 currency item disappears, the selection falls back to the first item.
 
 The export dialog (`ui/export_dialog.py`) is pre-filled from the scope's
@@ -234,7 +236,8 @@ to, not `read_base_currency`:
 
 The **Forecast tab** gains a currency combo listing `vault_currencies`. It is
 hidden when that list has one entry or none, so a single-currency vault sees no
-change.
+change. The tab's coverage suffix (`_coverage_suffix`) and its excluded-account
+names (`_excluded_names`) count only the chosen currency's accounts.
 
 The Settings dialog still shows "Base currency". It is now the default for new
 accounts, and the text is unchanged.
@@ -307,11 +310,13 @@ line carrying a field value.
   an in-use account.
 
 - **INV-6** — `scope_currency` returns the single currency of its scope.
-  `None` in a single-currency vault returns the base currency. `None`, or a set
-  holding two currencies, in a mixed vault raises `MixedCurrencyError`. An
-  empty set returns the base currency.
+  `None` in a single-currency vault returns that one currency, even when it is
+  not the base currency. `None`, or a set holding two currencies, in a mixed
+  vault raises `MixedCurrencyError`. An empty set, or `None` in a vault with no
+  accounts, returns the base currency.
   *Test:* `tests/features/currency/test_scope.py` (new), with one ZAR and one
-  USD account.
+  USD account, plus a ZAR vault whose only account is USD, where `None` gives
+  "USD".
   *Breaks when:* `None` is treated as "base currency" without looking at the
   accounts.
 
@@ -322,8 +327,9 @@ line carrying a field value.
   *Breaks when:* a method reads rows without calling `scope_currency`.
 
 - **INV-8** — Recurring detection never groups across currencies. The same
-  merchant, monthly in a ZAR account and in a USD account, gives two items,
-  one per currency. `summary(today, "USD")` counts only the USD one.
+  merchant, monthly in a ZAR account and in a USD account, gives one item from
+  `snapshot(today, "ZAR")` and one from `snapshot(today, "USD")`.
+  `summary(today, "USD")` counts only the USD one.
   *Test:* `tests/features/recurring/`, beside the existing detection tests.
   *Breaks when:* `recurring_rows` is not filtered, so the two streams merge into
   one item.
@@ -338,24 +344,28 @@ line carrying a field value.
 - **INV-10** — The forecast anchor and inputs hold only the chosen currency.
   *Test:* `tests/features/forecast/`, with a ZAR and a USD cash account, each
   with a closing balance. `forecast(today, horizon, "USD")`'s anchor is the USD
-  balance alone.
-  *Breaks when:* `_anchor` sums every cash account.
+  balance alone, and the Forecast tab on USD names no ZAR account as excluded.
+  *Breaks when:* `_anchor` sums every cash account, or the tab's coverage text
+  counts the other currency's cash accounts.
 
 - **INV-11** — Transfer detection never pairs accounts of different currencies.
   *Test:* `tests/features/transfers/`: −100.00 in a ZAR account and +100.00 in a
   USD account on the same day give no candidate. The same pair between two ZAR
   accounts gives one, which isolates the currency rule from the amount and
-  date rules.
-  *Breaks when:* `candidates` compares amounts only.
+  date rules. `confirm_all` on the ZAR and USD pair confirms nothing.
+  *Breaks when:* `candidate_pairs` compares amounts only, or the rule sits in
+  `candidates` alone, so `confirm_all` still pairs across currencies.
 
 - **INV-12** — In a single-currency vault the dashboard selector's items are
   "All accounts" then each account, and the Forecast tab's currency combo is
   hidden. In a mixed vault the selector starts with "All ZAR accounts", "All USD
   accounts", and choosing the USD item renders every figure with the USD
-  symbol from the USD account's transactions only.
+  symbol from the USD account's transactions only. Dismissing an alert in the
+  Alerts dialog opened from the USD item leaves the button showing the USD
+  count.
   *Test:* `tests/features/dashboard/`, the two vaults.
-  *Breaks when:* the single-currency list changes, or the USD scope passes
-  `None`.
+  *Breaks when:* the single-currency list changes, the USD scope passes
+  `None`, or the dialog lists every currency's alerts.
 
 - **INV-13** — Each site in § 4.7's table shows the right currency's symbol.
   *Test:* one test per site, with a USD account, asserting "$" in the
@@ -433,16 +443,16 @@ unchanged code.
 
 - `tests/features/reconciliation/test_no_schema_change.py`: the pin moves to 19,
   and `tests/features/reconciliation/spec.md` INV-8's prose moves with it.
-- Tests that assert `_version == 18` after a full `run_migrations` become
-  `== LATEST_SCHEMA_VERSION`. Fixtures that rebuild an older vault also drop
+- Fixtures that rebuild an older vault also drop
   `accounts.currency`. The first red run finds each.
 - Tests that assert the exact `accounts` column set gain `currency`:
   `grep -rn '_cols(conn, "accounts") ==' tests`.
 - Every `update_account(` and `AccountRepository.update(` caller gains the
   currency: `grep -rn "update_account(\|\.update(" src tests --include=*.py`.
 - Accounts-screen tests that assume six columns, and recurring, alert,
-  forecast and transfer tests that construct `RecurringItem`, `SpendingAlert` or
-  `TransferCandidate` positionally, are found by the first red run.
+  forecast and transfer tests that construct `RecurringItem`, `SpendingAlert`,
+  `TransferCandidate` or `ConfirmedTransfer` positionally, are found by the
+  first red run.
 
 ## 8. Alternatives considered (and rejected)
 
