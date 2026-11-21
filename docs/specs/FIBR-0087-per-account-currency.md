@@ -413,6 +413,19 @@ line carrying a field value.
 Each INV's test is named in § 5. Write each first and see it fail against the
 unchanged code.
 
+- INV-1, INV-2: `tests/features/accounts/test_migration_v19.py`.
+- INV-3, INV-4, INV-5, INV-14: `tests/features/accounts/test_accounts.py`.
+- INV-6, INV-7: `tests/features/currency/test_scope.py`.
+- INV-8: `tests/features/recurring/`.
+- INV-9: `tests/features/spending_alerts/`.
+- INV-10: `tests/features/forecast/`.
+- INV-11: `tests/features/transfers/`.
+- INV-12: `tests/features/dashboard/`.
+- INV-13: beside each § 4.7 site's existing tests.
+- INV-15: `tests/features/account_detect/test_wizard.py` and
+  `tests/features/batch_import/test_batch_import_ui.py`.
+- INV-16: `tests/features/pdf_export/test_export_dialog.py`.
+
 `tests/features/currency/` is a new suite. It reads no doc, so it goes in
 `tests/features/prose_checks/`'s `_NO_PROSE` ledger, or that guard fails.
 
