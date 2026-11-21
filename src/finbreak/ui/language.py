@@ -111,16 +111,35 @@ def save_language_pref(token: str) -> None:
 def resolve_language(pref: str, system: QLocale) -> str:
     """FIBR-0209's order: an explicit available token; then the first available
     of the system's display languages, in preference order (``pt-BR`` as
-    ``pt_BR``, then the list's own bare ``pt``); then English. Not
-    ``system.name()``: on Windows that is the region format, not the display
-    language."""
+    ``pt_BR``, then the list's own bare ``pt``); then a catalog in the same
+    language and script as an entry that names its script (``zh-Hans-SG``
+    finds ``zh_CN``; FIBR-0485); then English. Only an entry naming its script
+    counts, because a bare ``zh`` reads as Simplified even on a Traditional
+    system. Not ``system.name()``: on Windows that is the region format, not
+    the display language."""
     available = available_languages()
     if pref != LANGUAGE_SYSTEM:
         return pref if pref in available else SOURCE_LANGUAGE
-    for candidate in system.uiLanguages():
+    candidates = system.uiLanguages()
+    for candidate in candidates:
         token = candidate.replace("-", "_")
         if token in available:
             return token
+    for candidate in candidates:
+        subtags = candidate.split("-")
+        # BCP 47 puts a script, when there is one, second: zh-Hans-SG.
+        if len(subtags) < 2 or not (len(subtags[1]) == 4 and subtags[1].isalpha()):
+            continue
+        wanted = QLocale(candidate)
+        if wanted.language() == QLocale.Language.C:  # Qt does not know it
+            continue
+        for token in available:
+            catalog = QLocale(token)
+            if (catalog.language(), catalog.script()) == (
+                wanted.language(),
+                wanted.script(),
+            ):
+                return token
     return SOURCE_LANGUAGE
 
 

@@ -21,6 +21,12 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **A computer set to Chinese in Singapore opens finbreak in Simplified Chinese** (FIBR-0485)
+  It opened in English before. Taiwan and Hong Kong use Traditional
+  Chinese, which finbreak does not have yet, so they still open in English.
+
 ## [1.1.0] - 2026-11-18
 
 **Theme:** Localisation.

@@ -53,7 +53,7 @@ session, not the shipped ones: every extracted source text, translated as
 
 | ID | Test | Assertion |
 |---|---|---|
-| FIBR-0017 INV-1 | `test_INV1_resolution_order`, `test_INV1_corrupt_catalog_falls_back_to_english` | An explicit available token wins; `"system"` takes the first available of the system's display languages (`uiLanguages()`), else English; a catalog that will not load leaves English with no dialog, and logs a warning |
+| FIBR-0017 INV-1 | `test_INV1_resolution_order`, `test_INV1_corrupt_catalog_falls_back_to_english` | An explicit available token wins; `"system"` takes the first available of the system's display languages (`uiLanguages()`), else a catalog in the language and script of an entry naming its script (`zh_SG` gets `zh_CN`; `zh_TW` does not), else English; a catalog that will not load leaves English with no dialog, and logs a warning |
 | FIBR-0017 INV-2 | `test_INV2_*` | The stored choice is kept only when it is `"system"` or an available language |
 | FIBR-0017 INV-3 | `test_INV3_first_window_is_translated` | The first-run dialog `run()` opens is already in the stored language |
 | FIBR-0017 INV-4 | `test_INV4_*` | After a switch from Settings, no visible text in the main window is in the old language, and back again; a moved toolbar keeps its edge |

@@ -129,6 +129,9 @@ def pt_and_zh(tmp_path, monkeypatch, pseudo) -> Path:
     [
         ("system", "pt_BR", "pt"),
         ("system", "zh_CN", "zh_CN"),
+        ("system", "zh_SG", "zh_CN"),  # same script, Simplified (FIBR-0485)
+        ("system", "zh_TW", "en"),  # Traditional: its bare "zh" must not match
+        ("system", "zh_HK", "en"),
         ("system", "de_DE", "en"),
         ("system", "C", "en"),
         ("pt", "de_DE", "pt"),

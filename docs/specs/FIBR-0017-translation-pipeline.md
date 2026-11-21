@@ -118,7 +118,11 @@ class LanguageController(QObject):           # parented to the QApplication
 - `resolve_language` follows FIBR-0209's order: an explicit available token
   first; then the first available entry of `system.uiLanguages()`, the
   system's display languages in preference order, each read with `_` for `-`
-  (`pt-BR` as `pt_BR`, then the list's own bare `pt`); then `"en"`. Not
+  (`pt-BR` as `pt_BR`, then the list's own bare `pt`); then an available
+  catalog with the same language and script as an entry that names its
+  script (`zh-Hans-SG` finds `zh_CN`; FIBR-0485); then `"en"`. Only an entry
+  naming its script counts: Qt reads a bare `zh` as Simplified, and
+  Traditional systems (`zh_TW`, `zh_HK`) list one too. Not
   `system.name()`: on Windows that is the region format, not the display
   language.
 - `apply` removes the translators it installed earlier and installs two new
@@ -173,14 +177,17 @@ numbers or dates, and stays as it is (§ 3).
 
 - **INV-1** — `resolve_language` returns an explicit token when that token is
   available. For `"system"` it returns the first available entry of the
-  system locale's `uiLanguages()`, else `"en"`. It never
+  system locale's `uiLanguages()`; else a catalog matching the language and
+  script of an entry that names its script; else `"en"`. It never
   raises, and it never returns a token outside `available_languages()`.
   *Test:* `tests/features/i18n/test_language.py::test_INV1_*`, with a
   `CATALOG_DIR` holding `finbreak_pt.qm` and `finbreak_zh_CN.qm`. The cases are
-  `pt_BR`→`pt`, `zh_CN`→`zh_CN`, `de_DE`→`en`, `C`→`en`, and explicit `pt` on a
-  `de_DE` system→`pt`.
-  *Breaks when:* the full-name step is skipped (so `zh_CN` resolves `en`), or
-  an explicit token is preferred even when its catalog is missing.
+  `pt_BR`→`pt`, `zh_CN`→`zh_CN`, `zh_SG`→`zh_CN`, `zh_TW`→`en`, `zh_HK`→`en`,
+  `de_DE`→`en`, `C`→`en`, and explicit `pt` on a `de_DE` system→`pt`.
+  *Breaks when:* the full-name step is skipped (so `zh_CN` resolves `en`), the
+  script step is skipped (so `zh_SG` resolves `en`), a bare `zh` counts (so
+  `zh_TW` resolves `zh_CN`), or an explicit token is preferred even when its
+  catalog is missing.
 
 - **INV-2** — `load_language_pref` returns the stored value only when it is
   `"system"` or in `available_languages()`. An absent key, an unknown token or

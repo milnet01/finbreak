@@ -5612,7 +5612,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: FIBR-0479 fix, 2026-11-18.
   Lanes: services.
 
-- 📋 [FIBR-0485] **A Singapore Chinese system opens finbreak in English, though the Simplified Chinese catalog fits it.**
+- 🚧 [FIBR-0485] **A Singapore Chinese system opens finbreak in English, though the Simplified Chinese catalog fits it.**
   Measured 2026-11-18: resolve_language("system", QLocale("zh_SG"))
   returns "en". zh_SG's uiLanguages are zh-Hans-SG, zh-SG, zh-Hans, zh;
   only the exact zh_CN token is available, so nothing matches. A
@@ -5620,6 +5620,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Traditional-script locales (zh_TW, zh_HK) must still get English.
   Not fixed now: resolution order is FIBR-0017 INV-1 / FIBR-0209's
   contract, so this needs the spec amended with it.
+  Started 2026-11-21: amend FIBR-0017 INV-1's resolution order with a
+  Simplified-script fallback, then the test and the fix.
   **Layman:** People in Singapore whose computer is set to Chinese should get the Chinese translation automatically, not English.
   Kind: enhancement.
   Source: code-review-2026-11-18-fibr0473.
