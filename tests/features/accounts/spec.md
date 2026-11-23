@@ -4,7 +4,7 @@
 type; every transaction belongs to one; and the first forward-only schema
 migration (v1→v2) that adds the account link.
 
-This is the test-side contract for **five** specs, one block per spec below.
+This is the test-side contract for **six** specs, one block per spec below.
 The `## Invariants` block belongs to
 [`docs/specs/FIBR-0005.md`](../../../docs/specs/FIBR-0005.md); each later block
 names its own spec in its heading. Numbering **restarts at INV-1 in each
@@ -230,10 +230,26 @@ Contract: `docs/specs/FIBR-0283-bank-field-on-accounts.md`.
   `statements/test_statements.py`, `account_detect/test_wizard.py`,
   `batch_import/test_batch_import_ui.py` and `pdf_export/test_pdf_export.py`.
 
+## FIBR-0087 — each account's currency (schema v19)
+
+Contract: `docs/specs/FIBR-0087-per-account-currency.md`. `Account` gains
+`currency` after `bank`, so both read paths select eight columns.
+
+- **INV-1, INV-2** — A v18 vault gains one `currency` column, each row
+  backfilled from the base currency, and a failure inside the step leaves v18.
+  Enforced by `test_migration_v19.py`.
+- **INV-3 to INV-5, INV-14** — `test_accounts.py`, the `FIBR0087` tests: both
+  read paths return the currency; `add_account` stores the base or a supported
+  code; the currency locks once the account holds transactions or statements;
+  the Accounts screen round-trips it, and Currency is logical column 6,
+  appended last.
+- **INV-13**'s "off by" site is in `test_accounts.py` too. The spec's other
+  invariants live in the suites its § 7 names.
+
 ## Out of scope
 
 Editing an existing transaction's account; reassigning/bulk-moving transactions;
-per-account currency/opening-balance/institution; import/categorisation/
+per-account opening-balance/institution (currency is FIBR-0087's); import/categorisation/
 dashboard/export. See FIBR-0005 § "Out of scope". **FIBR-0128:** revealing the
 stored password; setting/changing it by hand (re-learned on the next locked
 import); Settings-screen placement; Business/Personal grouping (FIBR-0137).

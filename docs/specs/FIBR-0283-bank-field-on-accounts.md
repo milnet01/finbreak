@@ -209,6 +209,8 @@ values. Nothing here adds one, and security-model INV-9 still holds.
 
 - **INV-3** — Both read paths return all seven fields in model order. A
   stored bank reads back as stored, from `get` and from `list_all`.
+  (FIBR-0087 later appended an eighth, `currency`: see
+  [its INV-3](FIBR-0087-per-account-currency.md).)
   *Test:* extend `tests/features/accounts/test_accounts.py`'s FIBR-0193 INV-3
   round-trip with a distinct `bank` value. Distinct values in each field are
   what catch a misordered `SELECT`.

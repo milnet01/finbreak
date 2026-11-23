@@ -62,8 +62,10 @@ does:
   chose it, and offers to create the account if it's one it hasn't seen; where
   it can't be sure it doesn't guess, it says so and leaves the choice to you,
 - organising them into **accounts** — shown in a sortable table of Name, Bank,
-  Type, Account number, Note and Status, whose column widths and order finbreak
-  remembers; each account can record the **bank** it's at, and can keep a
+  Type, Account number, Note, Status and Currency, whose column widths and order
+  finbreak remembers; each account has its own **currency**, such as US dollars
+  for an offshore account, and finbreak never adds two currencies together; each
+  account can record the **bank** it's at, and can keep a
   reference **account number** (shown as dots plus the last four digits, so a
   glance or a screenshot never gives it away —
   tick **Show account numbers** when you need the full one to pay someone, and

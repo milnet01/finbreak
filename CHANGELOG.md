@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Each account has its own currency** (FIBR-0087). You choose it when you
+  create the account, such as US dollars for an offshore account. Existing
+  accounts keep your vault's currency. finbreak never adds two currencies
+  together: where your accounts hold more than one, the dashboard offers "All
+  ZAR accounts", "All USD accounts" and so on, and the Forecast tab asks which
+  currency to forecast. A currency can be changed only while its account is
+  still empty.
+
 ### Fixed
 
 - **A computer set to Chinese in Singapore opens finbreak in Simplified Chinese** (FIBR-0485)

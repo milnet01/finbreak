@@ -32,11 +32,14 @@ Full contract: [`docs/specs/FIBR-0143.md`](../../../docs/specs/FIBR-0143.md).
   **and** total are `_NEGATIVE_TEXT` and Income's are `_POSITIVE_TEXT`; off → default.
 - **Net strip (INV-6).** Shows `summary().net`, sign-coloured when the pref is on.
 - **Recurring card (INV-5, unscoped INV-3).** With ≥1 confirmed item the
-  `dashboard_recurring_{in,out,net}` labels equal `RecurringService.summary(today)`;
+  `dashboard_recurring_{in,out,net}` labels equal
+  `RecurringService.summary(today, currency)` for the scope's currency;
   In / Out colours are **forced by role** (Out is `_NEGATIVE_TEXT` though `monthly_out`
   is a positive value); the hint shows only when **both directional totals are zero**
   (a net-zero-but-nonzero-directional case still shows figures); the card is **unscoped**
-  — its figures do not change when the period/account selectors change.
+  by period and account — its figures do not change when the period selector, or the
+  account within one currency, changes. They follow the scope's currency
+  (FIBR-0087 § 4.6).
 - **Structure + read-only (INV-9).** `refresh()` builds three `dashboard_col_*` columns
   each with `dashboard_pie_*`, `dashboard_heading_*`, `dashboard_total_*`, and
   `dashboard_breakdown_*`; the Net strip, recurring card, and trend chart resolve; the
