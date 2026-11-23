@@ -113,6 +113,21 @@ def test_INV6_none_with_no_accounts_is_the_base(paths) -> None:
         svc.lock()
 
 
+def test_INV6_python_and_sql_read_a_stored_currency_alike(mixed) -> None:
+    """``account_currency`` and transfer pairing's SQL read one stored value the
+    same way, stray whitespace included (§ 4.3), so pairing and display agree."""
+    svc, zar, _usd = mixed
+    conn = svc.vault.connection
+    for stored in (" USD ", "\tUSD", "USD\n", " \t ", ""):
+        conn.execute("UPDATE accounts SET currency = ? WHERE id = ?", (stored, zar))
+        sql = conn.execute(
+            "SELECT COALESCE(NULLIF(TRIM(currency), ''), 'ZAR') FROM accounts "
+            "WHERE id = ?",
+            (zar,),
+        ).fetchone()[0]
+        assert account_currencies(conn)[zar] == sql, repr(stored)
+
+
 def test_INV6_helpers_read_null_and_blank_as_base(mixed) -> None:
     svc, zar, usd = mixed
     conn = svc.vault.connection

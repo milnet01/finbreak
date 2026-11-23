@@ -21,8 +21,9 @@ def account_currency(account: Account, base: str) -> str:
     """``account.currency``, or ``base`` when it is NULL or blank.
 
     Nothing in the app writes NULL; this covers a value written outside it and
-    a hand-built ``Account`` in a test."""
-    return (account.currency or "").strip() or base
+    a hand-built ``Account`` in a test. Strips spaces only, as SQL's ``TRIM``
+    does, so transfer pairing's SQL reads the same value (§ 4.3)."""
+    return (account.currency or "").strip(" ") or base
 
 
 def account_currencies(conn: dbapi2.Connection) -> dict[int, str]:
