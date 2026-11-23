@@ -5937,6 +5937,15 @@ automatic forward migration, which § 2's carve-out says is not a break.
   were read by no lane; implementation is their reader. Record:
   docs/reviews/FIBR-0087-per-account-currency-loop-log.md. Next: TDD
   from the spec.
+  Build 2026-11-23, test-first. Done: migration v19 (INV-1, INV-2);
+  model, repository and account service (INV-3 to INV-5);
+  services/currency.py and scope_currency in reporting, month summary
+  and PDF export (INV-6, INV-7); recurring, alerts, forecast and
+  transfers per currency (INV-8 to INV-11), plus the Recurring and
+  Forecast tabs. Next: the screens, INV-12 (dashboard selector),
+  INV-13 (remaining display sites), INV-14 (Accounts combo and column),
+  INV-15 (Create-an-account dialog), INV-16 (export dialog); then
+  § 11's doc edits.
 
 - ✅ [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
   The Accounts screen carries Name, Type, Account number, Note and
