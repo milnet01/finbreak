@@ -70,7 +70,7 @@ def test_INV13_anchored_forecast_brought_current(service) -> None:
     _add(svc, a, "2026-05-10", 30_000, "Refund")
     _confirm_netflix(svc)
 
-    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON, "ZAR")
 
     # Anchor = 500000 (statement) + (-19900 May Netflix + 30000 refund) = 510100.
     assert fc.mode is ForecastMode.ANCHORED
@@ -117,7 +117,7 @@ def test_INV3_only_confirmed_items_project(service) -> None:
         f"below never meets an unconfirmed one: {sorted(detected)}"
     )
 
-    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON, "ZAR")
     merchants = {e.merchant for e in fc.events}
     assert merchants == {"Netflix"}, "the unconfirmed Gym item must not project"
 
@@ -133,7 +133,7 @@ def test_INV2_no_recorded_balance_is_net_flow(service) -> None:
         _add(svc, a, day, -19_900, "Netflix")
     _confirm_netflix(svc)
 
-    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON, "ZAR")
     assert fc.mode is ForecastMode.NET_FLOW
     assert fc.start_minor == 0
     assert fc.anchor_sources == []
@@ -157,7 +157,7 @@ def test_INV14_debt_account_balance_is_not_anchored(service) -> None:
     # A post-statement card purchase: canonical sign (-), owed convention (+).
     _add(svc, card, "2026-05-10", -25_000, "Fuel")
 
-    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON, "ZAR")
 
     assert [src.account_id for src in fc.anchor_sources] == [cash]
     assert fc.start_minor == 500_000, "the owed figure must not inflate the cash total"
@@ -172,14 +172,14 @@ def test_INV14_debt_only_vault_is_net_flow(service) -> None:
     repo.add(card, "2026-01-01", "2026-04-30", "card-apr.pdf", 120_000)
     svc.vault.connection.commit()
 
-    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON, "ZAR")
     assert fc.mode is ForecastMode.NET_FLOW
     assert fc.start_minor == 0
     assert fc.anchor_sources == []
 
 
 def test_INV2_empty_vault_is_net_flow_zero(service) -> None:
-    fc = ForecastService(service.vault).forecast(_TODAY, _HORIZON)
+    fc = ForecastService(service.vault).forecast(_TODAY, _HORIZON, "ZAR")
     assert fc.mode is ForecastMode.NET_FLOW
     assert fc.start_minor == 0 == fc.end_minor
     assert fc.events == []
@@ -204,7 +204,7 @@ def test_a_month_end_debit_order_last_seen_in_a_short_month_stays_on_month_end(
     )
     rec.confirm(item.direction, item.merchant_key)
 
-    fc = ForecastService(svc.vault).forecast(today, date(2026, 8, 31))
+    fc = ForecastService(svc.vault).forecast(today, date(2026, 8, 31), "ZAR")
 
     assert [e.on for e in fc.events] == [
         date(2026, 5, 31),

@@ -859,6 +859,14 @@ Elimina los archivos de datos parciales para empezar de nuevo.</translation>
         <translation>90 días</translation>
     </message>
     <message>
+        <source>Currency:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forecast currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Project to:</source>
         <translation>Prever hasta:</translation>
     </message>

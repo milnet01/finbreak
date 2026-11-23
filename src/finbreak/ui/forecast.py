@@ -39,9 +39,10 @@ from finbreak.errors import VaultLockedError
 from finbreak.models import AnchorSource, Forecast, ForecastMode
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
+from finbreak.services.currency import accounts_in, vault_currencies
 from finbreak.services.forecast import CASH_TYPES, ForecastService
 from finbreak.services.transactions import (
-    TransactionService,
+    read_base_currency,
     read_minor_unit_exponent,
     to_display_decimal,
 )
@@ -97,6 +98,17 @@ class ForecastWidget(QWidget):
         self._horizon.addItem(self.tr("90 days"), 90)
         self._horizon.currentIndexChanged.connect(self._on_horizon_changed)
 
+        # One currency per forecast (FIBR-0087 § 4.7). Filled on every refresh,
+        # and hidden with its label when the vault holds one currency or none.
+        self._currency_label = QLabel(self.tr("Currency:"))
+        self._currency = QComboBox()
+        self._currency.setObjectName("forecast_currency")
+        self._currency.setAccessibleName(self.tr("Forecast currency"))
+        self._currency.currentIndexChanged.connect(self._on_currency_changed)
+        # The accounts in the chosen currency, set by refresh for the text
+        # builders' coverage and exclusion counts.
+        self._scope_ids: frozenset[int] = frozenset()
+
         self._chart_view = QChartView()
         self._chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._chart_view.setMinimumHeight(220)
@@ -107,6 +119,8 @@ class ForecastWidget(QWidget):
         horizon_row = QHBoxLayout()
         horizon_row.addWidget(QLabel(self.tr("Project to:")))
         horizon_row.addWidget(self._horizon)
+        horizon_row.addWidget(self._currency_label)
+        horizon_row.addWidget(self._currency)
         horizon_row.addStretch()
 
         layout = QVBoxLayout(self)
@@ -163,15 +177,40 @@ class ForecastWidget(QWidget):
     def _on_horizon_changed(self) -> None:
         self.refresh()
 
+    def _on_currency_changed(self) -> None:
+        if not self._currency.signalsBlocked():
+            self.refresh()
+
+    def _fill_currencies(self) -> str:
+        """Refill the currency combo from the vault, keeping the chosen code
+        where it still exists, and return the code to forecast in."""
+        conn = self._service.vault.connection
+        codes = vault_currencies(conn) or [read_base_currency(conn)]
+        held = self._currency.currentData()
+        self._currency.blockSignals(True)
+        try:
+            self._currency.clear()
+            for code in codes:
+                self._currency.addItem(code, code)
+            self._currency.setCurrentIndex(codes.index(held) if held in codes else 0)
+        finally:
+            self._currency.blockSignals(False)
+        self._currency.setVisible(len(codes) > 1)
+        self._currency_label.setVisible(len(codes) > 1)
+        return str(self._currency.currentData())
+
     # -- refresh --------------------------------------------------------------
     def refresh(self) -> None:
         """Re-read the vault + re-project on view / horizon change (D9). Catches a
         mid-teardown ``VaultLockedError`` like the sibling tabs."""
         try:
             today = app_today()
-            fc = self._forecast_service.forecast(today, self._horizon_date(today))
+            symbol = self._fill_currencies()
+            self._scope_ids = accounts_in(self._service.vault.connection, symbol)
+            fc = self._forecast_service.forecast(
+                today, self._horizon_date(today), symbol
+            )
             exponent = read_minor_unit_exponent(self._service.vault.connection)
-            symbol = TransactionService(self._service.vault).base_currency()
             # Both text builders read the vault AGAIN — _headline_text through
             # _coverage_suffix, _provenance_text through _excluded_names — so they
             # belong inside the guard, not after it (FIBR-0211). Built here,
@@ -180,7 +219,7 @@ class ForecastWidget(QWidget):
             headline = self._headline_text(fc, exponent, symbol)
             provenance = self._provenance_text(fc, exponent, symbol)
             has_confirmed = bool(fc.events) or self._forecast_service.has_confirmed(
-                today
+                today, symbol
             )
         except VaultLockedError:
             return  # auto-lock fired; the workspace is being torn down
@@ -239,6 +278,7 @@ class ForecastWidget(QWidget):
         total = sum(
             account.type in cash_tokens
             for account in AccountService(self._service.vault).list_accounts()
+            if account.id in self._scope_ids
         )
         if len(fc.anchor_sources) >= total:
             return ""
@@ -319,7 +359,7 @@ class ForecastWidget(QWidget):
         no_balance: list[str] = []
         not_cash: list[str] = []
         for account in AccountService(self._service.vault).list_accounts():
-            if account.id in contributing:
+            if account.id in contributing or account.id not in self._scope_ids:
                 continue
             target = no_balance if account.type in cash_tokens else not_cash
             target.append(account.name)

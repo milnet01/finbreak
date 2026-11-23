@@ -37,12 +37,9 @@ from finbreak.models import (
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.currency import accounts_in
 from finbreak.services.recurring import RecurringService, _add_cadence_n
-from finbreak.services.transactions import (
-    read_base_currency,
-    read_minor_unit_exponent,
-    to_minor,
-)
+from finbreak.services.transactions import read_minor_unit_exponent, to_minor
 from finbreak.vault import Vault
 
 if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
@@ -183,8 +180,9 @@ class ForecastService:
     back to exact signed minor units once (D7), prepares ``ForecastInput``s, and
     calls the pure ``project_forecast``. The anchor is ``None`` (⇒ NET_FLOW) when no
     **cash** account (``CASH_TYPES``) has a recorded balance — a debt-only vault
-    therefore runs in NET_FLOW too (FIBR-0179). Mirrors ``RecurringService`` —
-    vault-wide.
+    therefore runs in NET_FLOW too (FIBR-0179). One currency per forecast: the
+    anchor and the inputs come from that currency's accounts only (FIBR-0087
+    INV-10).
     """
 
     def __init__(self, vault: Vault) -> None:
@@ -194,20 +192,23 @@ class ForecastService:
     def _conn(self) -> dbapi2.Connection:
         return self._vault.connection
 
-    def forecast(self, today: date, horizon: date) -> Forecast:
-        anchor_minor, sources = self._anchor(today)
-        items = self._inputs(today)
+    def forecast(self, today: date, horizon: date, currency: str) -> Forecast:
+        anchor_minor, sources = self._anchor(today, currency)
+        items = self._inputs(today, currency)
         return project_forecast(anchor_minor, items, today, horizon, sources)
 
-    def has_confirmed(self, today: date) -> bool:
-        """Whether any recurring item is confirmed. An empty forecast can mean
-        none is, or only that none falls due before the horizon (FIBR-0359)."""
-        base = read_base_currency(self._conn)  # per currency: FIBR-0087 INV-10
-        return bool(RecurringService(self._vault).confirmed(today, base))
+    def has_confirmed(self, today: date, currency: str) -> bool:
+        """Whether any recurring item in ``currency`` is confirmed. An empty
+        forecast can mean none is, or only that none falls due before the
+        horizon (FIBR-0359)."""
+        return bool(RecurringService(self._vault).confirmed(today, currency))
 
-    def _anchor(self, today: date) -> tuple[int | None, list[AnchorSource]]:
-        """The vault-wide current-balance anchor + its provenance (D1/D10/INV-6/13),
-        or ``(None, [])`` when no **cash** account has a recorded closing balance.
+    def _anchor(
+        self, today: date, currency: str
+    ) -> tuple[int | None, list[AnchorSource]]:
+        """``currency``'s current-balance anchor + its provenance (D1/D10/INV-6/13),
+        or ``(None, [])`` when no **cash** account in it has a recorded closing
+        balance.
         Only ``CASH_TYPES`` accounts contribute (FIBR-0179); the Forecast tab already
         names the non-contributing accounts, so the exclusion is visible."""
         today_iso = today.isoformat()
@@ -215,10 +216,11 @@ class ForecastService:
         txn_repo = TransactionRepository(self._conn)
         # account.type is the stored STR token — compare to the enum .values.
         cash_tokens = {t.value for t in CASH_TYPES}
+        in_currency = accounts_in(self._conn, currency)
         cash_names = {
             a.id: a.name
             for a in AccountRepository(self._conn).list_all()
-            if a.type in cash_tokens
+            if a.type in cash_tokens and a.id in in_currency
         }
         sources: list[AnchorSource] = []
         total = 0
@@ -248,15 +250,14 @@ class ForecastService:
             return None, []
         return total, sources
 
-    def _inputs(self, today: date) -> list[ForecastInput]:
+    def _inputs(self, today: date, currency: str) -> list[ForecastInput]:
         """The confirmed recurring items prepared as signed-minor ``ForecastInput``s
         (D5/D7). Each ``RecurringItem.amount`` is a positive display Decimal =
         ``to_display_decimal(median_low_minor, exponent)``; converting it back with
         the same exponent recovers the exact minor integer (INV-7), and the direction
         applies the sign."""
         exponent = read_minor_unit_exponent(self._conn)
-        base = read_base_currency(self._conn)  # per currency: FIBR-0087 INV-10
-        confirmed = RecurringService(self._vault).confirmed(today, base)
+        confirmed = RecurringService(self._vault).confirmed(today, currency)
         return [self._to_input(item, exponent) for item in confirmed]
 
     @staticmethod

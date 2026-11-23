@@ -413,3 +413,84 @@ def test_FIBR0397_provenance_lists_and_sentences_are_templates(
     excluded, intro = shown.split(" || ")
     assert " / " in excluded and ", " not in excluded, excluded
     assert intro.startswith("No spendable-cash balance"), intro
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0087 — the forecast holds one currency
+# (docs/specs/FIBR-0087-per-account-currency.md INV-10, INV-12, INV-13)
+# --------------------------------------------------------------------------- #
+def _two_currency_cash(svc: AuthService) -> tuple[int, int]:
+    """A ZAR and a USD cash account, each with a closing balance."""
+    accounts = AccountService(svc.vault)
+    zar = accounts.list_accounts()[0]
+    accounts.update_account(
+        zar.id,
+        "Rand Cheque",
+        zar.type,
+        account_number=None,
+        note=None,
+        bank=None,
+        currency="ZAR",
+    )
+    usd = accounts.add_account("Dollar Save", "savings", currency="USD").id
+    repo = StatementPeriodRepository(svc.vault.connection)
+    start = (_TODAY - timedelta(days=60)).isoformat()
+    end = (_TODAY - timedelta(days=30)).isoformat()
+    repo.add(zar.id, start, end, "zar.pdf", 777_700)
+    repo.add(usd, start, end, "usd.pdf", 123_400)
+    svc.vault.connection.commit()
+    return zar.id, usd
+
+
+def test_FIBR0087_INV10_anchor_and_inputs_hold_one_currency(vault_service) -> None:
+    from finbreak.services.forecast import ForecastService
+
+    zar, usd = _two_currency_cash(vault_service)
+    txn = TransactionRepository(vault_service.vault.connection)
+    for k in range(5):
+        txn.add(zar, (_TODAY - timedelta(days=30 * k)).isoformat(), -19_900, "Gym")
+    rec = RecurringService(vault_service.vault)
+    rec.confirm(next(iter(rec.candidates(_TODAY, "ZAR"))).direction, "gym")
+
+    service = ForecastService(vault_service.vault)
+    horizon = _TODAY + timedelta(days=90)
+    usd_fc = service.forecast(_TODAY, horizon, "USD")
+    assert [s.account_id for s in usd_fc.anchor_sources] == [usd]
+    assert usd_fc.start_minor == 123_400
+    assert usd_fc.events == []  # the ZAR gym is not a USD input
+    assert not service.has_confirmed(_TODAY, "USD")
+
+    zar_fc = service.forecast(_TODAY, horizon, "ZAR")
+    assert [s.account_id for s in zar_fc.anchor_sources] == [zar]
+    # Brought current by the one gym charge dated after the statement's end.
+    assert zar_fc.start_minor == 777_700 - 19_900
+    assert zar_fc.events and service.has_confirmed(_TODAY, "ZAR")
+
+
+def test_FIBR0087_tab_on_usd_names_only_usd_accounts(qtbot, vault_service) -> None:
+    _two_currency_cash(vault_service)
+    AccountService(vault_service.vault).add_account(
+        "Rand Spare", "savings", currency="ZAR"
+    )
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    assert not w._currency.isHidden()
+    assert [w._currency.itemData(i) for i in range(w._currency.count())] == [
+        "ZAR",
+        "USD",
+    ]
+    w._currency.setCurrentIndex(1)  # USD
+
+    text = w._headline.text() + "\n" + w._provenance.text()
+    assert "Dollar Save" in text
+    assert "Rand" not in text  # no ZAR account counted or named as excluded
+    assert "$" in w._headline.text()
+    assert "1,234.00" in w._headline.text().replace(" ", ",")
+
+
+def test_FIBR0087_INV12_single_currency_hides_the_currency_combo(
+    qtbot, vault_service
+) -> None:
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    assert w._currency.isHidden()

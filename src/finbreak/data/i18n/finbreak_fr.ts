@@ -859,6 +859,14 @@ Supprimez les fichiers de données partiels pour repartir de zéro.</translation
         <translation>90 jours</translation>
     </message>
     <message>
+        <source>Currency:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forecast currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Project to:</source>
         <translation>Projeter jusqu&apos;à&#xa0;:</translation>
     </message>

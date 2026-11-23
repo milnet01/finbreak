@@ -871,6 +871,14 @@ Remove the partial data files to start over.</source>
         <translation>90 يومًا</translation>
     </message>
     <message>
+        <source>Currency:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forecast currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Project to:</source>
         <translation>التوقع حتى:</translation>
     </message>
