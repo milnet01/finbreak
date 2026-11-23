@@ -32,6 +32,7 @@ from sqlcipher3 import dbapi2
 
 from finbreak.models import MonthCause, MonthSummary, MonthVerdict
 from finbreak.repositories.reporting import ReportingRepository
+from finbreak.services.currency import scope_currency
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
     MODE_PREVIOUS_MONTH,
@@ -229,6 +230,7 @@ class MonthSummaryService:
         ``today`` is required rather than defaulted — as ``ReportingService``'s is
         since FIBR-0391 — because the strip and the tiles must not straddle
         midnight (INV-10)."""
+        scope_currency(self._conn, account_ids)  # FIBR-0087 INV-7
         if prefs.mode not in _MONTH_MODES:
             return None
         if prefs.mode == MODE_SPECIFIC_MONTH and (

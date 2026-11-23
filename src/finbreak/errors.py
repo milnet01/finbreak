@@ -136,6 +136,11 @@ class AccountInUseError(FinbreakError):
     """Deleting an account that still holds >= 1 transaction (FIBR-0005 INV-6)."""
 
 
+class MixedCurrencyError(FinbreakError):
+    """A figure was asked for over accounts in two or more currencies
+    (FIBR-0087 INV-6). No figure finbreak computes adds them together."""
+
+
 class LastAccountError(FinbreakError):
     """Deleting the only remaining account (FIBR-0005 INV-6/D7); at least one
     account must always exist."""

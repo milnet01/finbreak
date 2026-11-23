@@ -2571,6 +2571,10 @@ A partir de entonces, tu contraseña maestra será lo único que pueda abrir tu 
         <source>The hint may not contain your recovery code.</source>
         <translation>La pista no puede contener tu código de recuperación.</translation>
     </message>
+    <message>
+        <source>choose accounts that share one currency</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RuleEditDialog</name>

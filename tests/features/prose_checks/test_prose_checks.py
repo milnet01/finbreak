@@ -77,6 +77,8 @@ _READS_PROSE = frozenset(
 _NO_PROSE = frozenset(
     {
         "log_file",
+        # FIBR-0087: vaults only; cites its spec in the module docstring.
+        "currency",
         "demo_scripts",
         # FIBR-0467: reads one PDF fixture and a vault; cites its spec in the
         # module docstring only.

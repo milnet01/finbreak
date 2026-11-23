@@ -2571,6 +2571,10 @@ Ensuite, seul votre mot de passe principal pourra ouvrir votre coffre-fort. Si v
         <source>The hint may not contain your recovery code.</source>
         <translation>L&apos;indice ne peut pas contenir votre code de récupération.</translation>
     </message>
+    <message>
+        <source>choose accounts that share one currency</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RuleEditDialog</name>

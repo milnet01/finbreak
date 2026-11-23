@@ -38,6 +38,7 @@ from finbreak.models import (
 )
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.reporting import ReportingRepository
+from finbreak.services.currency import scope_currency
 from finbreak.services.transactions import (
     read_base_currency,
     read_minor_unit_exponent,
@@ -181,6 +182,7 @@ class ReportingService:
         """Income / expenditure / net over the period's non-transfer rows (INV-4).
         All arithmetic on integer ``amount_minor``; only the returned ``Decimal``s
         cross to display scaling (INV-13)."""
+        scope_currency(self._conn, account_ids)  # FIBR-0087 INV-7
         start, end = resolve_period(prefs, today)
         excluded = self._excluded()
         income_minor = 0
@@ -212,6 +214,7 @@ class ReportingService:
         is **appended last**, so the sort key never compares ``None``. Returns the
         full uncapped list — the ≤8-wedge cap + Other collapse is a UI-render step
         (D9)."""
+        scope_currency(self._conn, account_ids)  # FIBR-0087 INV-7
         start, end = resolve_period(prefs, today)
         excluded = self._excluded()
         by_id: dict[int | None, int] = {}
@@ -259,6 +262,7 @@ class ReportingService:
         """Exactly 12 ``(month, income, expenditure)`` points, oldest first, ending
         at the period's end month; an empty month is a **zero** point, not omitted
         (INV-6). Buckets whole calendar months by ``occurred_on[:7]``."""
+        scope_currency(self._conn, account_ids)  # FIBR-0087 INV-7
         months = resolve_trend_months(prefs, today)
         start, _ = _month_bounds(*months[0])
         _, end = _month_bounds(*months[-1])
@@ -308,6 +312,7 @@ class ReportingService:
         tree per call so a change elsewhere shows on next view (INV-3). ``labels``
         carries the five ``tr()``-ed fixed strings (this service is not a
         ``QObject``, D2/INV-9)."""
+        scope_currency(self._conn, account_ids)  # FIBR-0087 INV-7
         start, end = resolve_period(prefs, today)
         excluded = self._excluded()
         exponent = read_minor_unit_exponent(self._conn)

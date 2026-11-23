@@ -36,6 +36,7 @@ from finbreak.services.auth import (
     DATETIME_SYSTEM,
     DEFAULT_NEGATIVE_STYLE,
 )
+from finbreak.services.currency import scope_currency
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
     MODE_PREVIOUS_MONTH,
@@ -211,7 +212,9 @@ class PdfExportService:
     ) -> tuple[str, list[tuple[str, QImage]]]:
         theme = _PDF_THEME
         reporting = ReportingService(self._vault)
-        symbol = reporting.base_currency()
+        # The scope's one currency, or MixedCurrencyError before any row is
+        # read (FIBR-0087 INV-7); the header names it.
+        symbol = scope_currency(self._vault.connection, options.account_ids)
         images: list[tuple[str, QImage]] = []
         parts = [self._header_html(options, today, symbol)]
         if options.include_summary:

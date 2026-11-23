@@ -2571,6 +2571,10 @@ After this, your master password is the only thing that can open your vault. If 
         <source>The hint may not contain your recovery code.</source>
         <translation>संकेत में आपका रिकवरी कोड नहीं हो सकता।</translation>
     </message>
+    <message>
+        <source>choose accounts that share one currency</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RuleEditDialog</name>

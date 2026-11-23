@@ -2564,6 +2564,10 @@ After this, your master password is the only thing that can open your vault. If 
         <source>The hint may not contain your recovery code.</source>
         <translation>提示中不能包含您的恢复码。</translation>
     </message>
+    <message>
+        <source>choose accounts that share one currency</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RuleEditDialog</name>
