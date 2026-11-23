@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=488 -->
+<!-- ants-roadmap-id-high-water: FIBR=492 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5647,6 +5647,47 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: code-review-2026-11-18-fibr0473.
   Lanes: i18n.
 
+- 📋 [FIBR-0489] **Five screens show numbers or dates that ignore the chosen language.**
+  Found by review-code 2026-11-23 (lanes 03, 04, 09); older code, not
+  FIBR-0087's. Each verified against the source on 2026-11-23:
+  - services/pdf_export.py `_accounts_in_scope` and ui/export_dialog.py
+    sort account names by code point (`key=lambda a: a.name`), not by
+    the locale's collation.
+  - services/pdf_export.py `_account_names` joins names with a literal
+    ", " outside `tr()`.
+  - ui/home.py: the drill row's `{label} ×{count}` and the
+    `Alerts ({count})` button format Python ints, not QLocale digits.
+  - ui/charts.py: the trend chart's month axis shows raw `month.label`
+    keys, and the forecast axis hardcodes `setFormat("d MMM")`.
+  - ui/import_wizard.py `_apply_preview_counts` (and the preview row
+    numbers) use raw ints, where the batch step uses `_digits`.
+  Not fixed with FIBR-0087: none is a currency defect, and each needs a
+  locale choice per site.
+  **Layman:** Some counts, chart labels and lists still use English digits, date order or sorting when another language is chosen.
+  Kind: review-fix.
+  Source: review-code-2026-11-23 (FIBR-0087 sweep).
+
+- 📋 [FIBR-0490] **The spending-spike alert's wording disagrees with its spec.**
+  Found by review-code 2026-11-23 (lane 06). ui/alerts_dialog.py renders
+  a category spike as "{name} spending is up: {amount} vs usual
+  {baseline}"; docs/specs/FIBR-0172 D3 says "The UI renders the ratio".
+  One of the two is wrong: decide which, then fix that side. Older code
+  (FIBR-0185/0186), not FIBR-0087's.
+  **Layman:** The alert says how much you spent against your usual amount, but its design document says it shows a ratio.
+  Kind: review-fix.
+  Source: review-code-2026-11-23 (FIBR-0087 sweep).
+
+- 📋 [FIBR-0491] **Reset layout can stop early when a temporary file cannot be created.**
+  Found by review-code 2026-11-23 (lane 10). ui/main_window.py
+  `_center_kwin` says any failure leaves the window where it is, but its
+  `tempfile.NamedTemporaryFile` call sits inside a try/finally with no
+  except, so an OSError escapes the slot; Reset layout then aborts
+  before it clears the saved layout. Older code (FIBR-0060), not
+  FIBR-0087's.
+  **Layman:** On KDE, if finbreak cannot write a small temporary file, the Reset layout command can fail partway instead of finishing.
+  Kind: review-fix.
+  Source: review-code-2026-11-23 (FIBR-0087 sweep).
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
@@ -5914,7 +5955,7 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
 
-- 🚧 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
+- ✅ [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
   The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
   **Layman:** Let each account have its own currency (e.g. a USD offshore account alongside your ZAR accounts), chosen when you create the account, so foreign accounts show and total correctly.
   Kind: feature.
@@ -5954,6 +5995,17 @@ automatic forward migration, which § 2's carve-out says is not a break.
   dispositioned, then flip to shipped. Spec § 10 notes nothing finds a
   new cross-account sum that skips scope_currency; review-code is that
   check.
+  Shipped 2026-11-23. check-code over the FIBR-0087 files: no
+  defect on a line it added. review-code (10 lanes): 26 findings, 1
+  medium. close-findings: the statement-move defect fixed as INV-17
+  (a8d83c1, user decision 2026-11-23), plus the Python/SQL currency
+  reading (57dfce0), small code fixes (1263991) and older specs made
+  stale (070987d). Queued: FIBR-0489, FIBR-0490, FIBR-0491, FIBR-0492.
+  Dismissed: an unreachable KeyError and import-preview fallback (FK
+  enforced); an unknown code blocking rename and the Amount sort
+  across currencies (user decisions 2026-11-23, accept as is). Gate
+  green: pytest 2883 passed after the catalogue refresh. FIBR-0487 and
+  FIBR-0488 are unblocked.
 
 - ✅ [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
   The Accounts screen carries Name, Type, Account number, Note and
@@ -6108,6 +6160,19 @@ automatic forward migration, which § 2's carve-out says is not a break.
   Kind: feature.
   Source: split-from-FIBR-0087-2026-11-21.
   Blocked-by: FIBR-0087.
+
+- 📋 [FIBR-0492] **The Accounts screen keeps the previous account's currency for an unknown stored code.**
+  Found by review-code 2026-11-23 (lane 02), in FIBR-0087's code.
+  ui/accounts.py `_on_selection_changed` calls `select_combo_data` with
+  the account's currency; a code outside `account_currency_choices`
+  matches no item, so the combo keeps the previous selection, and Update
+  on an empty account stores that code silently. Reachable only by a
+  code written outside the app (spec FIBR-0087 § 6). Queued rather than
+  fixed with FIBR-0087: the right display for an unoffered code needs a
+  small design call.
+  **Layman:** If an account somehow holds a currency code finbreak does not offer, selecting it shows the last account's currency, and Update could save that by mistake.
+  Kind: review-fix.
+  Source: review-code-2026-11-23 (FIBR-0087 sweep).
 
 ## v1.3.0 — Money insight
 
