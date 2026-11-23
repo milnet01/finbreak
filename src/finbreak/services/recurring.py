@@ -21,6 +21,7 @@ from sqlcipher3 import dbapi2
 
 from finbreak.models import Cadence, Direction, RecurringItem, RecurringSummary
 from finbreak.repositories.recurring import RecurringRepository, _RecurRow
+from finbreak.services.currency import accounts_in
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.text import merchant_name, normalise_text
@@ -167,6 +168,8 @@ def detect_recurring(
     today: date,
     exponent: int,
     excluded_ids: frozenset[int],
+    *,
+    currency: str,
 ) -> list[RecurringItem]:
     """All active, qualifying recurring groups (both directions), sorted (D10).
 
@@ -236,6 +239,7 @@ def detect_recurring(
                 next_expected=_add_cadence_n(last_seen, cadence, 1, day_of_month),
                 txn_ids=tuple(m.id for m in ordered),
                 day_of_month=day_of_month,
+                currency=currency,
             )
         )
     items.sort(
@@ -268,17 +272,20 @@ class RecurringService:
 
     # -- reads (each partitions ONE detection pass) ---------------------------
     def snapshot(
-        self, today: date
+        self, today: date, currency: str
     ) -> tuple[list[RecurringItem], list[RecurringItem], RecurringSummary]:
-        """One detection pass → ``(suggested, confirmed, summary)`` (D9 perf) — the
-        widget's refresh path. ``candidates``/``confirmed``/``summary`` are thin
-        single-value wrappers over this."""
+        """One detection pass over ``currency``'s accounts → ``(suggested,
+        confirmed, summary)`` (D9 perf) — the widget's refresh path.
+        ``candidates``/``confirmed``/``summary`` are thin single-value wrappers
+        over this. One currency per pass, so no item or total mixes two
+        (FIBR-0087 INV-8)."""
         repo = self._recurring()
         exponent = read_minor_unit_exponent(self._conn)
         excluded = frozenset(
             TransferDetectionService(self._vault).confirmed_transfer_txn_ids()
         )
-        detected = detect_recurring(repo.recurring_rows(), today, exponent, excluded)
+        rows = repo.recurring_rows(accounts_in(self._conn, currency))
+        detected = detect_recurring(rows, today, exponent, excluded, currency=currency)
         decisions = repo.decisions()
         suggested: list[RecurringItem] = []
         confirmed: list[RecurringItem] = []
@@ -291,17 +298,17 @@ class RecurringService:
             # _DISMISSED → shown in neither list
         return suggested, confirmed, self._summarise(confirmed, exponent)
 
-    def candidates(self, today: date) -> list[RecurringItem]:
+    def candidates(self, today: date, currency: str) -> list[RecurringItem]:
         """The Suggested list — detected but undecided."""
-        return self.snapshot(today)[0]
+        return self.snapshot(today, currency)[0]
 
-    def confirmed(self, today: date) -> list[RecurringItem]:
+    def confirmed(self, today: date, currency: str) -> list[RecurringItem]:
         """The Confirmed list — a confirmed decision that still detects today."""
-        return self.snapshot(today)[1]
+        return self.snapshot(today, currency)[1]
 
-    def summary(self, today: date) -> RecurringSummary:
-        """The per-month totals over ``confirmed(today)`` (for the FIBR-0143 card)."""
-        return self.snapshot(today)[2]
+    def summary(self, today: date, currency: str) -> RecurringSummary:
+        """The per-month totals over ``confirmed`` (for the FIBR-0143 card)."""
+        return self.snapshot(today, currency)[2]
 
     # -- decisions (each write is one repository commit) ----------------------
     def confirm(self, direction: Direction, merchant_key: str) -> None:

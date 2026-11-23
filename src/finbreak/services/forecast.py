@@ -38,7 +38,11 @@ from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.recurring import RecurringService, _add_cadence_n
-from finbreak.services.transactions import read_minor_unit_exponent, to_minor
+from finbreak.services.transactions import (
+    read_base_currency,
+    read_minor_unit_exponent,
+    to_minor,
+)
 from finbreak.vault import Vault
 
 if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
@@ -198,7 +202,8 @@ class ForecastService:
     def has_confirmed(self, today: date) -> bool:
         """Whether any recurring item is confirmed. An empty forecast can mean
         none is, or only that none falls due before the horizon (FIBR-0359)."""
-        return bool(RecurringService(self._vault).confirmed(today))
+        base = read_base_currency(self._conn)  # per currency: FIBR-0087 INV-10
+        return bool(RecurringService(self._vault).confirmed(today, base))
 
     def _anchor(self, today: date) -> tuple[int | None, list[AnchorSource]]:
         """The vault-wide current-balance anchor + its provenance (D1/D10/INV-6/13),
@@ -250,7 +255,8 @@ class ForecastService:
         the same exponent recovers the exact minor integer (INV-7), and the direction
         applies the sign."""
         exponent = read_minor_unit_exponent(self._conn)
-        confirmed = RecurringService(self._vault).confirmed(today)
+        base = read_base_currency(self._conn)  # per currency: FIBR-0087 INV-10
+        confirmed = RecurringService(self._vault).confirmed(today, base)
         return [self._to_input(item, exponent) for item in confirmed]
 
     @staticmethod

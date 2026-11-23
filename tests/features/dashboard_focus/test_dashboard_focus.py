@@ -225,7 +225,7 @@ def _confirm_recurring(service, account_id, amount_minor, desc):
     # Confirm the candidate whose direction matches the seeded sign (so the net-zero
     # test can confirm an OUT then an IN of the same merchant without ambiguity).
     want = Direction.OUT if amount_minor < 0 else Direction.IN
-    item = next(c for c in rec.candidates(today) if c.direction is want)
+    item = next(c for c in rec.candidates(today, "ZAR") if c.direction is want)
     rec.confirm(item.direction, item.merchant_key)
     return rec
 
@@ -434,7 +434,7 @@ def test_INV5_recurring_card_sums_confirmed_and_forces_role_colour(qtbot, servic
     service.set_report_prefs(_JAN)
     home = _home(service, amount_prefs=AmountPrefs("minus", True))
     qtbot.addWidget(home)
-    summary = RecurringService(service.vault).summary(_TODAY)
+    summary = RecurringService(service.vault).summary(_TODAY, "ZAR")
     assert summary.monthly_out > 0  # sanity: the confirmed OUT is summed
 
     out_label = home.findChild(QLabel, "dashboard_recurring_out")
@@ -477,7 +477,7 @@ def test_INV5_recurring_card_shows_figures_when_net_zero(qtbot, service):
     service.set_report_prefs(_JAN)
     home = _home(service, amount_prefs=AmountPrefs("minus", True))  # colour on
     qtbot.addWidget(home)
-    summary = RecurringService(service.vault).summary(_TODAY)
+    summary = RecurringService(service.vault).summary(_TODAY, "ZAR")
     assert summary.monthly_in > 0 and summary.monthly_out > 0 and summary.net == 0
     in_label = home.findChild(QLabel, "dashboard_recurring_in")
     out_label = home.findChild(QLabel, "dashboard_recurring_out")
@@ -525,7 +525,7 @@ def test_INV3_recurring_card_reflects_a_confirm_on_next_refresh(qtbot, service):
 
     # Confirm on the (separate) Recurring service, then refresh Home.
     rec = RecurringService(service.vault)
-    item = next(c for c in rec.candidates(today) if c.direction is Direction.OUT)
+    item = next(c for c in rec.candidates(today, "ZAR") if c.direction is Direction.OUT)
     rec.confirm(item.direction, item.merchant_key)
     home.refresh()
     out_label = home.findChild(QLabel, "dashboard_recurring_out")

@@ -457,7 +457,7 @@ class HomeView(QWidget):
 
         self._render_trend(self._reporting.monthly_trend(prefs, account_ids, today))
         # The recurring card is unscoped (INV-3/D5): summary(today) takes no prefs.
-        self._render_recurring(self._recurring.summary(today), symbol)
+        self._render_recurring(self._recurring.summary(today, symbol), symbol)
         # Alerts are likewise unscoped + clock-injected (FIBR-0172 D8/INV-16).
         self.refresh_alerts()
         self._stack.setCurrentIndex(1)

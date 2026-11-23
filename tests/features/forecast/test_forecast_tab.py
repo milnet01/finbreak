@@ -62,7 +62,9 @@ def _seed_anchored(svc: AuthService) -> None:
     for k in range(5):
         txn.add(a, (today - timedelta(days=30 * k)).isoformat(), -19_900, "Netflix")
     rec = RecurringService(svc.vault)
-    item = next(it for it in rec.candidates(today) if it.merchant_key == "netflix")
+    item = next(
+        it for it in rec.candidates(today, "ZAR") if it.merchant_key == "netflix"
+    )
     rec.confirm(item.direction, item.merchant_key)
 
 

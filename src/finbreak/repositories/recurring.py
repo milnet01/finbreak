@@ -32,12 +32,19 @@ class RecurringRepository:
     def __init__(self, connection: dbapi2.Connection):
         self._conn = connection
 
-    def recurring_rows(self) -> list[_RecurRow]:
-        """Every transaction as a detector row — full history, all accounts, no
-        account/window filter (D2/INV-13). The read stays dumb; the detector groups,
-        qualifies, and filters."""
+    def recurring_rows(self, account_ids: frozenset[int]) -> list[_RecurRow]:
+        """Every transaction in ``account_ids`` as a detector row — full history,
+        no window filter (D2/INV-13). The caller passes one currency's accounts
+        (FIBR-0087 INV-8), so two currencies never group together. The read
+        stays dumb otherwise; the detector groups, qualifies, and filters."""
+        if not account_ids:
+            return []  # never an invalid IN ()
+        placeholders = ",".join("?" * len(account_ids))
+        # nosec B608: the only interpolated text is a run of "?" marks.
         rows = self._conn.execute(
-            "SELECT id, occurred_on, amount_minor, description FROM transactions"
+            "SELECT id, occurred_on, amount_minor, description FROM transactions "  # nosec B608
+            f"WHERE account_id IN ({placeholders})",
+            sorted(account_ids),
         ).fetchall()
         return [_RecurRow(*row) for row in rows]
 

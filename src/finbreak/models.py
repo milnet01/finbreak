@@ -7,7 +7,7 @@ type). ``Transaction`` is one row of the ``transactions`` table.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
@@ -474,6 +474,9 @@ class RecurringItem:
     # last_seen.day when last_seen was clamped (Feb 28 for a 31st debit order).
     # 0 means "last_seen.day"; the detector always sets it.
     day_of_month: int = 0
+    # The currency of the accounts the item was detected in (FIBR-0087 INV-8).
+    # Keyword-only because day_of_month above has a default.
+    currency: str = field(kw_only=True)
 
 
 class ForecastMode(StrEnum):

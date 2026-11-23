@@ -102,7 +102,9 @@ def _seed_all_kinds(svc: AuthService) -> None:
 
     # Confirm the Insurance stream so it becomes a missed-debit candidate.
     rec = RecurringService(svc.vault)
-    ins = next(it for it in rec.candidates(_TODAY) if it.merchant_key == "insurance")
+    ins = next(
+        it for it in rec.candidates(_TODAY, "ZAR") if it.merchant_key == "insurance"
+    )
     rec.confirm(ins.direction, ins.merchant_key)
 
 
@@ -134,9 +136,9 @@ def test_INV2_confirmed_and_in_streams_do_not_yield_new_recurring(service) -> No
     for day in ("2026-05-01", "2026-06-01", "2026-07-01"):
         _add(svc, a, day, -12_000, "Gym")
     rec = RecurringService(svc.vault)
-    gym = next(it for it in rec.candidates(_TODAY) if it.merchant_key == "gym")
+    gym = next(it for it in rec.candidates(_TODAY, "ZAR") if it.merchant_key == "gym")
     rec.confirm(gym.direction, gym.merchant_key)
-    salary = [it for it in rec.candidates(_TODAY) if it.merchant_key == "salary"]
+    salary = [it for it in rec.candidates(_TODAY, "ZAR") if it.merchant_key == "salary"]
     assert salary and salary[0].direction is Direction.IN, (
         "precondition: salary must be a detected IN stream, or this leg never "
         f"reaches the OUT-only rule: {salary}"
@@ -158,7 +160,7 @@ def test_INV1_over_occurrence_threshold_not_new(service) -> None:
     # the occurrences gate, not a detection miss).
     spotify_like = next(
         it
-        for it in RecurringService(svc.vault).candidates(_TODAY)
+        for it in RecurringService(svc.vault).candidates(_TODAY, "ZAR")
         if it.merchant_key == "netflix"
     )
     assert spotify_like.occurrences == 5
@@ -218,7 +220,7 @@ def test_INV9_suggested_overdue_out_yields_no_missed_debit(service) -> None:
         _add(svc, a, day, -45_000, "Insurance")
     insurance = [
         it
-        for it in RecurringService(svc.vault).candidates(_TODAY)
+        for it in RecurringService(svc.vault).candidates(_TODAY, "ZAR")
         if it.merchant_key == "insurance"
     ]
     assert insurance and insurance[0].direction is Direction.OUT, (

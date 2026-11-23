@@ -33,8 +33,8 @@ from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import Cadence, Direction, RecurringItem
 from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
+from finbreak.services.currency import vault_currencies
 from finbreak.services.recurring import RecurringService
-from finbreak.services.transactions import TransactionService
 from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import (
     SortableItem,
@@ -148,14 +148,21 @@ class RecurringWidget(QWidget):
         """Re-read the vault on view (INV-2/D9). One ``snapshot`` pass partitions the
         detected items into Suggested / Confirmed; the summary is the FIBR-0143 card's,
         not shown here."""
-        suggested, confirmed, _summary = self._recurring.snapshot(app_today())
+        # One pass per currency, listed together (FIBR-0087 § 4.5): no item
+        # groups two currencies' transactions.
+        today = app_today()
+        suggested: list[RecurringItem] = []
+        confirmed: list[RecurringItem] = []
+        for currency in vault_currencies(self._service.vault.connection):
+            more_suggested, more_confirmed, _summary = self._recurring.snapshot(
+                today, currency
+            )
+            suggested += more_suggested
+            confirmed += more_confirmed
         self._suggested_items = suggested
         self._confirmed_items = confirmed
-        # The base-currency code, read fresh like the Transactions/Home tabs, so the
-        # amount renders with the currency glyph + locale grouping (FIBR-0153).
-        symbol = TransactionService(self._service.vault).base_currency()
-        self._fill(self._suggested, suggested, symbol)
-        self._fill(self._confirmed_table, confirmed, symbol)
+        self._fill(self._suggested, suggested)
+        self._fill(self._confirmed_table, confirmed)
         if not suggested and not confirmed:
             self._status.setText(
                 self.tr(
@@ -167,9 +174,7 @@ class RecurringWidget(QWidget):
             self._status.setText("")
         self._on_selection_changed()
 
-    def _fill(
-        self, table: QTableWidget, items: list[RecurringItem], symbol: str
-    ) -> None:
+    def _fill(self, table: QTableWidget, items: list[RecurringItem]) -> None:
         with fill_guard(table):
             table.setRowCount(len(items))
             for row, item in enumerate(items):
@@ -185,7 +190,10 @@ class RecurringWidget(QWidget):
                     _COL_AMOUNT,
                     # amount is a positive magnitude (direction shown separately); the
                     # SortableItem keeps the Decimal as the numeric sort key (D11).
-                    SortableItem(_format_amount(item.amount, symbol), item.amount),
+                    # Each item renders in its own currency (FIBR-0087 INV-13).
+                    SortableItem(
+                        _format_amount(item.amount, item.currency), item.amount
+                    ),
                 )
                 table.setItem(
                     row,

@@ -87,7 +87,9 @@ def _seed(svc: AuthService) -> None:
         _add(svc, first, today - timedelta(days=30 * k), -int(DIGITS), f"{MARK} Stream")
         _add(svc, first, today - timedelta(days=30 * k + 2), -4321, f"{MARK} Gym")
     recurring = RecurringService(svc.vault)
-    stream = next(i for i in recurring.candidates(today) if "stream" in i.merchant_key)
+    stream = next(
+        i for i in recurring.candidates(today, "ZAR") if "stream" in i.merchant_key
+    )
     recurring.confirm(stream.direction, stream.merchant_key)
     old = today - timedelta(days=45)
     debit = _add(svc, first, old, -50000, f"{MARK} to savings")

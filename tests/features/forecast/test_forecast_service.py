@@ -47,7 +47,9 @@ def _add(svc: AuthService, account_id: int, day: str, minor: int, desc: str) -> 
 
 def _confirm_netflix(svc: AuthService) -> None:
     rec = RecurringService(svc.vault)
-    item = next(it for it in rec.candidates(_TODAY) if it.merchant_key == "netflix")
+    item = next(
+        it for it in rec.candidates(_TODAY, "ZAR") if it.merchant_key == "netflix"
+    )
     rec.confirm(item.direction, item.merchant_key)
 
 
@@ -108,7 +110,7 @@ def test_INV3_only_confirmed_items_project(service) -> None:
         _add(svc, a, day, -8_000, "Gym")
     _confirm_netflix(svc)  # only Netflix confirmed
     detected = {
-        it.merchant_key for it in RecurringService(svc.vault).candidates(_TODAY)
+        it.merchant_key for it in RecurringService(svc.vault).candidates(_TODAY, "ZAR")
     }
     assert "gym" in detected, (
         "precondition: Gym must be a detected (suggested) item, or the check "
@@ -198,7 +200,7 @@ def test_a_month_end_debit_order_last_seen_in_a_short_month_stays_on_month_end(
     rec = RecurringService(svc.vault)
     today = date(2026, 5, 5)
     item = next(
-        it for it in rec.candidates(today) if it.merchant_key == "bond repayment"
+        it for it in rec.candidates(today, "ZAR") if it.merchant_key == "bond repayment"
     )
     rec.confirm(item.direction, item.merchant_key)
 

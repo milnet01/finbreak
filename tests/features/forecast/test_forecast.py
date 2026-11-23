@@ -310,5 +310,6 @@ def test_FIBR0171_to_input_anchors_on_last_seen_not_next_expected():
         last_seen=date(2026, 1, 31),
         next_expected=date(2026, 2, 28),  # the clamped step -- must NOT be used
         txn_ids=(1, 2, 3),
+        currency="ZAR",
     )
     assert ForecastService._to_input(item, 2).anchor == date(2026, 1, 31)

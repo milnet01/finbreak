@@ -229,7 +229,7 @@ def seed(auth: AuthService, *, today: date | None = None) -> None:
         "acme",
         "home loans",
     )
-    for item in recurring.candidates(anchor):
+    for item in recurring.candidates(anchor, "ZAR"):
         if any(key in item.merchant_key.lower() for key in confirm_keys):
             recurring.confirm(item.direction, item.merchant_key)
 

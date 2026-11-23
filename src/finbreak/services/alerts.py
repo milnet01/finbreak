@@ -26,7 +26,11 @@ from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.reporting import ReportingRepository
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import _month_bounds, _prev_month
-from finbreak.services.transactions import read_minor_unit_exponent, to_minor
+from finbreak.services.transactions import (
+    read_base_currency,
+    read_minor_unit_exponent,
+    to_minor,
+)
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.vault import Vault
 
@@ -182,7 +186,10 @@ class AlertService:
         Clock-injected: same inputs + ``today`` → same list."""
         exponent = read_minor_unit_exponent(self._conn)
         # One recurring detection pass drives both (a) and (c) (D2/D4).
-        suggested, confirmed, _summary = RecurringService(self._vault).snapshot(today)
+        base = read_base_currency(self._conn)  # per currency: FIBR-0087 INV-9
+        suggested, confirmed, _summary = RecurringService(self._vault).snapshot(
+            today, base
+        )
         new = detect_new_recurring(self._new_inputs(suggested, exponent))
         month, spike_inputs = self._spike_inputs(today)
         min_baseline = _MIN_BASELINE_MAJOR * (10**exponent)

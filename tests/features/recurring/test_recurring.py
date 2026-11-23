@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 from PySide6.QtCore import Qt
 
-from conftest import _PW, build_v8_vault, keyed_connection, raising_conn
+from conftest import _PW, build_v8_vault, cell_text, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
 from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.models import Cadence, Direction, RecurringSummary
@@ -53,7 +53,7 @@ def _row(
 # pure detector — empty / degenerate inputs
 # --------------------------------------------------------------------------- #
 def test_empty_rows_yield_no_items() -> None:
-    assert detect_recurring([], _TODAY, _EXP, frozenset()) == []
+    assert detect_recurring([], _TODAY, _EXP, frozenset(), currency="ZAR") == []
 
 
 # --------------------------------------------------------------------------- #
@@ -67,7 +67,7 @@ def test_clean_monthly_out_series_qualifies() -> None:
         _row(4, "2026-04-05", -19900),
         _row(5, "2026-05-05", -19900),
     ]
-    items = detect_recurring(rows, date(2026, 5, 20), _EXP, frozenset())
+    items = detect_recurring(rows, date(2026, 5, 20), _EXP, frozenset(), currency="ZAR")
     assert len(items) == 1
     it = items[0]
     assert it.direction == Direction.OUT
@@ -96,9 +96,9 @@ def test_INV2_detection_is_order_independent_and_D10_sorted() -> None:
     ]
     today = date(2026, 3, 30)
 
-    first = detect_recurring(rows, today, _EXP, frozenset())
+    first = detect_recurring(rows, today, _EXP, frozenset(), currency="ZAR")
     shuffled = [rows[i] for i in (7, 0, 11, 3, 9, 1, 6, 10, 2, 4, 8, 5)]
-    second = detect_recurring(shuffled, today, _EXP, frozenset())
+    second = detect_recurring(shuffled, today, _EXP, frozenset(), currency="ZAR")
 
     assert len(first) == 4, "all four groups qualify"
     # Element-for-element, not merely the same set: the D10 order is the contract.
@@ -129,7 +129,10 @@ def _monthly(amounts: list[int]) -> list[_RecurRow]:
 # INV-6 — below the ≥3 minimum: a 2× group never qualifies.
 def test_rejects_below_min_occurrences() -> None:
     rows = [_row(1, "2026-01-10", -19900), _row(2, "2026-02-10", -19900)]
-    assert detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset()) == []
+    assert (
+        detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset(), currency="ZAR")
+        == []
+    )
 
 
 # INV-6 — ±10% integer-exact boundary: 110 accept / 111 reject, 90 / 89.
@@ -143,7 +146,9 @@ def test_rejects_below_min_occurrences() -> None:
     ],
 )
 def test_amount_tolerance_boundaries(amounts: list[int], expected: int) -> None:
-    items = detect_recurring(_monthly(amounts), date(2026, 3, 20), _EXP, frozenset())
+    items = detect_recurring(
+        _monthly(amounts), date(2026, 3, 20), _EXP, frozenset(), currency="ZAR"
+    )
     assert len(items) == expected
 
 
@@ -154,7 +159,10 @@ def test_rejects_two_distinct_dates() -> None:
         _row(2, "2026-01-10", -19900),
         _row(3, "2026-02-10", -19900),
     ]
-    assert detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset()) == []
+    assert (
+        detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset(), currency="ZAR")
+        == []
+    )
 
 
 # INV-6 — a same-day duplicate is tolerated: the zero gap is discarded and the
@@ -166,7 +174,7 @@ def test_same_day_duplicate_tolerated() -> None:
         _row(3, "2026-02-10", -19900),
         _row(4, "2026-03-10", -19900),
     ]
-    items = detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset())
+    items = detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset(), currency="ZAR")
     assert len(items) == 1
     assert items[0].cadence == Cadence.MONTHLY
     assert items[0].occurrences == 4
@@ -180,7 +188,10 @@ def test_rejects_mixed_valid_bands() -> None:
         _row(3, "2026-01-15", -19900),  # +7
         _row(4, "2026-02-14", -19900),  # +30
     ]
-    assert detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset()) == []
+    assert (
+        detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset(), currency="ZAR")
+        == []
+    )
 
 
 # INV-6 — a gap in no band (20 days, between fortnight and month) disqualifies.
@@ -190,14 +201,22 @@ def test_rejects_dead_zone_gap() -> None:
         _row(2, "2026-01-21", -19900),  # +20 → dead zone
         _row(3, "2026-02-10", -19900),  # +20 → dead zone
     ]
-    assert detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset()) == []
+    assert (
+        detect_recurring(rows, date(2026, 2, 20), _EXP, frozenset(), currency="ZAR")
+        == []
+    )
 
 
 # INV-7 — activeness: a monthly group stale by > 2·30 days drops; ≤ 60 keeps.
 def test_activeness_drops_stale_keeps_recent() -> None:
     rows = _monthly([-19900, -19900, -19900])  # last_seen 2026-03-10
-    assert detect_recurring(rows, date(2026, 7, 15), _EXP, frozenset()) == []  # 127d
-    kept = detect_recurring(rows, date(2026, 5, 5), _EXP, frozenset())  # 56 days
+    assert (
+        detect_recurring(rows, date(2026, 7, 15), _EXP, frozenset(), currency="ZAR")
+        == []
+    )  # 127d
+    kept = detect_recurring(
+        rows, date(2026, 5, 5), _EXP, frozenset(), currency="ZAR"
+    )  # 56 days
     assert len(kept) == 1
 
 
@@ -211,7 +230,7 @@ def test_direction_split() -> None:
         _row(5, "2026-02-15", 5000),
         _row(6, "2026-03-15", 5000),
     ]
-    items = detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset())
+    items = detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset(), currency="ZAR")
     assert {it.direction for it in items} == {Direction.OUT, Direction.IN}
     assert len(items) == 2
 
@@ -220,7 +239,10 @@ def test_direction_split() -> None:
 # excluding one leaves only 2 members → the group no longer qualifies.
 def test_excluded_ids_dropped() -> None:
     rows = _monthly([-19900, -19900, -19900])
-    assert detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset({2})) == []
+    assert (
+        detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset({2}), currency="ZAR")
+        == []
+    )
 
 
 # INV-4 — a zero-amount row is excluded before grouping (same 3→2 collapse).
@@ -230,14 +252,17 @@ def test_zero_amount_excluded() -> None:
         _row(2, "2026-02-10", 0),  # excluded
         _row(3, "2026-03-10", -19900),
     ]
-    assert detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset()) == []
+    assert (
+        detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset(), currency="ZAR")
+        == []
+    )
 
 
 # INV-5 — an all-digits description keeps a non-blank grouping key.
 def test_all_digits_description_keeps_nonblank_key() -> None:
     rows = _monthly([-19900, -19900, -19900])
     rows = [r._replace(description="12345") for r in rows]
-    items = detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset())
+    items = detect_recurring(rows, date(2026, 3, 20), _EXP, frozenset(), currency="ZAR")
     assert len(items) == 1
     assert items[0].merchant_key == "12345"
 
@@ -379,13 +404,13 @@ def test_INV9_snapshot_partitions_and_matches_accessors(vault_service) -> None:
     svc = vault_service
     _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
     rec = RecurringService(svc.vault)
-    suggested, confirmed, summary = rec.snapshot(_ACTIVE)
+    suggested, confirmed, summary = rec.snapshot(_ACTIVE, "ZAR")
     assert [it.merchant_key for it in suggested] == ["netflix"]
     assert confirmed == []
     assert summary == RecurringSummary(Decimal("0"), Decimal("0"), Decimal("0"))
-    assert rec.candidates(_ACTIVE) == suggested
-    assert rec.confirmed(_ACTIVE) == confirmed
-    assert rec.summary(_ACTIVE) == summary
+    assert rec.candidates(_ACTIVE, "ZAR") == suggested
+    assert rec.confirmed(_ACTIVE, "ZAR") == confirmed
+    assert rec.summary(_ACTIVE, "ZAR") == summary
 
 
 # INV-9 (D9 perf) — snapshot runs detection exactly once.
@@ -402,7 +427,7 @@ def test_INV9_snapshot_runs_detection_once(vault_service, monkeypatch) -> None:
         return real(*args, **kwargs)
 
     monkeypatch.setattr(rec_mod, "detect_recurring", counting)
-    rec_mod.RecurringService(svc.vault).snapshot(_ACTIVE)
+    rec_mod.RecurringService(svc.vault).snapshot(_ACTIVE, "ZAR")
     assert calls["n"] == 1
 
 
@@ -412,7 +437,7 @@ def test_INV8_confirm_moves_to_confirmed(vault_service) -> None:
     _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
     rec = RecurringService(svc.vault)
     rec.confirm(Direction.OUT, "netflix")
-    suggested, confirmed, summary = rec.snapshot(_ACTIVE)
+    suggested, confirmed, summary = rec.snapshot(_ACTIVE, "ZAR")
     assert suggested == []
     assert [it.merchant_key for it in confirmed] == ["netflix"]
     assert summary.monthly_out == Decimal("199.00")
@@ -426,7 +451,7 @@ def test_INV8_dismiss_hides_from_both(vault_service) -> None:
     _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
     rec = RecurringService(svc.vault)
     rec.dismiss(Direction.OUT, "netflix")
-    suggested, confirmed, _ = rec.snapshot(_ACTIVE)
+    suggested, confirmed, _ = rec.snapshot(_ACTIVE, "ZAR")
     assert suggested == []
     assert confirmed == []
 
@@ -438,7 +463,7 @@ def test_INV8_reset_returns_to_suggested(vault_service) -> None:
     rec = RecurringService(svc.vault)
     rec.confirm(Direction.OUT, "netflix")
     rec.reset(Direction.OUT, "netflix")
-    suggested, confirmed, _ = rec.snapshot(_ACTIVE)
+    suggested, confirmed, _ = rec.snapshot(_ACTIVE, "ZAR")
     assert [it.merchant_key for it in suggested] == ["netflix"]
     assert confirmed == []
 
@@ -464,9 +489,9 @@ def test_INV9_confirmed_decision_survives_detection_gap(vault_service) -> None:
     rec = RecurringService(svc.vault)
     rec.confirm(Direction.OUT, "netflix")
     # Far future — the monthly series is now stale, so nothing detects.
-    assert rec.confirmed(date(2027, 1, 1)) == []
+    assert rec.confirmed(date(2027, 1, 1), "ZAR") == []
     # Back in the active window — the confirmed item reappears (decision survived).
-    assert [it.merchant_key for it in rec.confirmed(_ACTIVE)] == ["netflix"]
+    assert [it.merchant_key for it in rec.confirmed(_ACTIVE, "ZAR")] == ["netflix"]
 
 
 # INV-3 — the service excludes confirmed-transfer txn ids: excluding one member of
@@ -480,11 +505,11 @@ def test_INV3_confirmed_transfer_txn_excluded(vault_service) -> None:
     _add_txn(svc, a, "2026-03-05", -19900, "Netflix")
     rec = RecurringService(svc.vault)
     today = date(2026, 3, 20)
-    assert [it.merchant_key for it in rec.candidates(today)] == ["netflix"]
+    assert [it.merchant_key for it in rec.candidates(today, "ZAR")] == ["netflix"]
     # A matching credit on B, confirmed as a transfer → `debit` is now excluded.
     credit = _add_txn(svc, b, "2026-01-05", 19900, "from current")
     TransferDetectionService(svc.vault).confirm(debit, credit)
-    assert rec.candidates(today) == []  # only 2 members remain un-excluded
+    assert rec.candidates(today, "ZAR") == []  # only 2 members remain un-excluded
 
 
 # INV-13 — one merchant's charges across TWO accounts group into a single item
@@ -496,7 +521,7 @@ def test_INV13_merchant_groups_across_accounts(vault_service) -> None:
     _add_txn(svc, a, "2026-01-05", -19900, "Netflix")
     _add_txn(svc, b, "2026-02-05", -19900, "Netflix")
     _add_txn(svc, a, "2026-03-05", -19900, "Netflix")
-    items = RecurringService(svc.vault).candidates(date(2026, 3, 20))
+    items = RecurringService(svc.vault).candidates(date(2026, 3, 20), "ZAR")
     assert len(items) == 1
     assert items[0].occurrences == 3
 
@@ -513,7 +538,7 @@ def test_summary_sums_confirmed_monthly_equivalents(vault_service) -> None:
     today = date(2026, 5, 25)
     rec.confirm(Direction.OUT, "netflix")
     rec.confirm(Direction.IN, "gig pay")
-    summary = rec.summary(today)
+    summary = rec.summary(today, "ZAR")
     assert summary.monthly_out == Decimal("199.00")
     assert summary.monthly_in == Decimal("216.67")
     assert summary.net == Decimal("17.67")
@@ -824,6 +849,7 @@ def test_FIBR0328_next_due_reads_in_the_user_format_and_still_sorts(
             last_seen=date(2025, 12, 5),
             next_expected=due,
             txn_ids=(),
+            currency="ZAR",
         )
 
     widget = RecurringWidget(
@@ -834,7 +860,6 @@ def test_FIBR0328_next_due_reads_in_the_user_format_and_still_sorts(
     widget._fill(
         table,
         [_item("Januaryish", date(2026, 1, 5)), _item("Februaryish", date(2026, 2, 3))],
-        "R",
     )
 
     def _due(row: int) -> str:
@@ -852,3 +877,56 @@ def test_FIBR0328_next_due_reads_in_the_user_format_and_still_sorts(
         "ascending by Next due must put January before February. Sorting on the "
         "DISPLAY string orders by day-of-month under dd/MM/yyyy."
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0087 INV-8 — detection never groups across currencies
+# (docs/specs/FIBR-0087-per-account-currency.md)
+# --------------------------------------------------------------------------- #
+def test_FIBR0087_INV8_detection_runs_per_currency(vault_service) -> None:
+    svc = vault_service
+    zar = _default_account(svc)
+    usd = AccountService(svc.vault).add_account("Offshore", "savings", currency="USD")
+    _seed_monthly(svc, zar, -19900, "Netflix")
+    _seed_monthly(svc, usd.id, -1599, "Netflix")
+    rec = RecurringService(svc.vault)
+
+    zar_items = rec.snapshot(_ACTIVE, "ZAR")[0]
+    usd_items = rec.snapshot(_ACTIVE, "USD")[0]
+    assert [(it.merchant_key, it.amount, it.currency) for it in zar_items] == [
+        ("netflix", Decimal("199.00"), "ZAR")
+    ]
+    assert [(it.merchant_key, it.amount, it.currency) for it in usd_items] == [
+        ("netflix", Decimal("15.99"), "USD")
+    ]
+
+    # A decision stays keyed on (direction, merchant_key): it confirms both.
+    rec.confirm(Direction.OUT, "netflix")
+    assert rec.summary(_ACTIVE, "USD").monthly_out == Decimal("15.99")
+    assert rec.summary(_ACTIVE, "ZAR").monthly_out == Decimal("199.00")
+    assert rec.snapshot(_ACTIVE, "EUR") == ([], [], rec.summary(_ACTIVE, "EUR"))
+    assert rec.summary(_ACTIVE, "EUR").monthly_out == Decimal("0.00")
+
+
+def test_FIBR0087_INV13_tab_lists_each_currency_in_its_own_symbol(
+    qtbot, vault_service
+) -> None:
+    """The tab runs one pass per currency and lists the items together; each
+    amount carries its own account's currency."""
+    from finbreak.ui.recurring import _COL_AMOUNT, RecurringWidget
+
+    svc = vault_service
+    usd = AccountService(svc.vault).add_account("Offshore", "savings", currency="USD")
+    _seed_recent_monthly(svc, _default_account(svc), -19900, "Netflix")
+    _seed_recent_monthly(svc, usd.id, -1599, "Netflix")
+    w = RecurringWidget(svc)
+    qtbot.addWidget(w)
+    amounts = sorted(
+        cell_text(w._suggested, row, _COL_AMOUNT)
+        for row in range(w._suggested.rowCount())
+    )
+    assert len(amounts) == 2
+    usd_cell = next(a for a in amounts if "15.99" in a)
+    zar_cell = next(a for a in amounts if "199.00" in a)
+    assert "$" in usd_cell and "R" not in usd_cell
+    assert "R" in zar_cell and "$" not in zar_cell
