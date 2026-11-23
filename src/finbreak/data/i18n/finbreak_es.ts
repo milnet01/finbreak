@@ -2384,6 +2384,14 @@ A partir de entonces, tu contraseña maestra será lo único que pueda abrir tu 
         <translation>este extracto tiene demasiadas transacciones para importarlo — prueba con la exportación CSV u OFX de tu banco</translation>
     </message>
     <message>
+        <source>an account&apos;s currency cannot change once it holds transactions or statements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unsupported currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>this account still has transactions — move or remove them first</source>
         <translation>esta cuenta todavía tiene transacciones — muévelas o elimínalas primero</translation>
     </message>

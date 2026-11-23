@@ -65,7 +65,8 @@ class KdfParams:
 class Account:
     """One row of the ``accounts`` table. ``account_number`` / ``note``
     (appended after ``created_at`` at v13, FIBR-0193) and ``bank`` (v18,
-    FIBR-0283) are optional fields; both read paths name all seven columns in
+    FIBR-0283) and ``currency`` (v19, FIBR-0087) are optional fields; both read
+    paths name all eight columns in
     this order so ``Account(*row)`` stays aligned. The defaults keep the
     four-argument positional literals outside the repository working (the
     precedent is ``ParseResult.closing_balance_minor``, FIBR-0171 D4) — they also
@@ -81,6 +82,10 @@ class Account:
     # v18 (FIBR-0283): the bank holding the account, free text; NULL when
     # not recorded. Appended last for the same positional reason as above.
     bank: str | None = None
+    # v19 (FIBR-0087): the account's ISO currency code. Read it through
+    # ``services.currency.account_currency``, which maps NULL or blank to the
+    # vault's base currency. Appended last for the same positional reason.
+    currency: str | None = None
 
 
 class CategorySource(StrEnum):

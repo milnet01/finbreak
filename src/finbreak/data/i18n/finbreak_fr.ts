@@ -2384,6 +2384,14 @@ Ensuite, seul votre mot de passe principal pourra ouvrir votre coffre-fort. Si v
         <translation>ce relevé contient trop d&apos;opérations pour être importé — essayez l&apos;export CSV ou OFX de votre banque</translation>
     </message>
     <message>
+        <source>an account&apos;s currency cannot change once it holds transactions or statements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unsupported currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>this account still has transactions — move or remove them first</source>
         <translation>ce compte contient encore des opérations — déplacez-les ou supprimez-les d&apos;abord</translation>
     </message>

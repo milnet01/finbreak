@@ -299,6 +299,7 @@ def test_FIBR0327_both_labels_render_account_names_as_plain_text(
         account_number=None,
         note=None,
         bank=None,
+        currency="ZAR",
     )
     # A second cash account with no balance makes the total partial, which is what
     # puts the contributing account's name in the headline's suffix.

@@ -20,6 +20,8 @@ from finbreak.models import Account, AccountType
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.currency import account_currency, account_currency_choices
+from finbreak.services.transactions import read_base_currency
 from finbreak.text import fold_name
 from finbreak.vault import Vault
 
@@ -62,6 +64,8 @@ class AccountService:
     # ``update_account``'s are REQUIRED, because the repository issues an
     # unconditional ``UPDATE … SET`` — a defaulted ``None`` would make a call
     # that forgot one silently erase a stored account number, note or bank.
+    # ``currency`` follows the same split (FIBR-0087 § 4.4): None on add means
+    # the base currency.
     def add_account(
         self,
         name: str,
@@ -70,8 +74,13 @@ class AccountService:
         account_number: str | None = None,
         note: str | None = None,
         bank: str | None = None,
+        currency: str | None = None,
     ) -> Account:
         name = self._validate(name, type)
+        if currency is None:
+            currency = read_base_currency(self._vault.connection)
+        else:
+            self._validate_currency(currency)
         repo = self._accounts()
         account_id = repo.add(
             name,
@@ -79,6 +88,7 @@ class AccountService:
             _normalise_optional(account_number),
             _normalise_optional(note),
             _normalise_optional(bank),
+            currency,
         )
         log.info("account created")
         # get() is Optional; the row was just inserted, so it is present.
@@ -93,17 +103,56 @@ class AccountService:
         account_number: str | None,
         note: str | None,
         bank: str | None,
+        currency: str,
     ) -> None:
         name = self._validate(name, type, exclude_id=account_id)
-        self._accounts().update(
+        self._validate_currency(currency)
+        repo = self._accounts()
+        current = repo.get(account_id)
+        base = read_base_currency(self._vault.connection)
+        if (
+            current is not None
+            and account_currency(current, base) != currency
+            and self.is_in_use(account_id)
+        ):
+            raise AccountInUseError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "an account's currency cannot change once it holds "
+                        "transactions or statements",
+                    )
+                )
+            )
+        repo.update(
             account_id,
             name,
             type,
             _normalise_optional(account_number),
             _normalise_optional(note),
             _normalise_optional(bank),
+            currency,
         )
         log.info("account updated")
+
+    def is_in_use(self, account_id: int) -> bool:
+        """The account holds a transaction or a statement period — the two
+        checks ``delete_account``'s guards make, and what locks its currency."""
+        return self._has_transactions(account_id) or self._has_statements(account_id)
+
+    def _has_transactions(self, account_id: int) -> bool:
+        conn = self._vault.connection
+        return TransactionRepository(conn).count_for_account(account_id) > 0
+
+    def _has_statements(self, account_id: int) -> bool:
+        conn = self._vault.connection
+        return bool(StatementPeriodRepository(conn).list_for_account(account_id))
+
+    def _validate_currency(self, currency: str) -> None:
+        if currency not in account_currency_choices(self._vault.connection):
+            raise ValueError(
+                UserMessage(QT_TRANSLATE_NOOP("Refusal", "unsupported currency"))
+            )
 
     def bank_suggestions(self) -> list[str]:
         """The banks the vault records, then ``KNOWN_BANKS``, each once by
@@ -115,9 +164,7 @@ class AccountService:
 
     def delete_account(self, account_id: int) -> None:
         repo = self._accounts()
-        conn = self._vault.connection
-        in_account = TransactionRepository(conn).count_for_account(account_id)
-        if in_account > 0:
+        if self._has_transactions(account_id):
             raise AccountInUseError(
                 UserMessage(
                     QT_TRANSLATE_NOOP(
@@ -134,7 +181,7 @@ class AccountService:
         # otherwise raise a raw IntegrityError that escapes the FinbreakError
         # taxonomy and crashes the delete slot. (indie-review data H-1; this also
         # gives StatementPeriodRepository.list_for_account its first src caller)
-        if StatementPeriodRepository(conn).list_for_account(account_id):
+        if self._has_statements(account_id):
             raise AccountInUseError(
                 UserMessage(
                     QT_TRANSLATE_NOOP(

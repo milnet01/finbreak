@@ -40,9 +40,11 @@ from finbreak.models import (
 )
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
+from finbreak.services.currency import account_currency
 from finbreak.services.reconciliation import ReconciliationService
 from finbreak.services.transactions import (
     TransactionService,
+    read_base_currency,
     read_minor_unit_exponent,
     to_display_decimal,
 )
@@ -381,6 +383,11 @@ class AccountsWidget(QWidget):
                 account_number=self._account_number.text(),
                 note=self._note.text(),
                 bank=self._bank.text(),
+                # The stored currency, passed back unchanged until this screen
+                # offers a choice (FIBR-0087 § 4.8).
+                currency=account_currency(
+                    account, read_base_currency(self._vault.connection)
+                ),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers

@@ -2384,6 +2384,14 @@ After this, your master password is the only thing that can open your vault. If 
         <translation>इस स्टेटमेंट में इम्पोर्ट करने के लिए बहुत ज़्यादा लेन-देन हैं — अपने बैंक का CSV या OFX एक्सपोर्ट आज़माएँ</translation>
     </message>
     <message>
+        <source>an account&apos;s currency cannot change once it holds transactions or statements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unsupported currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>this account still has transactions — move or remove them first</source>
         <translation>इस खाते में अभी भी लेन-देन हैं — पहले उन्हें किसी दूसरे खाते में ले जाएँ या हटाएँ</translation>
     </message>

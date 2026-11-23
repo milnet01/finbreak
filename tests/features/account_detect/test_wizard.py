@@ -316,7 +316,13 @@ def test_FIBR0283_INV12_create_stores_the_bank_and_labels_the_new_item(
     svc = _accounts(service)
     seeded = svc.list_accounts()[0].id
     svc.update_account(
-        seeded, "Default", "current", account_number=None, note=None, bank="Absa"
+        seeded,
+        "Default",
+        "current",
+        account_number=None,
+        note=None,
+        bank="Absa",
+        currency="ZAR",
     )
     widget = _wizard(qtbot, service, seeded)
     widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))

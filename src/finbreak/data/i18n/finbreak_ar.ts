@@ -2412,6 +2412,14 @@ After this, your master password is the only thing that can open your vault. If 
         <translation>يحتوي هذا الكشف على معاملات أكثر من أن تُستورد — جرّب ملف CSV أو OFX الذي يصدّره بنكك</translation>
     </message>
     <message>
+        <source>an account&apos;s currency cannot change once it holds transactions or statements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unsupported currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>this account still has transactions — move or remove them first</source>
         <translation>لا يزال لهذا الحساب معاملات — انقلها أو أزلها أولًا</translation>
     </message>

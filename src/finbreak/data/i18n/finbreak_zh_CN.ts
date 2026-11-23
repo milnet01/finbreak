@@ -2377,6 +2377,14 @@ After this, your master password is the only thing that can open your vault. If 
         <translation>此对账单的交易过多，无法导入——请尝试使用银行导出的 CSV 或 OFX 文件</translation>
     </message>
     <message>
+        <source>an account&apos;s currency cannot change once it holds transactions or statements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unsupported currency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>this account still has transactions — move or remove them first</source>
         <translation>此账户中仍有交易——请先移动或删除这些交易</translation>
     </message>

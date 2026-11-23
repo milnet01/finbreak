@@ -19,8 +19,9 @@ class AccountRepository:
     def __init__(self, connection: dbapi2.Connection):
         self._conn = connection
 
-    # ``account_number`` / ``note`` (v13, FIBR-0193) and ``bank`` (v18,
-    # FIBR-0283) are REQUIRED parameters on both writers, not defaulted:
+    # ``account_number`` / ``note`` (v13, FIBR-0193), ``bank`` (v18,
+    # FIBR-0283) and ``currency`` (v19, FIBR-0087) are REQUIRED parameters on
+    # both writers, not defaulted:
     # ``update`` issues an unconditional ``UPDATE … SET``, so a defaulted
     # ``None`` would let a caller that forgot one silently erase it. ``add``
     # matches for symmetry rather than because an ``INSERT`` default would be
@@ -32,25 +33,36 @@ class AccountRepository:
         account_number: str | None,
         note: str | None,
         bank: str | None,
+        currency: str,
     ) -> int:
         cursor = self._conn.execute(
-            "INSERT INTO accounts(name, type, created_at, account_number, note, bank) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (name, type, datetime.now(UTC).isoformat(), account_number, note, bank),
+            "INSERT INTO accounts(name, type, created_at, account_number, note, "
+            "bank, currency) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                name,
+                type,
+                datetime.now(UTC).isoformat(),
+                account_number,
+                note,
+                bank,
+                currency,
+            ),
         )
         self._conn.commit()
         return last_insert_id(cursor)
 
     def list_all(self) -> list[Account]:
         rows = self._conn.execute(
-            "SELECT id, name, type, created_at, account_number, note, bank "
+            "SELECT id, name, type, created_at, account_number, note, bank, "
+            "currency "
             "FROM accounts ORDER BY name COLLATE NOCASE, id"
         ).fetchall()
         return [Account(*row) for row in rows]
 
     def get(self, account_id: int) -> Account | None:
         row = self._conn.execute(
-            "SELECT id, name, type, created_at, account_number, note, bank "
+            "SELECT id, name, type, created_at, account_number, note, bank, "
+            "currency "
             "FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
@@ -64,11 +76,12 @@ class AccountRepository:
         account_number: str | None,
         note: str | None,
         bank: str | None,
+        currency: str,
     ) -> None:
         self._conn.execute(
             "UPDATE accounts SET name = ?, type = ?, account_number = ?, note = ?, "
-            "bank = ? WHERE id = ?",
-            (name, type, account_number, note, bank, account_id),
+            "bank = ?, currency = ? WHERE id = ?",
+            (name, type, account_number, note, bank, currency, account_id),
         )
         self._conn.commit()
 

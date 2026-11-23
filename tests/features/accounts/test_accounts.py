@@ -103,7 +103,13 @@ def test_INV1_crud_roundtrip_and_order(service):
     datetime.fromisoformat(got.created_at)
 
     svc.update_account(
-        current.id, "Cheque", "current", account_number=None, note=None, bank=None
+        current.id,
+        "Cheque",
+        "current",
+        account_number=None,
+        note=None,
+        bank=None,
+        currency="ZAR",
     )
     got = repo.get(current.id)
     assert got is not None
@@ -116,7 +122,7 @@ def test_INV1_crud_roundtrip_and_order(service):
 def test_INV1_missing_id_update_and_delete_are_noops(service):
     repo = AccountRepository(service.vault.connection)
     repo.delete(999_999)  # no row, no raise
-    repo.update(999_999, "ghost", "other", None, None, None)  # no row, no raise
+    repo.update(999_999, "ghost", "other", None, None, None, "ZAR")  # no row, no raise
     assert repo.get(999_999) is None
 
 
@@ -168,12 +174,24 @@ def test_INV3_name_stored_trimmed_and_update_allows_own_name(service):
     assert acct.name == "Savings", "stored trimmed"
     # Re-saving the same account with its own (unchanged) name is allowed.
     svc.update_account(
-        acct.id, "Savings", "current", account_number=None, note=None, bank=None
+        acct.id,
+        "Savings",
+        "current",
+        account_number=None,
+        note=None,
+        bank=None,
+        currency="ZAR",
     )
     # But colliding with a *different* account's name is refused.
     with pytest.raises(ValueError):
         svc.update_account(
-            acct.id, "Default", "current", account_number=None, note=None, bank=None
+            acct.id,
+            "Default",
+            "current",
+            account_number=None,
+            note=None,
+            bank=None,
+            currency="ZAR",
         )
 
 
@@ -559,6 +577,7 @@ def test_INV8_account_cycle_logs_no_secret(service, caplog):
             account_number=account_number,
             note=note,
             bank=None,
+            currency="ZAR",
         )
         svc.delete_account(spare.id)
 
@@ -960,6 +979,7 @@ def test_INV6_update_persists_account_number_and_note(service):
         account_number="NEW-2222",
         note="new note",
         bank=None,
+        currency="ZAR",
     )
 
     got = repo.get(acct.id)
@@ -980,7 +1000,13 @@ def test_INV6_update_blanks_clear_both_fields_to_null(service):
     )
 
     svc.update_account(
-        acct.id, "Holiday", "savings", account_number="   ", note="   ", bank=None
+        acct.id,
+        "Holiday",
+        "savings",
+        account_number="   ",
+        note="   ",
+        bank=None,
+        currency="ZAR",
     )
 
     row = conn.execute(
@@ -1045,7 +1071,13 @@ def _seed_sorted(service) -> dict[str, int]:
         if i == 1:  # reuse the seeded Default as the middle account
             account_id = _default_id(service.vault)
             svc.update_account(
-                account_id, name, type_, account_number=number, note=note, bank=None
+                account_id,
+                name,
+                type_,
+                account_number=number,
+                note=note,
+                bank=None,
+                currency="ZAR",
             )
         else:
             account_id = svc.add_account(
@@ -1835,7 +1867,13 @@ def test_FIBR0283_INV4_bank_is_stripped_and_blank_is_null(service):
     assert omitted.bank is None
 
     svc.update_account(
-        padded.id, "Padded", "other", account_number=None, note=None, bank="   "
+        padded.id,
+        "Padded",
+        "other",
+        account_number=None,
+        note=None,
+        bank="   ",
+        currency="ZAR",
     )
     row = service.vault.connection.execute(
         "SELECT bank IS NULL FROM accounts WHERE id = ?", (padded.id,)
@@ -1849,13 +1887,25 @@ def test_FIBR0283_INV5_update_sets_clears_and_requires_bank(service):
     acct = svc.add_account("Holiday", "savings")
 
     svc.update_account(
-        acct.id, "Holiday", "savings", account_number=None, note=None, bank="Nedbank"
+        acct.id,
+        "Holiday",
+        "savings",
+        account_number=None,
+        note=None,
+        bank="Nedbank",
+        currency="ZAR",
     )
     got = repo.get(acct.id)
     assert got is not None and got.bank == "Nedbank"
 
     svc.update_account(
-        acct.id, "Holiday", "savings", account_number=None, note=None, bank=None
+        acct.id,
+        "Holiday",
+        "savings",
+        account_number=None,
+        note=None,
+        bank=None,
+        currency="ZAR",
     )
     got = repo.get(acct.id)
     assert got is not None and got.bank is None
@@ -1971,3 +2021,148 @@ def test_FIBR0283_INV11_bank_is_appended_last_and_shown_second(qtbot, service):
     assert [header.visualIndex(i) for i in range(5)] == [0, 1, 2, 3, 4]
     assert header.visualIndex(_COL_BANK) == 5, "Bank is appended last"
     assert _header_text(restored, _COL_BANK) == "Bank"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0087 — each account's currency
+# (docs/specs/FIBR-0087-per-account-currency.md)
+# --------------------------------------------------------------------------- #
+def _upd(svc, acct, **kw) -> None:
+    """``update_account`` with every field but ``currency`` left as stored."""
+    svc.update_account(
+        acct.id,
+        acct.name,
+        acct.type,
+        account_number=None,
+        note=None,
+        bank=None,
+        **kw,
+    )
+
+
+def test_FIBR0087_INV3_currency_round_trips_on_both_read_paths(service):
+    """Distinct values in every field, so a misordered SELECT reddens rather
+    than the model's default absorbing an omitted column."""
+    svc = AccountService(service.vault)
+    acct = svc.add_account(
+        "Offshore",
+        "savings",
+        account_number="NUM-1",
+        note="a note",
+        bank="Nedbank",
+        currency="USD",
+    )
+    assert acct.currency == "USD"
+
+    repo = AccountRepository(service.vault.connection)
+    for label, got in (
+        ("get", repo.get(acct.id)),
+        ("list_all", next(a for a in repo.list_all() if a.id == acct.id)),
+    ):
+        assert got is not None, label
+        assert (
+            got.name,
+            got.type,
+            got.account_number,
+            got.note,
+            got.bank,
+            got.currency,
+        ) == ("Offshore", "savings", "NUM-1", "a note", "Nedbank", "USD"), label
+        datetime.fromisoformat(got.created_at)
+
+
+def test_FIBR0087_INV4_add_stores_base_or_given_and_refuses_unsupported(service):
+    svc = AccountService(service.vault)
+    assert svc.add_account("Home", "current").currency == "ZAR"
+    assert svc.add_account("Away", "current", currency="USD").currency == "USD"
+    with pytest.raises(ValueError):
+        svc.add_account("Nowhere", "current", currency="XYZ")
+    assert all(a.name != "Nowhere" for a in svc.list_accounts())
+
+
+def test_FIBR0087_INV4_exponent_rule_alone_refuses_a_listed_code(service):
+    """USD is in CURRENCY_EXPONENTS; only the exponent rule refuses it here."""
+    from finbreak.services.currency import account_currency_choices
+
+    conn = service.vault.connection
+    conn.execute("UPDATE settings SET value = '3' WHERE key = 'minor_unit_exponent'")
+    conn.commit()
+    assert account_currency_choices(conn) == []
+    with pytest.raises(ValueError):
+        AccountService(service.vault).add_account("Away", "current", currency="USD")
+
+
+def test_FIBR0087_INV4_choices_list_base_first_then_code_order(service):
+    from finbreak.services.currency import account_currency_choices
+
+    assert account_currency_choices(service.vault.connection) == [
+        "ZAR",
+        "AUD",
+        "CAD",
+        "EUR",
+        "GBP",
+        "USD",
+    ]
+
+
+def test_FIBR0087_INV5_currency_changes_only_while_the_account_is_empty(service):
+    from finbreak.repositories.statement_periods import StatementPeriodRepository
+
+    svc = AccountService(service.vault)
+    repo = AccountRepository(service.vault.connection)
+    conn = service.vault.connection
+
+    empty = svc.add_account("Empty", "savings")
+    _upd(svc, empty, currency="USD")
+    got = repo.get(empty.id)
+    assert got is not None and got.currency == "USD"
+
+    with_txn = svc.add_account("WithTxn", "savings")
+    TransactionService(service.vault).add_transaction(
+        with_txn.id, "2026-07-01", "-1.00", "x"
+    )
+    with pytest.raises(AccountInUseError):
+        _upd(svc, with_txn, currency="USD")
+    got = repo.get(with_txn.id)
+    assert got is not None and got.currency == "ZAR"
+
+    # A statement period with no transactions is what fails a lock that
+    # checks transactions alone.
+    with_period = svc.add_account("WithPeriod", "savings")
+    conn.execute("BEGIN")
+    StatementPeriodRepository(conn).add(
+        with_period.id, "2026-01-01", "2026-01-31", "s.pdf"
+    )
+    conn.commit()
+    with pytest.raises(AccountInUseError):
+        _upd(svc, with_period, currency="USD")
+
+    # The stored currency again is not a change.
+    svc.update_account(
+        with_txn.id,
+        "Renamed",
+        "savings",
+        account_number=None,
+        note=None,
+        bank=None,
+        currency="ZAR",
+    )
+    got = repo.get(with_txn.id)
+    assert got is not None and (got.name, got.currency) == ("Renamed", "ZAR")
+    assert svc.is_in_use(with_txn.id) and svc.is_in_use(with_period.id)
+    assert not svc.is_in_use(empty.id)
+
+
+def test_FIBR0087_INV5_update_requires_currency(service):
+    svc = AccountService(service.vault)
+    acct = svc.add_account("Holiday", "savings")
+    with pytest.raises(TypeError):
+        svc.update_account(  # type: ignore[call-arg]
+            acct.id, "Holiday", "savings", account_number=None, note=None, bank=None
+        )
+    with pytest.raises(TypeError):
+        AccountRepository(service.vault.connection).update(  # type: ignore[call-arg]
+            acct.id, "Holiday", "savings", None, None, None
+        )
+    with pytest.raises(ValueError):
+        _upd(svc, acct, currency="XYZ")
