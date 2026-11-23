@@ -177,6 +177,7 @@ class ForecastWidget(QWidget):
     def _on_horizon_changed(self) -> None:
         self.refresh()
 
+    @Slot()
     def _on_currency_changed(self) -> None:
         if not self._currency.signalsBlocked():
             self.refresh()

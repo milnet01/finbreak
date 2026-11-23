@@ -105,7 +105,8 @@ def _format_amount(
     display: Decimal, symbol: str, negative_style: str = NegativeStyle.MINUS
 ) -> str:
     # We compose the display string ourselves: «display-symbol»␣«grouped-magnitude»
-    # (FIBR-0153). The caller passes the base-currency ISO code as ``symbol``; we map
+    # (FIBR-0153). The caller passes the amount's own ISO code as ``symbol``
+    # (its account's currency, FIBR-0087); we map
     # it to a display glyph (R for ZAR) via CURRENCY_SYMBOLS, falling back to the code
     # itself for an unmapped currency (degrade, never crash — INV-5).
     #

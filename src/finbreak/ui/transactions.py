@@ -300,6 +300,9 @@ class TransactionsView(QWidget):
         self._transfers = transfers or TransferDetectionService(transactions.vault)
         # {txn_id: "Transfer to/from <counterparty>"}, rebuilt each refresh().
         self._transfer_labels: dict[int, str] = {}
+        # account id -> currency, read with the rows so a filter change reads
+        # nothing from the vault (FIBR-0012 D8)
+        self._currencies: dict[int, str] = {}
         self._prefs = prefs or DateTimePrefs(
             DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
         )
@@ -402,6 +405,7 @@ class TransactionsView(QWidget):
         self._master = []
         self._rows = []
         self._transfer_labels = {}  # "Transfer to <account>" per row
+        self._currencies = {}
         self._model.clear()  # its rows and its render (FIBR-0097 INV-5)
         # The pickers hold the first and last transaction dates (_seed_date_range).
         # Clearing a QDateEdit's text leaves its date, so reset the date itself
@@ -415,6 +419,7 @@ class TransactionsView(QWidget):
         filter combos (preserving the current selection), then re-apply filters."""
         self._master = self._transactions.list_transactions()
         self._transfer_labels = self._build_transfer_labels()
+        self._currencies = account_currencies(self._transactions.vault.connection)
         self._rebuild_filter_combos()
         self._seed_date_range()
         self._apply_filters()
@@ -527,7 +532,7 @@ class TransactionsView(QWidget):
             _Render(
                 date_format=self._prefs.date_format,
                 amount_prefs=self._amount_prefs,
-                currencies=account_currencies(self._transactions.vault.connection),
+                currencies=self._currencies,
                 transfer_labels=self._transfer_labels,
                 guess_template=self.tr("{category} ~ guess"),
                 guess_tooltip=self.tr(

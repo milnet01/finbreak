@@ -124,7 +124,7 @@ def resolve_trend_months(prefs: ReportPrefs, today: date) -> list[tuple[int, int
 class _DrillRow(NamedTuple):
     """One sign-filtered row carried through the drill build (FIBR-0138 D4).
     ``magnitude_minor`` is the **positive** magnitude — Income keeps ``amount_minor``,
-    Spending negates it (exactly as ``summary`` does at line 161) — so every
+    Spending negates it (exactly as ``summary`` does) — so every
     downstream sum is a positive integer, and the scaled total equals the tile
     (INV-1)."""
 
@@ -156,8 +156,10 @@ class ReportingService:
         return self._vault.connection
 
     def base_currency(self) -> str:
-        """The display symbol the tiles format with (the same ``settings`` seam
-        ``TransactionService.base_currency`` reads)."""
+        """The vault's base currency (the same ``settings`` seam
+        ``TransactionService.base_currency`` reads). The tiles format in the
+        scope's own currency (FIBR-0087); ``ui/home.py``'s ``_scope`` uses this
+        only as a fallback."""
         return read_base_currency(self._conn)
 
     def transaction_count(self) -> int:

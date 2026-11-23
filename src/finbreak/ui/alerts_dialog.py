@@ -14,7 +14,7 @@ open dialogs down, FIBR-0051 INV-4b) — never ``exec()``. Every service call is
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import Qt as QtGuiNamespace
 from PySide6.QtWidgets import (
     QDialog,
@@ -172,6 +172,7 @@ class AlertsDialog(QDialog):
             name=alert.label, amount=amount, due=due
         )
 
+    @Slot()
     def _on_dismiss(self) -> None:
         """Dismiss the clicked alert, rebuild the rows, and tell the shell so Home's
         button re-counts. The write is guarded against a mid-interaction auto-lock,
