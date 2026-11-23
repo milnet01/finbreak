@@ -342,6 +342,8 @@ class TransferCandidate:
     display_amount: Decimal
     from_account: str
     to_account: str
+    # Both accounts' one currency (FIBR-0087 INV-11).
+    currency: str
 
 
 @dataclass
@@ -356,6 +358,8 @@ class ConfirmedTransfer:
     display_amount: Decimal
     from_account: str
     to_account: str
+    # The debit account's currency (FIBR-0087 INV-11).
+    currency: str
 
 
 @dataclass

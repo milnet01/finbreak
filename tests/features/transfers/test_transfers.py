@@ -1019,3 +1019,34 @@ def test_FIBR0467_INV8_home_loan_repayment_is_suggested(service):
     pairs = TransferRepository(service.vault.connection).candidate_pairs()
 
     assert (debit, repayment) in pairs
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0087 INV-11 — transfers never pair two currencies
+# (docs/specs/FIBR-0087-per-account-currency.md)
+# --------------------------------------------------------------------------- #
+def test_FIBR0087_INV11_no_pair_across_currencies(service) -> None:
+    zar_a, zar_b = _two_accounts(service)
+    usd = (
+        AccountService(service.vault)
+        .add_account("Offshore", "savings", currency="USD")
+        .id
+    )
+    # ZAR -> USD: same day, equal and opposite. Must not pair.
+    _add(service, zar_a, -10_000, "2026-01-05", "to offshore")
+    _add(service, usd, 10_000, "2026-01-05", "from cheque")
+    svc = _svc(service)
+    assert svc.candidates() == []
+    assert svc.confirm_all() == 0
+    assert svc.confirmed_transfer_txn_ids() == set()
+
+    # The same pair between two ZAR accounts does pair: only the currency
+    # rule separated the first.
+    debit = _add(service, zar_a, -20_000, "2026-01-06", "to savings")
+    credit = _add(service, zar_b, 20_000, "2026-01-06", "from cheque")
+    candidates = svc.candidates()
+    assert [(c.debit.id, c.credit.id, c.currency) for c in candidates] == [
+        (debit, credit, "ZAR")
+    ]
+    assert svc.confirm_all() == 1
+    assert [t.currency for t in svc.confirmed_transfers()] == ["ZAR"]

@@ -217,7 +217,7 @@ def test_INV5_candidate_pairs_seeks_the_amount_date_index(service) -> None:
     plan = _plan(
         service.vault.connection,
         CANDIDATE_PAIRS_SQL,
-        {"window": TRANSFER_WINDOW_DAYS},
+        {"window": TRANSFER_WINDOW_DAYS, "base": "ZAR"},
     )
     joined = "\n".join(plan)
 
@@ -252,7 +252,9 @@ def test_INV6_transfer_pairs_lookups_never_scan_the_table(service) -> None:
     cascade lookup once per deleted row."""
     conn = service.vault.connection
     plans = {
-        "candidate_pairs": _plan(conn, CANDIDATE_PAIRS_SQL, {"window": 3}),
+        "candidate_pairs": _plan(
+            conn, CANDIDATE_PAIRS_SQL, {"window": 3, "base": "ZAR"}
+        ),
         "is_confirmed": _plan(conn, IS_CONFIRMED_SQL, (1, 1)),
     }
     for name, plan in plans.items():

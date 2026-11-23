@@ -20,6 +20,7 @@ from sqlcipher3 import dbapi2
 
 from finbreak.models import TransferPair
 from finbreak.repositories import last_insert_id
+from finbreak.repositories.settings import SettingsRepository
 
 # The inclusive ±day window an inter-account debit and credit may differ by and
 # still pair (INV-2 / ADR-0006). Its ONE home — ``candidate_pairs`` reads this
@@ -60,7 +61,13 @@ CANDIDATE_PAIRS_SQL = (
     # agree at the inclusive boundary, which INV-2's window tests pin.
     " AND c.occurred_on BETWEEN date(d.occurred_on, '-' || :window || ' days') "
     "                       AND date(d.occurred_on, '+' || :window || ' days') "
+    # both accounts in one currency (FIBR-0087 INV-11), NULL or blank read as
+    # the base, as services.currency.account_currency reads it
+    "JOIN accounts da ON da.id = d.account_id "
+    "JOIN accounts ca ON ca.id = c.account_id "
     "WHERE d.amount_minor < 0 AND c.amount_minor > 0 "
+    "  AND COALESCE(NULLIF(TRIM(da.currency), ''), :base) "
+    "    = COALESCE(NULLIF(TRIM(ca.currency), ''), :base) "
     # neither side already consumed by a confirmed pair (INV-4)
     "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
     "                  WHERE p.status = 'confirmed' "
@@ -85,10 +92,12 @@ class TransferRepository:
         self-join: equal magnitude / opposite sign (``c.amount_minor =
         -d.amount_minor``), different accounts, within ``TRANSFER_WINDOW_DAYS``
         inclusive; the sign split fixes ``d`` as the debit and ``c`` as the credit
-        so each unordered pair appears once. Excludes any txn already in a confirmed
-        pair (INV-4) and any pair already confirmed *or* rejected (INV-3)."""
+        so each unordered pair appears once. Both accounts hold one currency
+        (FIBR-0087 INV-11). Excludes any txn already in a confirmed pair (INV-4)
+        and any pair already confirmed *or* rejected (INV-3)."""
+        base = SettingsRepository(self._conn).get("base_currency")
         rows = self._conn.execute(
-            CANDIDATE_PAIRS_SQL, {"window": TRANSFER_WINDOW_DAYS}
+            CANDIDATE_PAIRS_SQL, {"window": TRANSFER_WINDOW_DAYS, "base": base}
         ).fetchall()
         return [(row[0], row[1]) for row in rows]
 

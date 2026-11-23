@@ -27,6 +27,7 @@ from finbreak.models import (
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.repositories.transfers import TransferRepository
+from finbreak.services.currency import account_currencies
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 from finbreak.vault import Vault
 
@@ -52,11 +53,13 @@ class TransferDetectionService:
         pairs = self._transfers().candidate_pairs()
         if not pairs:
             return []
-        txns, names, exponent = self._resolve_context(
+        txns, names, currencies, exponent = self._resolve_context(
             {txn_id for pair in pairs for txn_id in pair}
         )
         return [
-            self._make_candidate(txns[debit_id], txns[credit_id], names, exponent)
+            self._make_candidate(
+                txns[debit_id], txns[credit_id], names, currencies, exponent
+            )
             for debit_id, credit_id in pairs
         ]
 
@@ -66,14 +69,14 @@ class TransferDetectionService:
         confirmed = self._transfers().list_confirmed()
         if not confirmed:
             return []
-        txns, names, exponent = self._resolve_context(
+        txns, names, currencies, exponent = self._resolve_context(
             {txn_id for pair in confirmed for txn_id in (pair.txn_a_id, pair.txn_b_id)}
         )
         result: list[ConfirmedTransfer] = []
         for pair in confirmed:
             a, b = txns[pair.txn_a_id], txns[pair.txn_b_id]
             debit, credit = (a, b) if a.amount_minor < 0 else (b, a)
-            cand = self._make_candidate(debit, credit, names, exponent)
+            cand = self._make_candidate(debit, credit, names, currencies, exponent)
             result.append(
                 ConfirmedTransfer(
                     pair.id,
@@ -82,6 +85,7 @@ class TransferDetectionService:
                     cand.display_amount,
                     cand.from_account,
                     cand.to_account,
+                    cand.currency,
                 )
             )
         return result
@@ -185,10 +189,10 @@ class TransferDetectionService:
 
     def _resolve_context(
         self, txn_ids: Collection[int]
-    ) -> tuple[dict[int, Transaction], dict[int, str], int]:
-        """The three per-call lookups shared by ``candidates`` +
-        ``confirmed_transfers``: id->Transaction, account id->name, and the single
-        base-currency minor-unit exponent.
+    ) -> tuple[dict[int, Transaction], dict[int, str], dict[int, str], int]:
+        """The four per-call lookups shared by ``candidates`` +
+        ``confirmed_transfers``: id->Transaction, account id->name, account
+        id->currency, and the single minor-unit exponent.
 
         ``txn_ids`` is the exact set the caller will subscript. Both callers know
         it up front, and reading the whole table instead put a full scan on every
@@ -198,22 +202,25 @@ class TransferDetectionService:
         conn = self._conn
         txns = {t.id: t for t in TransactionRepository(conn).by_ids(txn_ids)}
         names = {a.id: a.name for a in AccountRepository(conn).list_all()}
-        return txns, names, read_minor_unit_exponent(conn)
+        currencies = account_currencies(conn)
+        return txns, names, currencies, read_minor_unit_exponent(conn)
 
     def _make_candidate(
         self,
         debit: Transaction,
         credit: Transaction,
         names: dict[int, str],
+        currencies: dict[int, str],
         exponent: int,
     ) -> TransferCandidate:
         """One ``TransferCandidate`` from its resolved debit/credit rows — the shared
         display magnitude is the credit side (positive), From/To are the debit's /
-        credit's account names."""
+        credit's account names, and the currency is the debit account's."""
         return TransferCandidate(
             debit=debit,
             credit=credit,
             display_amount=to_display_decimal(credit.amount_minor, exponent),
             from_account=names.get(debit.account_id, ""),
             to_account=names.get(credit.account_id, ""),
+            currency=currencies.get(debit.account_id, ""),
         )
