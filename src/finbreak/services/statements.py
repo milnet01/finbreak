@@ -20,10 +20,12 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 from finbreak.db import owned_transaction
+from finbreak.errors import QT_TRANSLATE_NOOP, CurrencyMismatchError, UserMessage
 from finbreak.models import StatementPeriod, StatementRow
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.repositories.transfers import TransferRepository
+from finbreak.services.currency import account_currencies
 from finbreak.vault import Vault
 
 if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
@@ -154,7 +156,9 @@ class StatementService:
         ``ROLLBACK``s the unlink and both ``UPDATE``s to a re-openable vault.
         Refuses with ``ValueError`` when the target account already has a
         **different** statement for the same span (INV-3), which
-        would otherwise duplicate rows on a later import. Re-pointing to the
+        would otherwise duplicate rows on a later import. Refuses with
+        ``CurrencyMismatchError`` when the target account's currency differs, since
+        the move would relabel the amounts (FIBR-0087 INV-17). Re-pointing to the
         statement's current account is a no-op (the self-exclusion below), returning
         the matched-row count (INV-5)."""
         conn = self._conn
@@ -163,6 +167,16 @@ class StatementService:
         # The UI selection guarantees the period exists (cast, not a None-branch —
         # the AccountService convention for a guaranteed-present row).
         period = cast(StatementPeriod, period_repo.get(period_id))
+        currencies = account_currencies(conn)
+        if currencies.get(period.account_id) != currencies.get(new_account_id):
+            raise CurrencyMismatchError(
+                UserMessage(
+                    QT_TRANSLATE_NOOP(
+                        "Refusal",
+                        "a statement cannot move to an account in another currency",
+                    )
+                )
+            )
         existing = period_repo.id_for_span(
             new_account_id, period.period_start, period.period_end
         )

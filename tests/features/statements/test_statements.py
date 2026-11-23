@@ -28,6 +28,7 @@ from conftest import (
     raising_conn,
 )
 from finbreak.crypto import SALT_LEN
+from finbreak.errors import CurrencyMismatchError
 from finbreak.migrations import run_migrations
 from finbreak.models import ColumnMapping, StatementPeriod
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -1016,6 +1017,29 @@ def test_FIBR0059_reassign_refused_on_span_collision(service):
     assert TransactionRepository(conn).count_for_account(a) == 1
 
 
+def test_FIBR0087_INV17_reassign_refused_across_currencies(service):
+    """A move never relabels amounts: R100 does not become $100 (FIBR-0087 INV-17)."""
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    usd = (
+        AccountService(service.vault)
+        .add_account("Offshore", "savings", currency="USD")
+        .id
+    )
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    pid = StatementPeriodRepository(conn).list_for_account(a)[0].id
+
+    with pytest.raises(CurrencyMismatchError):
+        StatementService(service.vault).reassign_account(pid, usd)
+
+    assert _period(conn, pid).account_id == a
+    assert TransactionRepository(conn).count_for_account(a) == 1
+    assert TransactionRepository(conn).count_for_account(usd) == 0
+
+
 def test_FIBR0059_reassign_same_account_is_noop_returning_count(service):
     imp, a, conn = (
         ImportService(service.vault),
@@ -1177,6 +1201,35 @@ def test_FIBR0059_span_collision_shows_warning(qtbot, service, monkeypatch):
     widget._reassign_button.click()
 
     assert warned == [True], "a span collision surfaces a warning"
+    assert TransactionRepository(conn).count_for_account(a) == 1, "no change on a"
+
+
+def test_FIBR0087_INV17_currency_refusal_shows_its_own_warning(
+    qtbot, service, monkeypatch
+):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    usd = (
+        AccountService(service.vault)
+        .add_account("Offshore", "savings", currency="USD")
+        .id
+    )
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+
+    _stub_picker(monkeypatch, usd)
+    texts: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda _p, _t, text, *a, **k: texts.append(text)
+    )
+    widget._reassign_button.click()
+
+    assert len(texts) == 1 and "currency" in texts[0], texts
     assert TransactionRepository(conn).count_for_account(a) == 1, "no change on a"
 
 

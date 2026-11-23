@@ -400,6 +400,18 @@ line carrying a field value.
   *Breaks when:* the dialog validates only the count of ticked accounts, so
   "All accounts" in a mixed vault reaches the service.
 
+- **INV-17** — `StatementService.reassign_account` refuses to move a statement
+  into an account of another currency, with `CurrencyMismatchError`, before
+  any write. The Statements tab shows the refusal's message. A move would
+  relabel the statement's amounts, the change § 3 item 2 locks, and could
+  leave a confirmed transfer joining two currencies. Added by user decision
+  2026-11-23, from review-code's finding on FIBR-0059's move.
+  *Test:* `tests/features/statements/test_statements.py`: a ZAR statement
+  moved to a USD account raises and nothing moves; the tab shows one warning
+  naming the currency.
+  *Breaks when:* the check compares raw `accounts.currency` values rather
+  than `account_currency`'s reading, or runs after the span guard's `BEGIN`.
+
 ## 6. Failure modes
 
 - **A vault older than v18** runs every step to v19 in order.
@@ -439,6 +451,7 @@ unchanged code.
 - INV-15: `tests/features/account_detect/test_wizard.py` and
   `tests/features/batch_import/test_batch_import_ui.py`.
 - INV-16: `tests/features/pdf_export/test_export_dialog.py`.
+- INV-17: `tests/features/statements/test_statements.py`.
 
 `tests/features/currency/` is a new suite. It reads no doc, so it goes in
 `tests/features/prose_checks/`'s `_NO_PROSE` ledger, or that guard fails.
@@ -501,6 +514,7 @@ unchanged code.
 | INV-13 | one test per site in § 4.7 |
 | INV-15 | `test_wizard.py` and `test_batch_import_ui.py` |
 | INV-16 | `tests/features/pdf_export/test_export_dialog.py` |
+| INV-17 | `tests/features/statements/test_statements.py` |
 | A single-currency vault behaves as today | **Partial:** the existing suite, which runs single-currency vaults only, passes with only § 7's listed edits. **nothing** checks a figure computed by a service this spec does not name |
 | A new cross-account sum added later calls `scope_currency` | **nothing** — no test finds new summing code; review-code reads the diff |
 

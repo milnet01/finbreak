@@ -141,15 +141,20 @@ class MixedCurrencyError(FinbreakError):
     (FIBR-0087 INV-6). No figure finbreak computes adds them together."""
 
 
+class CurrencyMismatchError(FinbreakError):
+    """Moving a statement into an account of another currency (FIBR-0087
+    INV-17). The move would relabel its amounts, so it is refused."""
+
+
 class LastAccountError(FinbreakError):
     """Deleting the only remaining account (FIBR-0005 INV-6/D7); at least one
     account must always exist."""
 
 
 class SchemaVersionError(FinbreakError):
-    """The on-disk vault's schema version is newer than this build supports —
-    a distinct condition from ``VaultStateError``'s presence mismatch
-    (FIBR-0005 INV-4)."""
+    """The on-disk vault's schema version is newer than this build supports,
+    or its version record is damaged (not a usable version) — a distinct
+    condition from ``VaultStateError``'s presence mismatch (FIBR-0005 INV-4)."""
 
 
 class ProtectedCategoryError(FinbreakError):

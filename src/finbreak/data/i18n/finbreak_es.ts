@@ -2603,6 +2603,10 @@ A partir de entonces, tu contraseña maestra será lo único que pueda abrir tu 
         <source>choose accounts that share one currency</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>a statement cannot move to an account in another currency</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RuleEditDialog</name>

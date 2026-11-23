@@ -29,7 +29,7 @@ signaling per
   together: where your accounts hold more than one, the dashboard offers "All
   ZAR accounts", "All USD accounts" and so on, and the Forecast tab asks which
   currency to forecast. A currency can be changed only while its account is
-  still empty.
+  still empty, and a statement moves only to an account in its own currency.
 
 ### Fixed
 

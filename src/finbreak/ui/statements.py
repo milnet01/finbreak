@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.datetime_format import format_date, format_timestamp
-from finbreak.errors import VaultLockedError
+from finbreak.errors import CurrencyMismatchError, VaultLockedError
 from finbreak.models import StatementRow
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
@@ -43,6 +43,7 @@ from finbreak.ui._table_state import (
 )
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.modal import show_modal
+from finbreak.ui.user_text import user_text
 
 # Fixed column indices (the table's shape; headers are the translated labels).
 _COL_ACCOUNT = 0
@@ -226,6 +227,9 @@ class StatementsWidget(QWidget):
             result = self._statements.reassign_account(statement.id, new_account_id)
         except VaultLockedError:
             return  # defense-in-depth; INV-2 destroys the dialog before this slot
+        except CurrencyMismatchError as exc:  # FIBR-0087 INV-17
+            QMessageBox.warning(self, self.tr("Change account"), user_text(exc))
+            return
         except ValueError:  # the target account already has this span (INV-3)
             QMessageBox.warning(
                 self,
