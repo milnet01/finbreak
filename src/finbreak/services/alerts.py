@@ -15,7 +15,7 @@ and filters out dismissed alerts.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from sqlcipher3 import dbapi2
@@ -24,6 +24,7 @@ from finbreak.models import AlertKind, Direction, RecurringItem, SpendingAlert
 from finbreak.repositories.alert_dismissals import AlertDismissalRepository
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.reporting import ReportingRepository
+from finbreak.services.currency import accounts_in, vault_currencies
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import _month_bounds, _prev_month
 from finbreak.services.transactions import (
@@ -87,7 +88,9 @@ class MissedDebitInput:
     next_expected: date
 
 
-def detect_new_recurring(items: list[NewRecurringInput]) -> list[SpendingAlert]:
+def detect_new_recurring(
+    items: list[NewRecurringInput], *, currency: str
+) -> list[SpendingAlert]:
     """(a) A new-recurring alert for each stream that has only recently crossed the
     detection threshold — ``occurrences <= _NEW_MAX_OCCURRENCES`` (D2, cadence-
     agnostic; a just-detected stream has ``occurrences == 3``). Key
@@ -104,13 +107,14 @@ def detect_new_recurring(items: list[NewRecurringInput]) -> list[SpendingAlert]:
                     amount_minor=item.amount_minor,
                     baseline_minor=0,
                     on=None,
+                    currency=currency,
                 )
             )
     return alerts
 
 
 def detect_category_spikes(
-    items: list[CategorySpikeInput], month: str, min_baseline: int
+    items: list[CategorySpikeInput], month: str, min_baseline: int, *, currency: str
 ) -> list[SpendingAlert]:
     """(b) A category-spike alert iff ``current_minor >= _SPIKE_FACTOR * average``
     **and** ``average >= min_baseline`` (D3), where ``average`` is the integer round-
@@ -134,13 +138,14 @@ def detect_category_spikes(
                     amount_minor=item.current_minor,
                     baseline_minor=average,
                     on=None,
+                    currency=currency,
                 )
             )
     return alerts
 
 
 def detect_missed_debits(
-    items: list[MissedDebitInput], today: date
+    items: list[MissedDebitInput], today: date, *, currency: str
 ) -> list[SpendingAlert]:
     """(c) A missed-debit alert for each confirmed stream overdue past grace —
     ``next_expected + _MISS_GRACE days < today`` (D4; fires at 4+ days late). Key
@@ -158,6 +163,7 @@ def detect_missed_debits(
                     amount_minor=item.amount_minor,
                     baseline_minor=0,
                     on=item.next_expected,
+                    currency=currency,
                 )
             )
     return alerts
@@ -171,8 +177,8 @@ class AlertService:
     ``ReportingService`` transfer-exclusion set (D3), and the single Decimal→minor
     conversion (D7, the shared ``to_minor``) — calls the three detectors,
     concatenates, applies the fixed urgency-then-size order (D1/INV-19), and
-    filters out dismissed keys (D5). Mirrors
-    ``ForecastService`` — vault-wide, ``account_ids=None`` (INV-5)."""
+    filters out dismissed keys (D5). Vault-wide (INV-5), computed once per
+    currency (FIBR-0087 INV-9)."""
 
     def __init__(self, vault: Vault) -> None:
         self._vault = vault
@@ -183,23 +189,43 @@ class AlertService:
 
     def alerts(self, today: date) -> list[SpendingAlert]:
         """The ordered, dismissal-filtered alert list for ``today`` (D1/D8/INV-16/19).
-        Clock-injected: same inputs + ``today`` → same list."""
-        exponent = read_minor_unit_exponent(self._conn)
-        # One recurring detection pass drives both (a) and (c) (D2/D4).
-        base = read_base_currency(self._conn)  # per currency: FIBR-0087 INV-9
-        suggested, confirmed, _summary = RecurringService(self._vault).snapshot(
-            today, base
-        )
-        new = detect_new_recurring(self._new_inputs(suggested, exponent))
-        month, spike_inputs = self._spike_inputs(today)
-        min_baseline = _MIN_BASELINE_MAJOR * (10**exponent)
-        spikes = detect_category_spikes(spike_inputs, month, min_baseline)
-        missed = detect_missed_debits(self._missed_inputs(confirmed, exponent), today)
-        combined = new + spikes + missed
+        Clock-injected: same inputs + ``today`` → same list.
+
+        Each detector runs once per currency, over that currency's accounts, so
+        no alert's figure mixes two (FIBR-0087 INV-9)."""
+        base = read_base_currency(self._conn)
+        combined: list[SpendingAlert] = []
+        for currency in vault_currencies(self._conn):
+            for alert in self._alerts_in(today, currency):
+                if currency != base:
+                    # The base keeps today's key, so stored dismissals match.
+                    alert = replace(alert, key=f"{alert.key}:{currency}")
+                combined.append(alert)
         # Stable sort over the detectors' deterministic order (D1/INV-19).
         combined.sort(key=lambda a: (_KIND_ORDER[a.kind], -a.amount_minor, a.label))
         dismissed = AlertDismissalRepository(self._conn).dismissed_keys()
         return [alert for alert in combined if alert.key not in dismissed]
+
+    def _alerts_in(self, today: date, currency: str) -> list[SpendingAlert]:
+        """The three detectors over ``currency``'s accounts, unordered."""
+        exponent = read_minor_unit_exponent(self._conn)
+        account_ids = accounts_in(self._conn, currency)
+        # One recurring detection pass drives both (a) and (c) (D2/D4).
+        suggested, confirmed, _summary = RecurringService(self._vault).snapshot(
+            today, currency
+        )
+        new = detect_new_recurring(
+            self._new_inputs(suggested, exponent), currency=currency
+        )
+        month, spike_inputs = self._spike_inputs(today, account_ids)
+        min_baseline = _MIN_BASELINE_MAJOR * (10**exponent)
+        spikes = detect_category_spikes(
+            spike_inputs, month, min_baseline, currency=currency
+        )
+        missed = detect_missed_debits(
+            self._missed_inputs(confirmed, exponent), today, currency=currency
+        )
+        return new + spikes + missed
 
     def dismiss(self, alert_key: str) -> None:
         """Persist a dismissal (D5) — the repository's idempotent upsert."""
@@ -239,14 +265,17 @@ class AlertService:
             if item.direction is Direction.OUT
         ]
 
-    def _spike_inputs(self, today: date) -> tuple[str, list[CategorySpikeInput]]:
+    def _spike_inputs(
+        self, today: date, account_ids: frozenset[int]
+    ) -> tuple[str, list[CategorySpikeInput]]:
         """(b) the per-category OUT-spend series over the 4-month window (D3): the
         last COMPLETE month (``_prev_month(today)`` — reused so the year boundary is
         handled) plus the ``_SPIKE_WINDOW`` complete months before it. Buckets by
         ``category_id`` exactly as ``spending_by_category`` does — summing OUT
         magnitudes, excluding confirmed transfers (the ``_excluded()`` set) and the
-        ``None`` (uncategorised) bucket — over the vault-wide (``account_ids=None``)
-        rows (INV-4/INV-5). Returns ``(current_month_str, inputs)``."""
+        ``None`` (uncategorised) bucket — over ``account_ids``' rows, one
+        currency's accounts (INV-4/INV-5, FIBR-0087 INV-9). Returns
+        ``(current_month_str, inputs)``."""
         cur_year, cur_month = _prev_month(today.year, today.month)
         month = f"{cur_year:04d}-{cur_month:02d}"
         # months = 3 priors (oldest-first) + the current complete month (last).
@@ -272,7 +301,7 @@ class AlertService:
             start, end = _month_bounds(*ym)
             bucket: dict[int, int] = {}
             for txn_id, _occurred, amount_minor, category_id in repo.rows_in_range(
-                start.isoformat(), end.isoformat(), None
+                start.isoformat(), end.isoformat(), account_ids
             ):
                 has_data.add(ym)
                 if txn_id in excluded or amount_minor >= 0 or category_id is None:

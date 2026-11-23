@@ -331,3 +331,36 @@ def test_a_real_spike_still_fires_over_the_months_that_hold_data(service) -> Non
     spikes = _by_kind(AlertService(svc.vault).alerts(_TODAY), AlertKind.CATEGORY_SPIKE)
 
     assert [s.baseline_minor for s in spikes] == [100_000]
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0087 INV-9 — alerts are computed per currency
+# (docs/specs/FIBR-0087-per-account-currency.md)
+# --------------------------------------------------------------------------- #
+def test_FIBR0087_INV9_alerts_per_currency_and_old_keys_still_match(service) -> None:
+    groceries = _groceries(service)
+    zar = _acct(service)
+    usd = (
+        AccountService(service.vault)
+        .add_account("Offshore", "savings", currency="USD")
+        .id
+    )
+    for acct, prior, june in ((zar, 100_000, 250_000), (usd, 100_000, 300_000)):
+        for month in ("03", "04", "05"):
+            _add(service, acct, f"2026-{month}-20", -prior, f"Groc {month}", groceries)
+        _add(service, acct, "2026-06-20", -june, "Groc 06", groceries)
+
+    svc = AlertService(service.vault)
+    spikes = _by_kind(svc.alerts(_TODAY), AlertKind.CATEGORY_SPIKE)
+    by_currency = {a.currency: a for a in spikes}
+    assert sorted(by_currency) == ["USD", "ZAR"]
+    zar_alert, usd_alert = by_currency["ZAR"], by_currency["USD"]
+    assert zar_alert.amount_minor == 250_000  # no USD row added in
+    assert usd_alert.amount_minor == 300_000
+    assert zar_alert.key == f"category_spike:{groceries}:2026-06"  # unchanged
+    assert usd_alert.key == zar_alert.key + ":USD"
+
+    # A dismissal stored before this change still hides its (base) alert.
+    svc.dismiss(f"category_spike:{groceries}:2026-06")
+    left = _by_kind(svc.alerts(_TODAY), AlertKind.CATEGORY_SPIKE)
+    assert [(a.currency, a.key) for a in left] == [("USD", usd_alert.key)]

@@ -616,6 +616,8 @@ class SpendingAlert:
     amount_minor: int
     baseline_minor: int
     on: date | None
+    # The currency of the accounts the alert was computed over (FIBR-0087 INV-9).
+    currency: str
 
 
 class MonthVerdict(StrEnum):

@@ -331,6 +331,7 @@ def test_FIBR0328_missed_payment_due_date_reads_in_the_users_format(qtbot, servi
         amount_minor=19_900,
         baseline_minor=0,
         on=date(2026, 1, 5),
+        currency="ZAR",
     )
     dialog = AlertsDialog(
         AlertService(service.vault),
@@ -381,6 +382,7 @@ def test_FIBR0367_row36_bank_text_is_shown_as_typed_not_as_markup(
         amount_minor=19_900,
         baseline_minor=0,
         on=None,
+        currency="ZAR",
     )
     alerts = AlertService(service.vault)
     monkeypatch.setattr(alerts, "alerts", lambda _today: [alert])
