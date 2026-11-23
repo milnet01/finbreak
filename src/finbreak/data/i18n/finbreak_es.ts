@@ -86,6 +86,10 @@
         <translation>Banco</translation>
     </message>
     <message>
+        <source>Currency</source>
+        <translation type="unfinished">Moneda</translation>
+    </message>
+    <message>
         <source>Account name</source>
         <translation>Nombre de la cuenta</translation>
     </message>
@@ -128,6 +132,10 @@
     <message>
         <source>Done</source>
         <translation>Hecho</translation>
+    </message>
+    <message>
+        <source>The currency cannot change once the account holds transactions or statements.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Forget the saved statement password for “{name}”?</source>
@@ -602,6 +610,10 @@ Elimina los archivos de datos parciales para empezar de nuevo.</translation>
         <translation>Opcional</translation>
     </message>
     <message>
+        <source>Currency</source>
+        <translation type="unfinished">Moneda</translation>
+    </message>
+    <message>
         <source>Account type</source>
         <translation>Tipo de cuenta</translation>
     </message>
@@ -739,6 +751,10 @@ Elimina los archivos de datos parciales para empezar de nuevo.</translation>
     <message>
         <source>Choose at least one account.</source>
         <translation>Elige al menos una cuenta.</translation>
+    </message>
+    <message>
+        <source>Choose accounts that share one currency.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Password must be at least {n} characters.</source>
@@ -1027,6 +1043,10 @@ Elimina los archivos de datos parciales para empezar de nuevo.</translation>
     <message>
         <source>{source} → {target}</source>
         <translation>{source} → {target}</translation>
+    </message>
+    <message>
+        <source>All {currency} accounts</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>All accounts</source>

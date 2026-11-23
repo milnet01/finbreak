@@ -52,6 +52,7 @@ from finbreak.services.auth import (
     DateTimePrefs,
 )
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.currency import account_currencies
 from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
@@ -88,7 +89,9 @@ class _Render:
 
     date_format: str
     amount_prefs: AmountPrefs
-    currency: str  # the base-currency ISO code (FIBR-0153 INV-6)
+    # account id -> ISO code: each row shows its own account's currency
+    # (FIBR-0153 INV-6, FIBR-0087 INV-13)
+    currencies: dict[int, str]
     transfer_labels: dict[int, str]  # {txn_id: "Transfer to/from <account>"}
     guess_template: str  # "{category} ~ guess"
     guess_tooltip: str
@@ -225,10 +228,12 @@ class TransactionsModel(QAbstractTableModel):
             return format_date(transaction.occurred_on, render.date_format)
         if column == _COL_AMOUNT:
             return _format_amount(
-                display, render.currency, render.amount_prefs.negative_style
+                display,
+                render.currencies[transaction.account_id],
+                render.amount_prefs.negative_style,
             )
         if column == _COL_CURRENCY:
-            return render.currency
+            return render.currencies[transaction.account_id]
         if column == _COL_DESCRIPTION:
             return transaction.description
         if column == _COL_ACCOUNT:
@@ -522,7 +527,7 @@ class TransactionsView(QWidget):
             _Render(
                 date_format=self._prefs.date_format,
                 amount_prefs=self._amount_prefs,
-                currency=self._transactions.base_currency(),
+                currencies=account_currencies(self._transactions.vault.connection),
                 transfer_labels=self._transfer_labels,
                 guess_template=self.tr("{category} ~ guess"),
                 guess_tooltip=self.tr(

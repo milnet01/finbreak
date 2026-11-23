@@ -485,7 +485,9 @@ def test_FIBR0087_tab_on_usd_names_only_usd_accounts(qtbot, vault_service) -> No
     assert "Dollar Save" in text
     assert "Rand" not in text  # no ZAR account counted or named as excluded
     assert "$" in w._headline.text()
-    assert "1,234.00" in w._headline.text().replace(" ", ",")
+    # Grouping follows the locale (none in CI's container), so drop it.
+    ungrouped = re.sub(r"(?<=\d)[,.\u00a0\u202f ](?=\d{3}\b)", "", w._headline.text())
+    assert "1234.00" in ungrouped
 
 
 def test_FIBR0087_INV12_single_currency_hides_the_currency_combo(

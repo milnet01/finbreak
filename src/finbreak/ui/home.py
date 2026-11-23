@@ -14,8 +14,9 @@ coloured header (name + total) + an expandable **breakdown tree**; below them a
 full-width **recurring-money** card and the demoted 12-month **trend** bar strip.
 Confirmed transfers are excluded from Income / Spending (the ``ReportingService`` does
 the exclusion); money moved between the user's own accounts never counts. The recurring
-card is **unscoped** — it sums all confirmed recurring money vault-wide, regardless of
-the selectors. The raw transaction table moved to the Transactions tab.
+card ignores the period and the account — it sums the confirmed recurring money of
+every account in the selected scope's currency (FIBR-0087). The raw transaction
+table moved to the Transactions tab.
 """
 
 from __future__ import annotations
@@ -332,9 +333,20 @@ class HomeView(QWidget):
             return ReportPrefs(mode, year=self._year_picker.value())
         return ReportPrefs(mode)
 
-    def _selected_account_id(self) -> int | None:
-        account_id: int | None = self._account_selector.currentData()
-        return account_id
+    def _scope(self) -> tuple[str, frozenset[int] | None]:
+        """The selector's scope as ``(currency, account_ids)`` (FIBR-0087 § 4.6).
+
+        An item's data is an account id (that account), a currency code (that
+        currency's accounts; a vault of two or more currencies), or ``None``
+        ("All accounts" in a vault of one, which still passes ``None``)."""
+        data: int | str | None = self._account_selector.currentData()
+        by_id = self._accounts.account_currencies()
+        if isinstance(data, int):
+            return by_id.get(data, self._reporting.base_currency()), frozenset({data})
+        if isinstance(data, str):
+            return data, frozenset(i for i, c in by_id.items() if c == data)
+        codes = self._accounts.vault_currencies()
+        return (codes[0] if codes else self._reporting.base_currency()), None
 
     # --- signals ----------------------------------------------------------- #
     def _on_period_changed(self) -> None:
@@ -385,10 +397,14 @@ class HomeView(QWidget):
         (D7). Thin public wrapper over the private selector read."""
         return self._current_prefs()
 
-    def selected_account_id(self) -> int | None:
-        """The dashboard's selected account (``None`` = All accounts) — the export
-        dialog's account pre-fill (D7)."""
-        return self._selected_account_id()
+    def scope_account_ids(self) -> frozenset[int] | None:
+        """The selected scope's accounts (``None`` = every account, in a vault of
+        one currency) — the export dialog's account pre-fill (D7)."""
+        return self._scope()[1]
+
+    def scope_currency(self) -> str:
+        """The selected scope's currency — what the Alerts dialog lists."""
+        return self._scope()[0]
 
     # --- render ------------------------------------------------------------ #
     def refresh(self) -> None:
@@ -403,8 +419,8 @@ class HomeView(QWidget):
         # (FIBR-0231 § 4.9): the strip and the tiles must not straddle midnight,
         # which is what INV-10 asserts. Deliberately not "every read in this
         # method" — refresh_alerts() keeps its own app_today() (FIBR-0172
-        # D8/INV-16), and the alert count is unscoped, so it is not a figure the
-        # sentence is measured against.
+        # D8/INV-16), and the alert count ignores the period, so it is not a
+        # figure the sentence is measured against.
         today = app_today()
         # Getting-started iff the vault holds zero transactions (INV-7).
         if self._reporting.transaction_count() == 0:
@@ -412,11 +428,10 @@ class HomeView(QWidget):
             return
         self._rebuild_account_selector()
         prefs = self._current_prefs()
-        account_id = self._selected_account_id()
-        # FIBR-0013 D4: the reporting layer now takes an account *set* (None ⇒ all);
-        # Home's single-or-all selection wraps to None or a one-element frozenset.
-        account_ids = None if account_id is None else frozenset({account_id})
-        symbol = self._reporting.base_currency()
+        # FIBR-0013 D4: the reporting layer takes an account *set* (None ⇒ all).
+        # The scope holds one currency, and every figure is shown in it
+        # (FIBR-0087 § 4.6).
+        symbol, account_ids = self._scope()
         self._drill_symbol = symbol
 
         # The plain-English summary sits above the tiles it characterises, so it
@@ -456,20 +471,32 @@ class HomeView(QWidget):
         self._render_column("transfers", transfers, None, symbol)
 
         self._render_trend(self._reporting.monthly_trend(prefs, account_ids, today))
-        # The recurring card is unscoped (INV-3/D5): summary(today) takes no prefs.
+        # The recurring card takes no prefs (INV-3/D5), only the scope's currency.
         self._render_recurring(self._recurring.summary(today, symbol), symbol)
-        # Alerts are likewise unscoped + clock-injected (FIBR-0172 D8/INV-16).
+        # Alerts likewise ignore the period, count the scope's currency only, and
+        # are clock-injected (FIBR-0172 D8/INV-16, FIBR-0087 § 4.6).
         self.refresh_alerts()
         self._stack.setCurrentIndex(1)
 
     def _rebuild_account_selector(self) -> None:
         """Rebuild the account combo preserving the current in-session selection —
-        re-select the held account id if it still exists, else "All accounts"."""
-        held = self._selected_account_id()
+        re-select the held item if it still exists, else the first item.
+
+        A vault of one currency (or none) lists "All accounts" then each account,
+        as before FIBR-0087. Two or more list one "All <code> accounts" item per
+        currency instead, so no item mixes currencies (§ 4.6)."""
+        held = self._account_selector.currentData()
+        currencies = self._accounts.vault_currencies()
         self._loading = True
         try:
             self._account_selector.clear()
-            self._account_selector.addItem(self.tr("All accounts"), None)
+            if len(currencies) > 1:
+                for code in currencies:
+                    self._account_selector.addItem(
+                        self.tr("All {currency} accounts").format(currency=code), code
+                    )
+            else:
+                self._account_selector.addItem(self.tr("All accounts"), None)
             for account in self._accounts.list_accounts():
                 self._account_selector.addItem(account.name, account.id)
             index = self._account_selector.findData(held)
@@ -593,7 +620,10 @@ class HomeView(QWidget):
         ``VaultLockedError``-silent: an auto-lock mid-render leaves the button inert
         rather than crashing the dashboard."""
         try:
-            count = len(self._alerts.alerts(app_today()))
+            currency = self.scope_currency()
+            count = sum(
+                alert.currency == currency for alert in self._alerts.alerts(app_today())
+            )
         except VaultLockedError:
             count = 0
         self.set_alert_count(count)

@@ -48,6 +48,7 @@ class CreateAccountDialog(QDialog):
         family: str | None = None,
         bank: str | None = None,
         banks: Sequence[str] = (),
+        currencies: Sequence[str] = (),
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -73,6 +74,13 @@ class CreateAccountDialog(QDialog):
         completer = QCompleter(list(banks), self)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._bank.setCompleter(completer)
+
+        # The account's currency (FIBR-0087 § 4.8). The caller passes the
+        # vault's choices, base first, so the dialog starts at the base.
+        self._currency = QComboBox()
+        self._currency.setAccessibleName(self.tr("Currency"))
+        for code in currencies:
+            self._currency.addItem(code, code)
 
         self._type = QComboBox()
         self._type.setAccessibleName(self.tr("Account type"))
@@ -113,6 +121,7 @@ class CreateAccountDialog(QDialog):
         form.addRow(self.tr("Type"), self._type)
         form.addRow(self.tr("Account number"), self._number)
         form.addRow(self.tr("Bank"), self._bank)
+        form.addRow(self.tr("Currency"), self._currency)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -136,3 +145,7 @@ class CreateAccountDialog(QDialog):
 
     def entered_bank(self) -> str:
         return self._bank.text()
+
+    def entered_currency(self) -> str:
+        """The chosen code; "" only when the caller passed no choices."""
+        return str(self._currency.currentData() or "")

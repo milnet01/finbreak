@@ -465,6 +465,7 @@ class BatchReviewWidget(QWidget):
             return
         try:
             banks = self._accounts.bank_suggestions()
+            currencies = self._accounts.currency_choices()
         except VaultLockedError:
             return  # auto-lock fired first — silent, like the other handlers
         create = CreateAccountDialog(
@@ -473,6 +474,7 @@ class BatchReviewWidget(QWidget):
             family=record.hint.family,
             bank=record.hint.bank,
             banks=banks,
+            currencies=currencies,
             parent=self,
         )
         show_modal(create, lambda: self._created(record, create))
@@ -485,6 +487,7 @@ class BatchReviewWidget(QWidget):
                 dialog.entered_type(),
                 account_number=dialog.entered_number(),
                 bank=dialog.entered_bank(),
+                currency=dialog.entered_currency() or None,
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the other handlers

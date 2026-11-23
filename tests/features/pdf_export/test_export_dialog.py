@@ -29,7 +29,9 @@ _PREFS = ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=1)
 
 
 def _dialog(qtbot, accounts=(_A, _B), selected=None, prefs=_PREFS):
-    d = ExportDialog(list(accounts), prefs, selected)
+    # An int is one account's id: the dashboard's single-account scope.
+    scope = frozenset({selected}) if isinstance(selected, int) else selected
+    d = ExportDialog(list(accounts), prefs, scope, base_currency="ZAR")
     qtbot.addWidget(d)
     return d
 
@@ -215,3 +217,38 @@ def test_helper_text_mentions_blank_and_minimum(qtbot):
     text = d._helper.text().lower()
     assert "blank" in text
     assert str(MIN_EXPORT_PASSWORD_LEN) in text
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0087 INV-16 — the dialog never hands the service a mixed scope
+# (docs/specs/FIBR-0087-per-account-currency.md)
+# --------------------------------------------------------------------------- #
+_USD = Account(3, "Offshore", "savings", "2026-01-01T00:00:00Z", currency="USD")
+_ZAR = Account(1, "Current", "current", "2026-01-01T00:00:00Z", currency="ZAR")
+_ZAR2 = Account(2, "Savings", "savings", "2026-01-01T00:00:00Z")  # NULL reads ZAR
+
+
+def test_FIBR0087_INV16_refuses_two_currencies_accepts_one(qtbot):
+    d = _dialog(qtbot, accounts=(_ZAR, _ZAR2, _USD), selected=None)
+    # All accounts in a mixed vault would be a mixed scope.
+    assert not _btn(d).isEnabled()
+    assert _btn(d).toolTip() == "Choose accounts that share one currency."
+
+    d._all_accounts_check.setChecked(False)
+    d._account_checks[1].setChecked(True)
+    d._account_checks[2].setChecked(True)
+    d._account_checks[3].setChecked(False)
+    assert _btn(d).isEnabled()  # two ZAR accounts, one stored as NULL
+    assert d.options().account_ids == frozenset({1, 2})
+
+    d._account_checks[3].setChecked(True)
+    assert not _btn(d).isEnabled()
+    assert _btn(d).toolTip() == "Choose accounts that share one currency."
+
+
+def test_FIBR0087_INV16_usd_scope_starts_with_exactly_the_usd_accounts(qtbot):
+    d = _dialog(qtbot, accounts=(_ZAR, _ZAR2, _USD), selected=frozenset({3}))
+    assert not d._all_accounts_check.isChecked()
+    ticked = {aid for aid, c in d._account_checks.items() if c.isChecked()}
+    assert ticked == {3}
+    assert _btn(d).isEnabled()

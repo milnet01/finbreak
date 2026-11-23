@@ -86,6 +86,10 @@
         <translation>البنك</translation>
     </message>
     <message>
+        <source>Currency</source>
+        <translation type="unfinished">العملة</translation>
+    </message>
+    <message>
         <source>Account name</source>
         <translation>اسم الحساب</translation>
     </message>
@@ -128,6 +132,10 @@
     <message>
         <source>Done</source>
         <translation>تم</translation>
+    </message>
+    <message>
+        <source>The currency cannot change once the account holds transactions or statements.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Forget the saved statement password for “{name}”?</source>
@@ -614,6 +622,10 @@ Remove the partial data files to start over.</source>
         <translation>اختياري</translation>
     </message>
     <message>
+        <source>Currency</source>
+        <translation type="unfinished">العملة</translation>
+    </message>
+    <message>
         <source>Account type</source>
         <translation>نوع الحساب</translation>
     </message>
@@ -751,6 +763,10 @@ Remove the partial data files to start over.</source>
     <message>
         <source>Choose at least one account.</source>
         <translation>اختر حسابًا واحدًا على الأقل.</translation>
+    </message>
+    <message>
+        <source>Choose accounts that share one currency.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Password must be at least {n} characters.</source>
@@ -1043,6 +1059,10 @@ Remove the partial data files to start over.</source>
     <message>
         <source>{source} → {target}</source>
         <translation>{source} ← {target}</translation>
+    </message>
+    <message>
+        <source>All {currency} accounts</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>All accounts</source>

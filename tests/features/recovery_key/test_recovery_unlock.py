@@ -708,7 +708,10 @@ def test_FIBR0388_every_masked_or_code_field_is_named_for_a_screen_reader(
         SetHintDialog(),
         PasswordDialog("Current"),
         ExportDialog(
-            [account], ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=1), None
+            [account],
+            ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=1),
+            None,
+            base_currency="ZAR",
         ),
         BackupExportDialog(),
         BackupRestoreDialog(),

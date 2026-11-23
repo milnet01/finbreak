@@ -31,7 +31,6 @@ from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
 from finbreak.models import ConfirmedTransfer, TransferCandidate
 from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
-from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import (
@@ -159,18 +158,14 @@ class TransfersWidget(QWidget):
     def _refresh(self) -> None:
         self._candidates = self._detection.candidates()
         self._confirmed = self._detection.confirmed_transfers()
-        # The base-currency code, read fresh like the Transactions/Home tabs, so the
-        # magnitude renders with the currency glyph + locale grouping (FIBR-0153).
-        symbol = TransactionService(self._service.vault).base_currency()
-        self._fill(self._suggested, self._candidates, symbol)
-        self._fill(self._confirmed_table, self._confirmed, symbol)
+        self._fill(self._suggested, self._candidates)
+        self._fill(self._confirmed_table, self._confirmed)
         self._on_selection_changed()
 
     def _fill(
         self,
         table: QTableWidget,
         rows: Sequence[TransferCandidate | ConfirmedTransfer],
-        symbol: str,
     ) -> None:
         with fill_guard(table):
             table.setRowCount(len(rows))
@@ -194,9 +189,11 @@ class TransfersWidget(QWidget):
                     row,
                     _COL_AMOUNT,
                     # display_amount is a positive magnitude; the SortableItem keeps
-                    # the Decimal as the numeric sort key (D9), unchanged.
+                    # the Decimal as the numeric sort key (D9), unchanged. Each
+                    # pair renders in its own currency (FIBR-0087 INV-13), with
+                    # the glyph + locale grouping (FIBR-0153).
                     SortableItem(
-                        _format_amount(item.display_amount, symbol),
+                        _format_amount(item.display_amount, item.currency),
                         item.display_amount,
                     ),
                 )

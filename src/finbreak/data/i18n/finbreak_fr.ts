@@ -86,6 +86,10 @@
         <translation>Banque</translation>
     </message>
     <message>
+        <source>Currency</source>
+        <translation type="unfinished">Devise</translation>
+    </message>
+    <message>
         <source>Account name</source>
         <translation>Nom du compte</translation>
     </message>
@@ -128,6 +132,10 @@
     <message>
         <source>Done</source>
         <translation>Terminé</translation>
+    </message>
+    <message>
+        <source>The currency cannot change once the account holds transactions or statements.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Forget the saved statement password for “{name}”?</source>
@@ -602,6 +610,10 @@ Supprimez les fichiers de données partiels pour repartir de zéro.</translation
         <translation>Facultatif</translation>
     </message>
     <message>
+        <source>Currency</source>
+        <translation type="unfinished">Devise</translation>
+    </message>
+    <message>
         <source>Account type</source>
         <translation>Type de compte</translation>
     </message>
@@ -739,6 +751,10 @@ Supprimez les fichiers de données partiels pour repartir de zéro.</translation
     <message>
         <source>Choose at least one account.</source>
         <translation>Choisissez au moins un compte.</translation>
+    </message>
+    <message>
+        <source>Choose accounts that share one currency.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Password must be at least {n} characters.</source>
@@ -1027,6 +1043,10 @@ Supprimez les fichiers de données partiels pour repartir de zéro.</translation
     <message>
         <source>{source} → {target}</source>
         <translation>{source} → {target}</translation>
+    </message>
+    <message>
+        <source>All {currency} accounts</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>All accounts</source>

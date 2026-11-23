@@ -1097,9 +1097,15 @@ class MainWindow(QMainWindow):
         unit so it formats amounts exactly as the old inline card did. Each dismiss
         re-counts Home's button behind the dialog."""
         vault = self._service.vault
+        # Only the dashboard scope's currency is listed (FIBR-0087 § 4.6).
+        currency = (
+            self._home_tab.scope_currency()
+            if self._home_tab is not None
+            else TransactionService(vault).base_currency()
+        )
         dialog = AlertsDialog(
             AlertService(vault),
-            TransactionService(vault).base_currency(),
+            currency,
             read_minor_unit_exponent(vault.connection),
             self,
             prefs=self._prefs,
@@ -1172,8 +1178,9 @@ class MainWindow(QMainWindow):
         dialog = ExportDialog(
             accounts,
             self._home_tab.current_prefs(),
-            self._home_tab.selected_account_id(),
+            self._home_tab.scope_account_ids(),
             self,
+            base_currency=TransactionService(self._service.vault).base_currency(),
         )
         dialog.export_requested.connect(self._on_export_requested)
         dialog.rejected.connect(self._teardown_dialog)  # Cancel: no export

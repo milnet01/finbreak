@@ -2166,3 +2166,93 @@ def test_FIBR0087_INV5_update_requires_currency(service):
         )
     with pytest.raises(ValueError):
         _upd(svc, acct, currency="XYZ")
+
+
+_COL_CURRENCY = 6
+
+
+def test_FIBR0087_INV14_accounts_screen_round_trips_the_currency(qtbot, service):
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    in_use = svc.add_account("InUse", "current")
+    TransactionService(service.vault).add_transaction(
+        in_use.id, "2026-07-01", "-1.00", "x"
+    )
+    empty = svc.add_account("Empty", "current", currency="EUR")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert _header_text(widget, _COL_CURRENCY) == "Currency"
+    assert _cell(widget, "InUse", _COL_CURRENCY) == "ZAR"
+    assert _cell(widget, "Empty", _COL_CURRENCY) == "EUR"
+    choices = [widget._currency.itemData(i) for i in range(widget._currency.count())]
+    assert choices[0] == "ZAR" and "USD" in choices
+    assert widget._currency.currentData() == "ZAR"
+
+    # Add stores the chosen code, and the combo goes back to the base.
+    widget._name.setText("Offshore")
+    select = widget._currency.findData("USD")
+    widget._currency.setCurrentIndex(select)
+    widget._add_button.click()
+    assert _cell(widget, "Offshore", _COL_CURRENCY) == "USD"
+    assert widget._currency.currentData() == "ZAR"
+
+    # Selecting shows the stored code; an in-use account's combo is disabled.
+    widget._select_account(empty.id)
+    assert widget._currency.currentData() == "EUR"
+    assert widget._currency.isEnabled()
+    widget._select_account(in_use.id)
+    assert widget._currency.currentData() == "ZAR"
+    assert not widget._currency.isEnabled()
+    assert widget._currency.toolTip()
+
+    # Update changes an empty account's currency.
+    widget._select_account(empty.id)
+    widget._currency.setCurrentIndex(widget._currency.findData("GBP"))
+    widget._update_button.click()
+    got = AccountRepository(service.vault.connection).get(empty.id)
+    assert got is not None and got.currency == "GBP"
+
+
+def test_FIBR0087_INV14_currency_is_appended_last(qtbot, service):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QTableWidget
+
+    from finbreak import paths
+    from finbreak.ui.accounts import AccountsWidget
+
+    # A layout saved by the six-column screen: column 1 widened, Bank second.
+    six = QTableWidget(0, 6)
+    six.horizontalHeader().setSectionsMovable(True)
+    six.horizontalHeader().moveSection(5, 1)
+    six.horizontalHeader().resizeSection(1, 222)
+    settings = QSettings(str(paths.window_settings_path()), QSettings.Format.IniFormat)
+    settings.setValue("columns/accounts_table", six.horizontalHeader().saveState())
+    settings.sync()
+
+    restored = AccountsWidget(service)
+    qtbot.addWidget(restored)
+    header = restored._table.horizontalHeader()
+    assert header.sectionSize(1) == 222, "Type keeps its saved width"
+    assert [header.visualIndex(i) for i in range(6)] == [
+        six.horizontalHeader().visualIndex(i) for i in range(6)
+    ]
+    assert header.visualIndex(_COL_CURRENCY) == 6, "Currency is appended last"
+    assert _header_text(restored, _COL_CURRENCY) == "Currency"
+
+
+def test_FIBR0087_INV13_off_by_shows_the_accounts_own_currency(qtbot, service):
+    """Two statements whose balances do not chain: "off by" 500.00, in USD."""
+    from finbreak.ui.accounts import AccountsWidget
+
+    usd = AccountService(service.vault).add_account(
+        "Offshore", "savings", currency="USD"
+    )
+    _statement(service, usd.id, "2026-01-01", "2026-04-30", "apr.pdf", 100_000)
+    _statement(service, usd.id, "2026-05-01", "2026-05-31", "may.pdf", 150_000)
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    status = _cell(widget, "Offshore", _COL_STATUS)
+    assert "500.00" in status
+    assert "$" in status and "R" not in status.replace("Reconcil", "")

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.datetime_format import today as app_today
 from finbreak.models import Account
+from finbreak.services.currency import account_currency
 from finbreak.services.pdf_export import ExportOptions
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
@@ -60,12 +61,18 @@ class ExportDialog(QDialog):
         self,
         accounts: list[Account],
         prefs: ReportPrefs,
-        selected_account_id: int | None,
+        selected_account_ids: frozenset[int] | None,
         parent: QWidget | None = None,
+        *,
+        base_currency: str,
     ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Export report as PDF"))
         self._accounts = accounts
+        # Each account's currency, for the one-currency rule (FIBR-0087 INV-16).
+        self._currency_of = {
+            account.id: account_currency(account, base_currency) for account in accounts
+        }
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_period(prefs))
@@ -84,7 +91,7 @@ class ExportDialog(QDialog):
 
         # Pre-fill accounts LAST — after every gated widget exists — because
         # ticking "All accounts" fires the toggle handler, which reads them all.
-        self._apply_account_prefill(selected_account_id)
+        self._apply_account_prefill(selected_account_ids)
 
     # -- construction ---------------------------------------------------------
 
@@ -139,14 +146,17 @@ class ExportDialog(QDialog):
             col.addWidget(chk)
         return box
 
-    def _apply_account_prefill(self, selected_account_id: int | None) -> None:
-        # None ⇒ All ticked (its handler disables the rows); a specific id ⇒ All
-        # unticked, that one row ticked, the rest unticked (D7).
-        if selected_account_id is None:
+    def _apply_account_prefill(
+        self, selected_account_ids: frozenset[int] | None
+    ) -> None:
+        # None ⇒ All ticked (its handler disables the rows); a set ⇒ All
+        # unticked, exactly those rows ticked (D7; the dashboard scope's
+        # accounts, FIBR-0087 § 4.6).
+        if selected_account_ids is None:
             self._all_accounts_check.setChecked(True)
         else:
             for aid, chk in self._account_checks.items():
-                chk.setChecked(aid == selected_account_id)
+                chk.setChecked(aid in selected_account_ids)
         self._update_export_enabled()
 
     def _build_sections(self) -> QWidget:
@@ -224,6 +234,9 @@ class ExportDialog(QDialog):
             return self.tr("Choose at least one section to include.")
         if self._account_ids_selection_count() < 1:
             return self.tr("Choose at least one account.")
+        if len({self._currency_of[aid] for aid in self._ticked_ids()}) > 1:
+            # So the dialog never hands the service a mixed scope (INV-16).
+            return self.tr("Choose accounts that share one currency.")
         pw = self._password.text()  # verbatim — never stripped (INV-14)
         if pw:
             if len(pw) < MIN_EXPORT_PASSWORD_LEN:
@@ -235,9 +248,13 @@ class ExportDialog(QDialog):
         return None
 
     def _account_ids_selection_count(self) -> int:
+        return len(self._ticked_ids())
+
+    def _ticked_ids(self) -> list[int]:
+        """The accounts the export would cover: every one under All."""
         if self._all_accounts_check.isChecked():
-            return len(self._account_checks)
-        return sum(1 for c in self._account_checks.values() if c.isChecked())
+            return list(self._account_checks)
+        return [aid for aid, c in self._account_checks.items() if c.isChecked()]
 
     def _update_export_enabled(self) -> None:
         reason = self._disabled_reason()

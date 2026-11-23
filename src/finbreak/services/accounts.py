@@ -20,7 +20,12 @@ from finbreak.models import Account, AccountType
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
-from finbreak.services.currency import account_currency, account_currency_choices
+from finbreak.services.currency import (
+    account_currencies,
+    account_currency,
+    account_currency_choices,
+    vault_currencies,
+)
 from finbreak.services.transactions import read_base_currency
 from finbreak.text import fold_name
 from finbreak.vault import Vault
@@ -153,6 +158,18 @@ class AccountService:
             raise ValueError(
                 UserMessage(QT_TRANSLATE_NOOP("Refusal", "unsupported currency"))
             )
+
+    def currency_choices(self) -> list[str]:
+        """The codes an account may take, base first (``account_currency_choices``)."""
+        return account_currency_choices(self._vault.connection)
+
+    def vault_currencies(self) -> list[str]:
+        """Each currency an account holds, base first (``vault_currencies``)."""
+        return vault_currencies(self._vault.connection)
+
+    def account_currencies(self) -> dict[int, str]:
+        """Every account id -> its currency (``account_currencies``)."""
+        return account_currencies(self._vault.connection)
 
     def bank_suggestions(self) -> list[str]:
         """The banks the vault records, then ``KNOWN_BANKS``, each once by

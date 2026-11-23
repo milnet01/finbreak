@@ -52,7 +52,7 @@ class AlertsDialog(QDialog):
     def __init__(
         self,
         alerts: AlertService,
-        symbol: str,
+        currency: str,
         exponent: int,
         parent: QWidget | None = None,
         prefs: DateTimePrefs | None = None,
@@ -60,7 +60,9 @@ class AlertsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Alerts"))
         self._alerts = alerts
-        self._symbol = symbol
+        # The dashboard scope's currency: only its alerts are listed, so the
+        # count ``changed`` reports is that currency's too (FIBR-0087 § 4.6).
+        self._currency = currency
         self._exponent = exponent
         # Display-only formatting input (FIBR-0083). This dialog is rebuilt on
         # every open, so it needs no live-refresh setter the way a tab does.
@@ -103,7 +105,11 @@ class AlertsDialog(QDialog):
                 # (FIBR-0397).
                 widget.deleteLater()
         try:
-            alerts = self._alerts.alerts(app_today())
+            alerts = [
+                alert
+                for alert in self._alerts.alerts(app_today())
+                if alert.currency == self._currency
+            ]
         except VaultLockedError:
             alerts = []  # auto-lock mid-render; the dialog is being torn down
         for alert in alerts:
@@ -143,7 +149,7 @@ class AlertsDialog(QDialog):
         Money is scaled from the alert's positive minor magnitude to a display Decimal
         here (the service carries integers, INV-15)."""
         amount = _format_amount(
-            to_display_decimal(alert.amount_minor, self._exponent), self._symbol
+            to_display_decimal(alert.amount_minor, self._exponent), alert.currency
         )
         if alert.kind is AlertKind.NEW_RECURRING:
             return self.tr("New recurring charge: {name} ({amount})").format(
@@ -151,7 +157,7 @@ class AlertsDialog(QDialog):
             )
         if alert.kind is AlertKind.CATEGORY_SPIKE:
             baseline = _format_amount(
-                to_display_decimal(alert.baseline_minor, self._exponent), self._symbol
+                to_display_decimal(alert.baseline_minor, self._exponent), alert.currency
             )
             return self.tr(
                 "{name} spending is up: {amount} vs usual {baseline}"

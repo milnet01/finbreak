@@ -1050,3 +1050,17 @@ def test_FIBR0087_INV11_no_pair_across_currencies(service) -> None:
     ]
     assert svc.confirm_all() == 1
     assert [t.currency for t in svc.confirmed_transfers()] == ["ZAR"]
+
+
+def test_FIBR0087_INV13_tab_shows_the_pairs_currency(qtbot, service):
+    from finbreak.ui.transfers import _COL_AMOUNT, TransfersWidget
+
+    accounts = AccountService(service.vault)
+    a = accounts.add_account("Dollar A", "current", currency="USD").id
+    b = accounts.add_account("Dollar B", "savings", currency="USD").id
+    _add(service, a, -50000, "2026-01-05", "to b")
+    _add(service, b, 50000, "2026-01-05", "from a")
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    amount = cell_text(widget._suggested, 0, _COL_AMOUNT)
+    assert "$" in amount and "R" not in amount

@@ -40,7 +40,7 @@ from finbreak.models import (
 )
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
-from finbreak.services.currency import account_currency
+from finbreak.services.currency import account_currency, account_currency_choices
 from finbreak.services.reconciliation import ReconciliationService
 from finbreak.services.transactions import (
     TransactionService,
@@ -65,6 +65,9 @@ from finbreak.ui.user_text import user_text
 # layout keys each column by its logical index, so inserting it at 1 would hand
 # Type's saved width and sort to Bank.
 _COL_NAME, _COL_TYPE, _COL_NUMBER, _COL_NOTE, _COL_STATUS, _COL_BANK = range(6)
+# Appended last, after Bank, so a six-column saved layout restores with every
+# old column unchanged (FIBR-0087 § 4.8, FIBR-0283 § 4.4's measurement).
+_COL_CURRENCY = 6
 
 # Status-column sort key: a severity RANK, so clicking the header groups the
 # accounts that need attention rather than ordering marker strings by codepoint
@@ -113,7 +116,8 @@ class AccountsWidget(QWidget):
         self._accounts = AccountService(service.vault)
         # The per-account balance-reconciliation health check (FIBR-0177 D6). The
         # vault is kept so ``_refresh`` can read the money-display exponent (from the
-        # connection) + the base-currency symbol to render an "off by" magnitude.
+        # connection) + the base currency, which each row's own currency falls back
+        # to, to render an "off by" magnitude (FIBR-0087 INV-13).
         self._vault = service.vault
         self._reconciliation = ReconciliationService(service.vault)
 
@@ -140,7 +144,7 @@ class AccountsWidget(QWidget):
         self._rows: list[Account] = []
         self._with_pw: set[int] = set()
 
-        self._table = QTableWidget(0, 6)
+        self._table = QTableWidget(0, 7)
         # A distinct objectName so remember_columns keys this table uniquely and
         # it cannot cross-corrupt another table's saved layout (FIBR-0012).
         self._table.setObjectName("accounts_table")
@@ -152,6 +156,7 @@ class AccountsWidget(QWidget):
                 self.tr("Note"),
                 self.tr("Status"),
                 self.tr("Bank"),
+                self.tr("Currency"),
             ]
         )
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -189,6 +194,13 @@ class AccountsWidget(QWidget):
         self._bank_completer = QCompleter(self)
         self._bank_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._bank.setCompleter(self._bank_completer)
+        # The account's currency (FIBR-0087 § 4.8): base first, so Add starts
+        # there. Disabled on a selected account that is in use, whose currency
+        # is locked.
+        self._currency = QComboBox()
+        self._currency.setAccessibleName(self.tr("Currency"))
+        for code in account_currency_choices(service.vault.connection):
+            self._currency.addItem(code, code)
         # Session-scoped reveal: constructed unchecked, written to no store.
         # A lock needs no extra code to reset it — MainWindow._lock() destroys
         # the workspace and the next unlock builds a fresh widget (FIBR-0198 D2).
@@ -232,6 +244,7 @@ class AccountsWidget(QWidget):
         add_row.addWidget(self._name, 0, 0)
         add_row.addWidget(self._type, 0, 1)
         add_row.addWidget(self._bank, 0, 2)
+        add_row.addWidget(self._currency, 0, 3)
         add_row.addWidget(self._account_number, 1, 0)
         add_row.addWidget(self._note, 1, 1)
         add_row.addWidget(self._add_button, 1, 2)
@@ -352,12 +365,14 @@ class AccountsWidget(QWidget):
                 account_number=self._account_number.text(),
                 note=self._note.text(),
                 bank=self._bank.text(),
+                currency=self._currency.currentData(),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
         except (ValueError, FinbreakError) as exc:
             self._error.setText(user_text(exc))
             return
+        self._currency.setCurrentIndex(0)  # back to the base currency
         # Only the line edits. NOT the Type picker: QComboBox.clear()
         # removes its ITEMS, which would destroy the seven type entries and the
         # token-behind-label contract __init__ builds.
@@ -383,11 +398,7 @@ class AccountsWidget(QWidget):
                 account_number=self._account_number.text(),
                 note=self._note.text(),
                 bank=self._bank.text(),
-                # The stored currency, passed back unchanged until this screen
-                # offers a choice (FIBR-0087 § 4.8).
-                currency=account_currency(
-                    account, read_base_currency(self._vault.connection)
-                ),
+                currency=self._currency.currentData(),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
@@ -406,7 +417,9 @@ class AccountsWidget(QWidget):
         if account is None:
             # Leave the form untouched — a cleared selection must not wipe
             # in-progress input, and _refresh() now clears the selection every
-            # time (INV-22).
+            # time (INV-22). Only the currency lock lifts: it belonged to the
+            # account that was selected, not to a new one being added.
+            self._set_currency_locked(False)
             return
         self._name.setText(account.name)
         select_combo_data(self._type, account.type)
@@ -416,6 +429,20 @@ class AccountsWidget(QWidget):
         self._account_number.setText(account.account_number or "")
         self._note.setText(account.note or "")
         self._bank.setText(account.bank or "")
+        base = read_base_currency(self._vault.connection)
+        select_combo_data(self._currency, account_currency(account, base))
+        self._set_currency_locked(self._accounts.is_in_use(account.id))
+
+    def _set_currency_locked(self, locked: bool) -> None:
+        self._currency.setEnabled(not locked)
+        self._currency.setToolTip(
+            self.tr(
+                "The currency cannot change once the account holds "
+                "transactions or statements."
+            )
+            if locked
+            else ""
+        )
 
     @Slot()
     def _on_forget_password(self) -> None:
@@ -537,7 +564,7 @@ class AccountsWidget(QWidget):
             # currency, like the sibling tabs.
             statuses = self._reconciliation.account_statuses()
             exponent = read_minor_unit_exponent(self._vault.connection)
-            symbol = TransactionService(self._vault).base_currency()
+            base = TransactionService(self._vault).base_currency()
             banks = self._accounts.bank_suggestions()
         except VaultLockedError:
             # Neither self._rows nor self._with_pw has been re-assigned and the
@@ -557,8 +584,10 @@ class AccountsWidget(QWidget):
             # so there is no local setRowCount(0) here any more.
             self._table.setRowCount(len(self._rows))
             for row, account in enumerate(self._rows):
+                # Each row's "off by" in its own account's currency (INV-13).
+                currency = account_currency(account, base)
                 recon_text = self._reconciliation_suffix(
-                    statuses[account.id], exponent, symbol
+                    statuses[account.id], exponent, currency
                 )
                 key_text = (
                     self.tr("🔑 statement password saved")
@@ -597,6 +626,7 @@ class AccountsWidget(QWidget):
                         self._severity_rank(statuses[account.id]),
                     ),
                     _COL_BANK: QTableWidgetItem(account.bank or ""),
+                    _COL_CURRENCY: QTableWidgetItem(currency),
                 }
                 for col, item in items.items():
                     self._table.setItem(row, col, item)

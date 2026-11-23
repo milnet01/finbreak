@@ -1254,8 +1254,11 @@ def test_FIBR0407_fanned_out_statements_from_two_same_named_files_are_told_apart
 class _EnteredAccount:
     """What CreateAccountDialog hands back once the user accepts it."""
 
-    def __init__(self, name: str, number: str | None, bank: str = "") -> None:
+    def __init__(
+        self, name: str, number: str | None, bank: str = "", currency: str = "ZAR"
+    ) -> None:
         self._name, self._number, self._bank = name, number, bank
+        self._currency = currency
 
     def entered_name(self) -> str:
         return self._name
@@ -1268,6 +1271,9 @@ class _EnteredAccount:
 
     def entered_bank(self) -> str:
         return self._bank
+
+    def entered_currency(self) -> str:
+        return self._currency
 
 
 @pytest.mark.parametrize(
@@ -1949,3 +1955,21 @@ def test_FIBR0482_after_create_no_row_on_that_number_offers_create_again(
         dialog.reject()
         dialog.deleteLater()
         qtbot.waitUntil(lambda: review.findChild(AccountPickerDialog) is None)
+
+
+def test_FIBR0087_INV15_batch_create_stores_the_chosen_currency(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+    monkeypatch.setattr(review, "_settle", lambda _record, _account_id: None)
+
+    entered = cast(
+        CreateAccountDialog, _EnteredAccount("Offshore", None, currency="USD")
+    )
+    review._created(BatchFile(path="/tmp/x.pdf"), entered)
+
+    created = next(
+        a for a in AccountService(service.vault).list_accounts() if a.name == "Offshore"
+    )
+    assert created.currency == "USD"

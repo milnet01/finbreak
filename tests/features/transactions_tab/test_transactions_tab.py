@@ -871,3 +871,25 @@ def test_FIBR0097_refresh_scales_with_painted_rows(qtbot, service):
         f"at 20,000 rows the refresh took {refresh_s * 1000:.0f} ms, "
         f"{refresh_s / read_s:.1f}x the {read_s * 1000:.0f} ms vault read"
     )
+
+
+def test_FIBR0087_INV13_each_row_shows_its_accounts_currency(qtbot, service):
+    """docs/specs/FIBR-0087-per-account-currency.md § 4.7: the row amount and
+    the Currency column follow the transaction's account, not the base."""
+    from finbreak.services.accounts import AccountService
+    from finbreak.ui.transactions import _COL_CURRENCY
+
+    usd = (
+        AccountService(service.vault)
+        .add_account("Offshore", "savings", currency="USD")
+        .id
+    )
+    TransactionService(service.vault).add_transaction(
+        usd, "2026-07-01", "-12.50", "Dollar coffee"
+    )
+    view = _view(service)
+    qtbot.addWidget(view)
+    assert view._table.model().rowCount() == 1
+    amount = cell_text(view._table, 0, _COL_AMOUNT)
+    assert "$" in amount and "R" not in amount
+    assert cell_text(view._table, 0, _COL_CURRENCY) == "USD"

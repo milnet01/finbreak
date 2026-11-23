@@ -688,3 +688,47 @@ def test_FIBR0480_a_created_account_name_is_shown_as_typed_not_as_markup(
     assert "<b>Bold</b> Savings" in widget._account_match_label.text()
     assert widget._account_match_label.textFormat() is Qt.TextFormat.PlainText
     assert widget._error.textFormat() is Qt.TextFormat.PlainText
+
+
+def test_FIBR0087_INV15_create_stores_the_chosen_currency(qtbot, service, tmp_path):
+    """The Create dialog offers the vault's currencies, base first, and the
+    account it creates stores the one chosen."""
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+
+    dialog = _open_create_dialog(widget)
+    codes = [dialog._currency.itemData(i) for i in range(dialog._currency.count())]
+    assert codes == svc.currency_choices() and codes[0] == "ZAR"
+    assert dialog.entered_currency() == "ZAR"
+    dialog._name.setText("Offshore")
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
+    dialog._currency.setCurrentIndex(dialog._currency.findData("USD"))
+    dialog.accept()
+
+    created = next(a for a in svc.list_accounts() if a.name == "Offshore")
+    assert created.currency == "USD"
+
+
+def test_FIBR0087_INV13_preview_shows_the_target_accounts_currency(
+    qtbot, service, tmp_path
+):
+    """A statement filed into a USD account previews its amounts in dollars."""
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    usd = svc.add_account(
+        "Offshore", "savings", account_number="556667778", currency="USD"
+    ).id
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("556667778")))
+    assert widget._preview is not None and widget._preview.account_id == usd
+
+    table = widget._preview_table
+    texts = [
+        str(table.model().index(row, col).data() or "")
+        for row in range(table.rowCount())
+        for col in range(table.columnCount())
+    ]
+    amounts = [t for t in texts if any(ch.isdigit() for ch in t) and "." in t]
+    assert amounts and all("$" in a and "R" not in a for a in amounts), texts

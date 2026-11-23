@@ -894,6 +894,7 @@ class ImportWizardWidget(QWidget):
             return
         try:
             banks = self._accounts.bank_suggestions()
+            currencies = self._accounts.currency_choices()
         except VaultLockedError:
             return  # auto-lock fired first — silent, like the other handlers
         dialog = CreateAccountDialog(
@@ -902,6 +903,7 @@ class ImportWizardWidget(QWidget):
             family=self._pending_hint.family,
             bank=self._pending_hint.bank,
             banks=banks,
+            currencies=currencies,
             parent=self,
         )
         # Non-blocking + parented (FIBR-0065 D1): an idle auto-lock destroys the
@@ -922,6 +924,7 @@ class ImportWizardWidget(QWidget):
                 dialog.entered_type(),
                 account_number=dialog.entered_number(),
                 bank=dialog.entered_bank(),
+                currency=dialog.entered_currency() or None,
             )
             # Whether later statements like this one will file themselves into
             # it. The number and bank boxes are editable, so ask the matcher
@@ -1687,6 +1690,11 @@ class ImportWizardWidget(QWidget):
     def _fill_preview_table(self, preview: ImportPreview) -> None:
         # Interleave drafts + errors back into file order by row_number, so the
         # preview shows every data row and flags the error rows (INV-10c).
+        # Amounts in the target account's currency (FIBR-0087 INV-13); the base
+        # is the fallback for an account id the map does not hold.
+        currency = self._accounts.account_currencies().get(
+            preview.account_id, self._symbol
+        )
         entries: list[tuple[int, bool, list[str]]] = []
         for draft in preview.drafts:
             entries.append(
@@ -1703,7 +1711,7 @@ class ImportWizardWidget(QWidget):
                         # (D1) — _format_amount is exact.
                         _format_amount(
                             to_display_decimal(draft.amount_minor, self._exponent),
-                            self._symbol,
+                            currency,
                             self._amount_prefs.negative_style,
                         ),
                         draft.description,
