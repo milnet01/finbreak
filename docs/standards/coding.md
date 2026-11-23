@@ -214,8 +214,8 @@ below cover the two surfaces; there is no C++ in the codebase.
 - **Locale-aware formatting:** render numbers, currency, and dates via
   `QLocale` (`QLocale().toString(value, 'f', 2)` — `'f'` = fixed-point, 2
   decimals), never a hand-rolled `f"{x:,.2f}"` for display. `QLocale` controls the *format* (separators,
-  grouping), not the currency: pass the base currency's symbol explicitly —
-  `QLocale().toCurrencyString(value, symbol)` — so a fixed base currency isn't
+  grouping), not the currency: pass the account's currency symbol explicitly —
+  `QLocale().toCurrencyString(value, symbol)` — so a fixed currency isn't
   reformatted to the locale's own. See [design.md "Internationalization (i18n) &
   localisation"](../design.md#internationalization-i18n--localisation).
 

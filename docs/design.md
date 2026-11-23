@@ -320,7 +320,7 @@ whole-codebase rewrite. So, as a standing convention:
 - **Numbers, currency, and dates are formatted through `QLocale`**, never
   hand-rolled format strings. This is not cosmetic for a finance app: decimal
   and thousands separators and date conventions differ per locale, so figures
-  read naturally in every locale while still showing the user's chosen base
+  read naturally in every locale while still showing each account's own
   currency.
 - **Translations load at runtime** via `QTranslator` (compiled `.qm`
   catalogs), switchable at runtime from the language picker on the FIBR-0014

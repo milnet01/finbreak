@@ -691,6 +691,7 @@ the call site has. **`clear()` exists because that is not true everywhere**:
 `HomeView`'s `except VaultLockedError` blocks must hide the strip (INV-13) and
 have no `symbol` in scope — `base_currency()` is itself a vault read that would
 raise the same exception. A hide path must therefore not require one.
+(FIBR-0087 later made `symbol` the selected scope's currency, from `HomeView._scope()`: see [its § 4.6](FIBR-0087-per-account-currency.md).)
 
 `exponent` **is** a field, because the opposite is true of it:
 `read_minor_unit_exponent` is not imported in `home.py`, so the strip has no
