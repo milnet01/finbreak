@@ -5946,6 +5946,14 @@ automatic forward migration, which § 2's carve-out says is not a break.
   INV-13 (remaining display sites), INV-14 (Accounts combo and column),
   INV-15 (Create-an-account dialog), INV-16 (export dialog); then
   § 11's doc edits.
+  Build complete 2026-11-23 (2343ac4, a8c3243): INV-12 to INV-16 and
+  § 11's doc edits landed; gate green (2881 passed). CI run 45122878733
+  failed on a test of mine that assumed thousands grouping; fixed in
+  2343ac4. Not yet done for workflow § 6: check-code and review-code
+  over the FIBR-0087 commits (86914eb..a8c3243), findings
+  dispositioned, then flip to shipped. Spec § 10 notes nothing finds a
+  new cross-account sum that skips scope_currency; review-code is that
+  check.
 
 - ✅ [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
   The Accounts screen carries Name, Type, Account number, Note and
