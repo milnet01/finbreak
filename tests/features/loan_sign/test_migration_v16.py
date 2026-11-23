@@ -86,6 +86,8 @@ def _back_to_v15(svc: AuthService) -> None:
     conn.execute("DROP TABLE imported_files")
     # v18 (FIBR-0283) adds a column, the same way.
     conn.execute("ALTER TABLE accounts DROP COLUMN bank")
+    # v19 (FIBR-0087) adds a column, the same way.
+    conn.execute("ALTER TABLE accounts DROP COLUMN currency")
     conn.execute("UPDATE schema_version SET version = 15")
     conn.commit()
 

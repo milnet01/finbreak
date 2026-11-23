@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 18
+LATEST_SCHEMA_VERSION = 19
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -571,6 +571,23 @@ def _migrate_to_v18(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 18")
 
 
+def _migrate_to_v19(conn: dbapi2.Connection) -> None:
+    """v18 -> v19: the ``accounts.currency`` column (FIBR-0087).
+
+    Nullable because ``ADD COLUMN`` cannot add ``NOT NULL`` without a constant
+    default, and the base currency is not a constant. Every existing row is
+    backfilled from ``settings.base_currency``, so a stored value never depends
+    on the base currency staying fixed. ``Vault.create`` writes that setting
+    before migrating, so a new vault's Default account is backfilled too."""
+    with owned_transaction(conn):
+        conn.execute("ALTER TABLE accounts ADD COLUMN currency TEXT")
+        conn.execute(
+            "UPDATE accounts SET currency = "
+            "(SELECT value FROM settings WHERE key = 'base_currency')"
+        )
+        conn.execute("UPDATE schema_version SET version = 19")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -589,4 +606,5 @@ _MIGRATIONS = {
     16: _migrate_to_v16,
     17: _migrate_to_v17,
     18: _migrate_to_v18,
+    19: _migrate_to_v19,
 }

@@ -59,6 +59,9 @@ def v17(service):
     conn.commit()
     if "bank" in _cols(conn):
         conn.execute("ALTER TABLE accounts DROP COLUMN bank")
+    # v19 (FIBR-0087) adds a column, so the re-run would fail on its ALTER.
+    if "currency" in _cols(conn):
+        conn.execute("ALTER TABLE accounts DROP COLUMN currency")
     conn.execute("UPDATE schema_version SET version = 17")
     conn.commit()
     return conn
@@ -72,7 +75,8 @@ def test_INV1_v17_vault_gains_exactly_a_nullable_bank(v17) -> None:
     run_migrations(v17)
 
     assert _version(v17) == LATEST_SCHEMA_VERSION
-    assert _cols(v17) == before_cols | {"bank"}
+    # The walk runs to latest, so v19's ``currency`` (FIBR-0087) arrives too.
+    assert _cols(v17) == before_cols | {"bank", "currency"}
     assert _notnull(v17)["bank"] == 0
     assert v17.execute(_ROW + " ORDER BY id").fetchall() == before_rows
     banks = v17.execute("SELECT bank FROM accounts").fetchall()
