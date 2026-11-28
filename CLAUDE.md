@@ -1,409 +1,149 @@
 # finbreak — Project instructions for Claude Code
 
-Scaffolded from the **Ants App-Build** template. Follows the machine-wide
-workflow, `~/.claude/workflow.md` — its five states, its gates, and § 6's six
-conditions for finishing an item. The old `app-workflow` phase loop and its
-`.claude/workflow.md` were retired on 2026-09-28 (FIBR-0368); that file's
-history is [`docs/history/workflow-state.md`](docs/history/workflow-state.md).
+Follows `~/.claude/workflow.md`: its states, its gates, and § 6's conditions
+for finishing an item. No phase tags (`<ID>-complete`) are made any more.
 
 ## Where state lives
 
-**Items 1–3 are read on every session start; 4–6 are read when you need
-them, not up front.** § Resumption flow at the bottom of this file is the
-operative procedure and it governs — it reads 1–3 in one batch, then pulls
-the standard item 4 maps the active item's `Kind` to. Do not read every
-standard and the active spec before summarising: that is
-six-plus reads to answer a question the roadmap DB already answers.
+**Read 1–3 at session start; 4–6 when you need them.** § Resumption flow is
+the procedure.
 
-1. **This file** — stable rules and conventions.
-2. **The roadmap DB** — **the source of truth on current state**: what is
-   open, in progress and next. `ROADMAP.md` is **generated from it**, and the
-   generated file is what gets committed and pushed. **Never hand-edit that
-   file** — the next render overwrites you. Query the DB with `roadmap_query`
-   rather than reading a 600 KB file: **`status:"active"`** for the open items
-   (that is planned + in-progress — the resumption flow's call), `id` / `ids`
-   for one item **with its body**.
-   **A filtered call withholds bodies** (the envelope says so, with
-   `bodies_omitted: true`). **For the survey, pass
-   `bullet_fields: ["id","status","kind","headline_oneline"]`** — it keeps
-   the rows small and still carries `kind`, so it answers § Resumption flow
-   step 2 on its own. **One call over every open item spills** (measured
-   2026-09-29), so narrow WHICH rows come back: `status:"active"` plus
-   `section:<slug>` or `kind:<kind>` fits, and
-   `mode:"section_index" status:"active" slugs_only:true` lists the sections
-   holding open work. **`mode:"headline_only"` cannot**: its rows are fixed
-   to `id`, `status`, `headline_oneline` and `section_slug`, with no `kind`
-   under any argument (FIBR-0330). A targeted `id` / `ids` fetch returns
-   bodies without `include_body`.
-   Write through `roadmap_log`, which enforces the format and **re-renders the
-   whole file on every write** (`items_rendered: 277` on a one-item annotate)
-   — that render is what overwrites a hand edit. Keep a bold headline on **one
-   line**: a wrapped one renders its continuation at column 0, which markdown
-   reads as a new list item. (User decision 2026-08-18, FIBR-0281.)
-
-   **The freshness check a session owes before writing:** `roadmap_query` on
-   the id it is about to touch, reading the body back — and again after every
-   flip or annotate, because a note can land mid-bullet and still report
-   success. Both verbs locate items in the **store** (ANTS-4485, checked
-   2026-09-25), so anything `roadmap_query` shows can be written. A write replies with
-   the item's id, status and headline only, not its body, so the read-back is
-   still owed. And there is **no delete verb**, so an `append` cannot be
-   undone — reverting the file with git leaves the item orphaned and the
-   next render injects it back. Get
-   an append right first time.
-
-   **Before running `roadmap_migrate`, read
-   [`.claude/rules/roadmap-migrate.md`](.claude/rules/roadmap-migrate.md)**:
-   on this project it is almost never needed, and a real run can write over
-   correct items.
-
-3. **Which item is active.** The roadmap DB says which items are 🚧; it
-   does not say which ONE this session is working. Where exactly one is 🚧,
-   that is it. Where several are, **ask the user** rather than guessing;
-   where none is, say so and ask which planned item to take. **Flip an item
-   to 🚧 with `roadmap_log` when you start it** — that status is the only
-   record the next session has of what is in progress.
-   Nothing else holds this: the file that used to, `.claude/workflow.md`,
-   was retired on 2026-09-28 (FIBR-0368). **Summarise back to the user**
-   before doing any work.
+1. **This file.**
+2. **The roadmap DB — the source of truth on current state.** `ROADMAP.md` is
+   generated from it and committed. **Never hand-edit `ROADMAP.md`**: every
+   `roadmap_log` write re-renders the whole file over your edit.
+   - Query with `roadmap_query`, never by reading the file. One call over
+     every open item spills, so narrow it: `status:"active"` plus `section:`
+     or `kind:`, with `bullet_fields: ["id","status","kind","headline_oneline"]`.
+     `mode:"section_index" status:"active" slugs_only:true` lists the
+     sections holding open work. `mode:"headline_only"` cannot carry `kind`.
+   - A filtered call withholds bodies; an `id` / `ids` fetch returns them.
+   - Keep a bold headline on **one line**: a wrapped one renders as a new
+     list item.
+   - **Before a write and after every flip or annotate, read the item back**
+     with `roadmap_query id`: a write reports success without its body, and
+     a note can land mid-bullet.
+   - **There is no delete verb.** A git revert leaves the item in the store
+     and the next render puts it back. Get an `append` right first time.
+   - Before `roadmap_migrate`, read
+     [`.claude/rules/roadmap-migrate.md`](.claude/rules/roadmap-migrate.md):
+     a real run can write over correct items.
+3. **Which item is active.** Exactly one 🚧 → that one. Several → ask the
+   user. None → say so and ask which planned item to take. **Flip an item to
+   🚧 with `roadmap_log` when you start it**; nothing else records it.
 4. **The one `docs/standards/` file the active item's `Kind` maps to** in
-   [`docs/standards/README.md`](docs/standards/README.md)'s Kind→standard
-   list — plus `versioning.md` for `Kind: release`, which that README says it
-   governs. Not every standard. (§ Resumption flow step 2 is where that read
-   happens, and it governs.)
-5. **`docs/specs/<active-id>.md`** — the contract for the
-   currently-active roadmap item. Read it when you start work on that
-   item; not every item has one (see § Spec discipline in the global
-   rules — most work needs no spec).
-6. **`docs/audit-allowlist.md`** — read **additionally** before
-   invoking `check-code` or `review-code` so already-confirmed
-   project-specific false positives aren't re-flagged. The
-   allowlist is the closed-loop memory for this project;
-   `close-findings` is what writes a new entry.
-   (`check-code` replaced `/audit` on 2026-08-15 and `review-code`
-   replaced `/code-quality-review` on 2026-08-18; the allowlist read is
-   keyed to the job, not the old name.)
-
-## Finishing an item
-
-An item is done when `~/.claude/workflow.md` § 6's six conditions hold: a
-test that failed for the right reason, the shortest correct code, the `check-`
-skills clean, the `review-` skills run, every finding given a disposition, and
-the record true. `/close-phase` and its `<ID>-complete` tags belonged to the
-retired phase loop and are no longer run here.
+   [`docs/standards/README.md`](docs/standards/README.md), plus
+   `versioning.md` for `Kind: release`.
+5. **`docs/specs/<active-id>-<topic>.md`**, where the item has one.
+6. **`docs/audit-allowlist.md`** — read before `check-code` or `review-code`,
+   so confirmed false positives are not re-flagged. `close-findings` writes
+   new entries.
 
 ## Tech stack
 
-Chosen in Phase A (see [`docs/discovery.md`](docs/discovery.md)
-for the full table and reasoning):
-
-- **Language:** Python 3.12+
-- **GUI:** PySide6 (LGPL) — dark-themed Qt desktop (ADR-0002)
-- **Encrypted storage:** SQLCipher (SQLite + AES-256), keyed by an
-  **Argon2id**-derived key (`argon2-cffi`) (ADR-0003)
-- **PDF:** Qt engine (`QTextDocument` + `QPdfWriter`) for export;
-  `pikepdf` for AES-256 export-locking and in-memory decrypt of
-  locked input statements (ADR-0004)
-- **Import parsers:** stdlib `csv` + per-bank mapping profiles
-  (ADR-0005), `ofxparse` (OFX), `pdfplumber` (PDF)
-- **Tests / lint / types:** pytest (+ pytest-qt), ruff, mypy
-- **Security gate:** bandit, pip-audit, gitleaks (see
-  [`docs/security-model.md`](docs/security-model.md))
-- **Packaging:** PyInstaller (Windows `.exe`, macOS `.app`/`.dmg`),
-  AppImage and native RPM/deb via the openSUSE Build Service (Linux;
-  `packaging/obs/`, FIBR-0155) (ADR-0007). Flathub was dropped (FIBR-0159,
-  2026-10-08) and its recipe removed (FIBR-0452)
-- **License:** MIT; local-only apart from an opt-in, off-by-default
-  update check (FIBR-0054; stdlib `urllib`, confined to
-  `services/update_fetch.py`).
+Python 3.12+, PySide6, SQLCipher keyed by Argon2id, pikepdf, pytest
+(+ pytest-qt), ruff, mypy. The full table and ADRs:
+[`docs/discovery.md`](docs/discovery.md). **The app is local-only** apart from
+an opt-in, off-by-default update check confined to `src/finbreak/services/update_fetch.py`
+(FIBR-0054). Flathub is dropped (FIBR-0159).
 
 ## Build and test
 
-The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
-
-**Requirements and one-time dev setup** — the pinned binaries,
-`scripts/ci-setup.sh`, and the route for this openSUSE desktop — are in
-[`.claude/rules/gate.md`](.claude/rules/gate.md). Read it before setting up
-an environment, or when `./scripts/ci-local.sh` exits 127.
-
-**Run the full gate** — the same stages CI runs (lint, format-check,
-**shellcheck**, **actionlint**, **zizmor**, bandit, pip-audit **×2**, gitleaks,
-**mypy**, tests; FIBR-0001 INV-1/INV-2). Note the mypy stage: a green `pytest`
-alone is **not** a green gate ([`gate.md`](.claude/rules/gate.md) § Why each gate stage is there):
+Setup, pinned binaries, and what to do when `./scripts/ci-local.sh` exits 127:
+[`.claude/rules/gate.md`](.claude/rules/gate.md).
 
 ```bash
-./scripts/ci-local.sh
+./scripts/ci-local.sh            # the full gate CI runs; a green pytest alone is not green (mypy)
+pytest -k package_imports        # one test by keyword, or by node id
+python -m finbreak --self-test   # Qt, SQLCipher and qpdf load in-process
+./scripts/ci-local.sh --build    # gate plus freeze + clean-room container test (needs podman/docker)
 ```
 
-**One-time: the real-account-number leak guard needs a file only you can
-supply (FIBR-0086 INV-8, wired by FIBR-0248).** This repo is **public**, and a
-bank account number is not a credential, so `gitleaks` does not match one — a
-real number reached a spec once and sat there a month (FIBR-0244). The guard
-that catches that class needs the real numbers to search for, and they are the
-secret, so they are never committed. Put them in a **gitignored
-`.corpus-numbers`** at the repo root, one per line, as printed:
+The gate runs `pytest -m "not perf"` on up to 6 workers
+(`FINBREAK_TEST_WORKERS` overrides), with a 300s limit per test.
 
-**Create it in an EDITOR, never on a command line** — open
-`.corpus-numbers` in a text editor, one number per line, exactly as printed on
-the statement. Any real number works, not only account numbers: a card number
-or an ID number is caught the same way (FIBR-0246). Enter each number whole:
-the guard looks for it inside every run of eight or more digits, so a short
-fragment would match unrelated numbers. Spacing and dashes do not matter: the guard runs
-`normalise_account_number` before comparing, and its search pattern allows any
-run of separators between digits, so a number split by a line-wrap is still
-found.
+**Real numbers: `.corpus-numbers`.** The leak guard for real account, card and
+ID numbers needs a gitignored `.corpus-numbers` that only the user writes, in
+an editor. **Never print, echo or quote its contents, type the numbers on a
+command line, redirect them to a tracked file, or put them in a commit
+message, spec or ROADMAP entry.** Without the file the guard's test skips.
+The recipe and the one sanctioned read:
+[`.claude/rules/corpus-numbers.md`](.claude/rules/corpus-numbers.md).
 
-**Never a command line.** That lands in `~/.bash_history` and in an agent's
-transcript — the defect **FIBR-0276** filed against the recipe that used to stand
-here ([`docs/history/claude-md.md`](docs/history/claude-md.md)). An editor writes
-to no history.
+**The pre-push hook runs the gate on every push.** A fresh clone enables it
+once with `git config core.hooksPath .githooks`. The hook:
 
-**This is a step the user performs and an agent cannot.** The values are the
-user's real account numbers, and an agent must not invent them. It must never
-**print, echo, quote or otherwise surface the file's contents** — not to check
-the user typed them correctly, not anywhere. That is the rule; *reading the
-bytes* is not. The one sanctioned read is the shell substitution below, which
-hands the values to `pytest` without them appearing on a command line, in
-`~/.bash_history`, or in a transcript. Counting lines is fine; showing one is
-not.
+- refuses a tree with uncommitted or untracked files, or a pushed commit that
+  is not the one checked out. Commit, stash or remove them first;
+- scans each pushed commit for secrets with `gitleaks git`, and for the real
+  numbers where `.corpus-numbers` exists;
+- skips a tag-only push, and runs only the documentation checks on a push
+  that changes only `.md` files. Neither needs `--no-verify`.
 
-Without it `tests/features/account_detect/test_no_real_data.py` **skips**, and
-a skipping test reads as coverage while providing none. `FINBREAK_CORPUS_NUMBERS`
-(comma-separated) overrides **where the numbers come from** — for a machine
-that keeps them elsewhere, or a run against a different set. **Its value comes
-from a gitignored file written in an editor and substituted in, never typed**:
-`FINBREAK_CORPUS_NUMBERS="$(paste -sd, <that-file>)" pytest …` puts no value on
-the command line or into `~/.bash_history`. Substituting from `.corpus-numbers`
-itself buys nothing — that is already the default. Typing them out is the very
-act the never-list below forbids, and the defect FIBR-0276 filed. **Never print the
-values, type them onto a shell command line, redirect them to a tracked file,
-or paste them into a commit message, spec or ROADMAP entry** — the guard binds
-prose, not just fixtures. CI cannot
-hold them and never will, so this check is local-only by design.
+A `pip-audit` timeout (pypi or osv.dev) can fail it on a non-finding: retry,
+or `git push --no-verify` for that transient case. **Any other `--no-verify`
+needs the user's say-so.** Read `gate.md` before a tag push, or
+before pushing a dependency or CI change.
 
-**Pre-push hook — the gate runs automatically before a `git push`, unless you
-pass `--no-verify` or the push is tag-only** (that second case is the hook's
-own doing, and reaching for the flag there is what it exists to stop — see
-below). **A push that changes only `.md` files runs the documentation checks
-instead of the full gate**, also by the hook's own choice (§ Doc-only pushes).
+## Commits and push
 
-**It also refuses outright on a tree with uncommitted or untracked files, or
-when the commit being pushed is not the one checked out**, rather than running.
-Commit, stash or
-remove them first; pushing past the refusal with `--no-verify` needs the user's
-say-so (`commits.md` § 2.3), like any other skipped hook. **And on every push it
-scans each commit being pushed for secrets** (`gitleaks git` over the pushed
-range), because the gate's own scan sees only the final files (local-gate.md
-§ 2.1). Where `.corpus-numbers` exists it also searches each pushed
-commit's message and added lines for the real account numbers, which
-`gitleaks` cannot match (FIBR-0439).
+Commit subject: `<ID>: <description>`, with `<ID>` a `FIBR-NNNN`
+([`docs/standards/commits.md`](docs/standards/commits.md) § 1.1).
 
-CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
-**for everything the environment does not decide** — see the container caveat
-in `gate.md` for the part it cannot cover. It is enabled
-in this clone; a **fresh clone must enable it once**:
+**This repo is public: push freely, tags included.** Use `--follow-tags`,
+never `--tags`, which publishes every local tag.
 
-```bash
-git config core.hooksPath .githooks
-```
+### Doc-only pushes skip the FULL gate, never the prose checks
 
-(A rare `pip-audit` timeout — against either pypi or osv.dev — can make the
-hook flake on a non-finding; retry, or `git push --no-verify` for that
-transient case. Those two are the gate's only network-dependent stages.)
-A doc-only push needs no `--no-verify`: the hook picks the documentation
-checks for it (FIBR-0373).
-
-**Tag-only pushes, and reproducing CI's environment with
-`./scripts/ci-docker.sh`**, are in [`.claude/rules/gate.md`](.claude/rules/gate.md).
-Read it before a tag push, and before pushing a dependency or CI change.
-
-**Run tests / a single test** (INV-6):
-
-```bash
-pytest                                              # whole suite
-pytest -k package_imports                           # by keyword
-pytest tests/test_smoke.py::test_package_imports    # by node id
-```
-
-The gate runs `pytest -m "not perf"` (perf excluded; integration tests run) on
-several processes — `-n <workers>`, sized from free memory, capped at 6;
-`FINBREAK_TEST_WORKERS` overrides it (FIBR-0373). Every test has a 300s limit.
-`pytest-qt`'s `qtbot` fixture is **enabled** — P02 (FIBR-0004) shipped the first
-real GUI tests and removed the `addopts = "-p no:pytest-qt"` line.
-
-**Bundling smoke-test** (FIBR-0003) — prove the native stacks (Qt, SQLCipher,
-qpdf) travel into a Python-free bundle:
-
-```bash
-python -m finbreak --self-test        # in-process: loads all three, prints a sentinel
-./scripts/build-smoke.sh              # freeze onedir + AppImage, launch each in a container
-./scripts/ci-local.sh --build         # the gate PLUS the build+clean-room test (opt-in)
-```
-
-The slow build+clean-room test is **off by default** (keeps the gate fast); pass
-`--build` or set `FINBREAK_BUILD_SMOKE=1`. It needs `podman`/`docker` on `PATH`.
-
-## Commit conventions
-
-Per [`docs/standards/commits.md § 1.1`](docs/standards/commits.md):
-every commit subject is `<ID>: <description>`, where `<ID>` is
-either a phase ID (`P##`, `FP##`, `DS##`, `DOC##`, `R##`) or a
-stable per-bullet ID for ROADMAP_FORMAT v1 projects
-(`FIBR-NNNN`).
-
-Under the retired phase loop every implementation phase ended with
-`git tag -a <ID>-complete` on the closing commit; no new ones are made.
-**The existing phase tags are public, and that is fine** (user decision
-2026-08-18) — they are build markers on a public repo and carry nothing
-private. § Push policy below has the reasoning and is the one home for it.
-
-**A release tag `v<X.Y.Z>` is a different thing again** — it is pushed
-as part of cutting the release, without asking, per global
-`~/.claude/CLAUDE.md` § 6 ("a release push goes immediately and
-WITHOUT asking, on every repository"). An unpushed release tag is a
-half-cut release, and the next session cannot tell a queued one from
-a failed one. `scripts/release-linux.sh` publishes the release on that
-pushed tag (it refuses unless HEAD is the tagged commit).
-
-## Push policy
-
-Inherits from the user's global `~/.claude/CLAUDE.md` § 6
-(public repos: push freely; private: batch + ask). Detect repo
-visibility once per session via
-`gh repo view --json visibility -q .visibility` and cache.
-This repo is **public**, so commits push freely.
-
-**Tags too — `--follow-tags` is fine here** (user decision 2026-08-18). **A
-phase tag is a build marker and carries nothing private**, so publishing it costs
-nothing on a public repo.
-
-**Do not reinstate the ban without changing the tooling first.** Three earlier
-drafts tried, and each contradicted itself —
-[`docs/history/claude-md.md`](docs/history/claude-md.md).
-
-**Still `--follow-tags`, never `--tags`.** Global `~/.claude/CLAUDE.md` § 6
-forbids the latter by name: it publishes *every* local tag, including ones never
-meant to leave the machine, where `--follow-tags` sends only the annotated tags
-reachable from what you are already pushing.
-
-### Doc-only pushes skip the FULL gate, never the prose checks (user directives 2026-08-05, 2026-08-18)
-
-A push that touches **only** documentation does not run the full gate. It runs
-the documentation checks — the test suites that read prose, and `gitleaks` —
-and nothing else. **`.githooks/pre-push` makes that choice itself** (FIBR-0373):
-a plain `git push` is the whole route, with no `--no-verify`. **This section is
-the standing authorisation
-[`docs/standards/commits.md` § 2.3](docs/standards/commits.md) requires** for
-the hook to skip the rest of the gate on such a push. GitHub CI skips it too
-(`paths-ignore: ["**.md"]` on `push` in `ci.yml`; a pull request still runs
-everything). The documentation checks take a few seconds. To run them by hand:
+This section is the standing authorisation `commits.md` § 2.3 requires for the
+hook to skip the rest of the gate on a doc-only push (user directives
+2026-08-05, 2026-08-18). GitHub CI skips such a push too. To run the same
+checks by hand:
 
 ```bash
 ./scripts/ci-local.sh --docs     # DOCS_SUITES + gitleaks --redact; the hook runs the same
 ```
 
-**The suite list lives in `scripts/ci-local.sh`'s `DOCS_SUITES` alone.** Its
-`gitleaks` line keeps **`--redact`**: without it a hit prints the secret in
-clear, and § Build and test three screens up says never to print those values.
+- The suite list lives in `scripts/ci-local.sh`'s `DOCS_SUITES` alone. Its
+  `gitleaks` line keeps `--redact`, or a hit prints the secret.
+- **A suite belongs in it if it reads a tracked doc's contents or requires one
+  to exist.** Do not re-derive the list by grep, and do not claim no Python
+  stage reads prose.
+- Add a new such suite to both `DOCS_SUITES` and the `_READS_PROSE` ledger in
+  `tests/features/prose_checks/`, which fails when they disagree.
+- How the hook decides a push is doc-only, and what each suite reads:
+  [`gate.md`](.claude/rules/gate.md). Read it before changing
+  `.githooks/pre-push`.
+- **A code change never skips the full gate, however small.**
 
-**These suites read tracked prose, and the list is ENUMERATED, so it can go
-stale.** It has, twice. **Do not justify the skip by claiming no Python stage
-reads prose** — that is the false claim both earlier versions rested on, and it
-is why the list is now bound to the tree by a guard rather than kept by hand
-([`docs/history/claude-md.md`](docs/history/claude-md.md)).
-What each suite reads: [`gate.md`](.claude/rules/gate.md) § Which suites read prose.
-
-**The membership rule: a suite belongs here if it reads a tracked doc's
-CONTENTS or requires one to EXIST.**
-
-**No grep re-derives this list, so do not try to.**
-`tests/features/prose_checks/` (**FIBR-0278**) is the guard instead: it fails if
-`DOCS_SUITES` and its `_READS_PROSE` ledger disagree, and it fails if any
-suite directory is sorted into neither ledger. Add a suite to **both** places —
-`DOCS_SUITES` and the ledger it checks against — whenever you write one
-that reads a doc; the guard is what catches you if you only do one. Why it is a
-guard rather than a hand-kept list: [`docs/history/claude-md.md`](docs/history/claude-md.md).
-
-**How the hook decides a push is doc-only, and why it is built that way:**
-[`.claude/rules/gate.md`](.claude/rules/gate.md). Read it before changing
-`.githooks/pre-push`.
-
-**`.corpus-numbers` is what makes the guard real, and it is per-machine.** Where
-it exists `test_no_real_data.py` runs; where it does not that test skips, and
-`gitleaks` does not match an account number — so such a machine has no cover for
-this class at all and should not push prose it has not read.
-
-**A code change never skips the full gate, however small.**
-
-*This file's `review-contract` history lives in
-[`docs/reviews/CLAUDE-md-review-log.md`](docs/reviews/CLAUDE-md-review-log.md),
-not inline — an always-loaded file should not carry a growing audit table.*
-
-## Cutting a release: `gh release create` is NOT the end
+## Cutting a release
 
 **Before any release step — `cut-release`, `scripts/release-linux.sh`,
 `scripts/release-windows.sh` or a version bump — read
-[`.claude/rules/release.md`](.claude/rules/release.md).** It holds the release
-path in order, how a release has failed, and this project's `cut-release`
-Phase 2b substitute (`scripts/ci-docker.sh`; user decision 2026-08-19,
-FIBR-0295).
+[`.claude/rules/release.md`](.claude/rules/release.md).** A release tag
+`v<X.Y.Z>` is pushed as part of the release, without asking.
 
-## Module map
+## Spec filenames
 
-Where each part of the tree lives, and two traps (`invariant_check` paths;
-the Standard Bank import contract), are in
-[`.claude/rules/module-map.md`](.claude/rules/module-map.md). It loads by
-itself when a file under `src/` or `tests/` is read.
+Name a new spec `docs/specs/<ID>-<topic>.md` (user decision 2026-08-05).
+`naming.md` still says `docs/specs/<ID>.md`; that rule is superseded. Why it is
+not amended yet: [`.claude/rules/spec-filenames.md`](.claude/rules/spec-filenames.md).
 
 ## Resumption flow — MANDATORY summarise-back
 
-1. **`roadmap_query` for the open items** (this file is already loaded) —
-   narrowed per § Where state lives item 2, since one unnarrowed call spills. State comes from the roadmap DB; § Where state lives
-   item 3 says how to tell which open item is active.
-2. Once `Kind` is known from the active item, read the standard
-   § Where state lives item 4 maps it to — one read, two for `Kind: release`.
-3. **Summarise back to the user:** "We're on `<ID>`, last did `<X>`,
-   next is `<Y>`." Take `<X>` from `git log --oneline -5` and `<Y>` from the
-   latest note in the active item's body (`roadmap_query id`).
-4. Wait for confirm or redirect, **unless the user pasted a hand-off note**.
-   That note is the go-ahead: summarise, then start its next step (user,
-   2026-11-11; they may be away from the desk). Nothing checks this.
+1. **`roadmap_query` for the open items**, narrowed per § Where state lives
+   item 2. Item 3 says which is active.
+2. Read the standard item 4 maps its `Kind` to.
+3. **Summarise back:** "We're on `<ID>`, last did `<X>`, next is `<Y>`."
+   `<X>` from `git log --oneline -5`; `<Y>` from the latest note in the active
+   item's body.
+4. Wait for confirm or redirect, **unless the user pasted a hand-off note**:
+   that note is the go-ahead, so summarise and start its next step (user,
+   2026-11-11). Nothing checks this.
 
-**Never skip step 3.** Catching state-recovery errors before
-working is cheaper than corrective rounds later.
+**Never skip step 3.**
 
-## Standards reference
-
-The seven standards (`coding`, `naming`, `dependencies`,
-`documentation`, `testing`, `commits`, `versioning`) plus
-`roadmap-format` live in
-[`docs/standards/`](docs/standards/) — see its
-[README](docs/standards/README.md) for the index, the
-closed-loop diagram, and which kinds each governs.
-
-### One standard is knowingly out of date: spec filenames
-
-`naming.md` line 85 still says a spec is `docs/specs/<ID>.md`, and its
-line-207 counter-example says the same. **That rule is superseded** —
-the user decided 2026-08-05 that specs are
-`docs/specs/<ID>-<topic>.md`, because a filename a human can read
-without opening it is worth the suffix. **Name a new spec the new way**;
-the first file under the new rule is
-`docs/specs/FIBR-0231-plain-english-month-summary.md`.
-
-Why it is not amended yet, and what is tracked:
-[`.claude/rules/spec-filenames.md`](.claude/rules/spec-filenames.md).
-
-## Rule history
-
-Pedigree moved out of a rule above — what it replaced, what went wrong to make
-it necessary, and the measurement behind it — is in
-[`docs/history/claude-md.md`](docs/history/claude-md.md).
-
-**It is not loaded at session start, and that is the point.** This file is read
-on every prompt, so a rule's reasoning is paid for on every turn while being
-needed almost never: when you are about to change that rule. Read it then.
-
-**Do not move a RULE there.** Only the story behind one. A rule that leaves this
-file is a rule some session will not read (FIBR-0296, and the user's 2026-09-21
-directive to move the history out).
+The story behind these rules is in
+[`docs/history/claude-md.md`](docs/history/claude-md.md); read it before
+changing one. This file's review log:
+[`docs/reviews/CLAUDE-md-review-log.md`](docs/reviews/CLAUDE-md-review-log.md).
